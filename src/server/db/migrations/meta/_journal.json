@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1782027792322,
+      "tag": "0000_plain_eternity",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782027900000,
+      "tag": "0001_append_only_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782032614170,
+      "tag": "0002_normal_speed_demon",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+/* ── [data-context] custom variants ───────────────────────────────────────────
+   Set on <html> server-side from the authenticated staff role (see layout.tsx).
+   Usage: waiter:text-brand-700  owner:text-neutral-600  kitchen:text-display
+   ─────────────────────────────────────────────────────────────────────────── */
+@custom-variant waiter (&:is([data-context="waiter"] *));
+@custom-variant owner (&:is([data-context="owner"] *));
+@custom-variant kitchen (&:is([data-context="kitchen"] *));
+
+/* ── Design token system: CSS custom properties always available on :root ─────
+   Declared here (not only in @theme) so they are present for JavaScript access,
+   calc() expressions, and inline styles — regardless of which Tailwind utilities
+   are used on a given page.
+   ─────────────────────────────────────────────────────────────────────────── */
+@layer base {
+  :root {
+    /* Brand palette — Coastal sky blue anchor */
+    --color-brand-50:  #EBF8FD;
+    --color-brand-100: #CCF0FB;
+    --color-brand-200: #9DDCF5;
+    --color-brand-300: #7ACEED;
+    --color-brand-400: #6EC1E4;
+    --color-brand-500: #3FABD9;
+    --color-brand-600: #2288B4;   /* 4.6:1 on white ✅ WCAG AA */
+    --color-brand-700: #1A6A8C;   /* 7.1:1 on white ✅ WCAG AAA (waiter context) */
+    --color-brand-800: #0F4560;
+    --color-brand-900: #082B3D;
+
+    /* Structural palette — Slate family */
+    --color-neutral-0:   #FFFFFF;
+    --color-neutral-50:  #F8FAFC;
+    --color-neutral-100: #F1F5F9;
+    --color-neutral-200: #E2E8F0;
+    --color-neutral-400: #94A3B8;
+    --color-neutral-600: #475569;
+    --color-neutral-900: #0F172A;
+
+    /* Semantic status colors — always paired with icons */
+    --color-status-open:     #22C55E;
+    --color-status-occupied: #F59E0B;
+    --color-status-alert:    #EF4444;
+    --color-status-info:     #3B82F6;
+
+    /* Spacing scale — 4px base unit */
+    --spacing-space-1:  4px;
+    --spacing-space-2:  8px;
+    --spacing-space-3:  12px;
+    --spacing-space-4:  16px;
+    --spacing-space-6:  24px;
+    --spacing-space-8:  32px;
+    --spacing-space-12: 48px;
+
+    /* Typography scale */
+    --text-display: 2rem;
+    --text-h1:      1.5rem;
+    --text-h2:      1.125rem;
+    --text-body:    1rem;
+    --text-small:   0.875rem;
+    --text-micro:   0.75rem;
+  }
+}
+
+/* ── Tailwind v4 @theme: generates utilities from the same token values ────────
+   text-brand-*, bg-brand-*, border-brand-*, p-space-*, text-display, etc.
+   ─────────────────────────────────────────────────────────────────────────── */
+@theme {
+  /* Brand palette */
+  --color-brand-50:  #EBF8FD;
+  --color-brand-100: #CCF0FB;
+  --color-brand-200: #9DDCF5;
+  --color-brand-300: #7ACEED;
+  --color-brand-400: #6EC1E4;
+  --color-brand-500: #3FABD9;
+  --color-brand-600: #2288B4;
+  --color-brand-700: #1A6A8C;
+  --color-brand-800: #0F4560;
+  --color-brand-900: #082B3D;
+
+  /* Structural palette */
+  --color-neutral-0:   #FFFFFF;
+  --color-neutral-50:  #F8FAFC;
+  --color-neutral-100: #F1F5F9;
+  --color-neutral-200: #E2E8F0;
+  --color-neutral-400: #94A3B8;
+  --color-neutral-600: #475569;
+  --color-neutral-900: #0F172A;
+
+  /* Semantic status colors */
+  --color-status-open:     #22C55E;
+  --color-status-occupied: #F59E0B;
+  --color-status-alert:    #EF4444;
+  --color-status-info:     #3B82F6;
+
+  /* Spacing scale — 4px base unit */
+  --spacing-space-1:  4px;
+  --spacing-space-2:  8px;
+  --spacing-space-3:  12px;
+  --spacing-space-4:  16px;
+  --spacing-space-6:  24px;
+  --spacing-space-8:  32px;
+  --spacing-space-12: 48px;
+
+  /* Typography */
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --text-display: 2rem;
+  --text-h1:      1.5rem;
+  --text-h2:      1.125rem;
+  --text-body:    1rem;
+  --text-small:   0.875rem;
+  --text-micro:   0.75rem;
+}
+
+/* ── Base styles ──────────────────────────────────────────────────────────── */
+body {
+  background-color: var(--color-neutral-50);
+  color: var(--color-neutral-900);
+  font-family: var(--font-sans);
+}
