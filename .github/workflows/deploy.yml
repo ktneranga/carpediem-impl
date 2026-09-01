@@ -1,0 +1,203 @@
+# CI/CD — build, ship, verify, revert.
+#
+# ── READ THIS BEFORE CHANGING DELIVERY BEHAVIOUR ──────────────────────────────
+#
+# Watchtower does NOT gate on application health and CANNOT roll back. It polls a
+# registry, pulls a newer digest for a watched tag, stops the old container and
+# starts the new one. That is the whole feature set. Its maintainers recommend it
+# for small self-hosted stacks, not for pipelines needing approvals or rollback.
+#
+# So the guarantees are assembled here instead:
+#   Delivery  — Watchtower watches the moving `stable` tag, scoped per restaurant.
+#   Gate      — this workflow polls /api/health over Tailscale AFTER rollout.
+#   Revert    — on failure, `stable` is re-pointed at the previous digest and
+#               Watchtower pulls it on its next poll.
+#
+# Accepted limitations (Story 1.5 AC-9):
+#   * Restart causes a brief interruption, typically 5-15s. True zero-downtime
+#     needs `docker-rollout`, which is deferred.
+#   * Revert is eventually-consistent — bounded by WATCHTOWER_POLL_INTERVAL
+#     (300s), not instant.
+#
+# Every build also pushes an immutable `sha-<short-sha>` tag. `latest` is never
+# pushed: mutable default tags are the single largest cause of "wrong image in
+# production" incidents, and tooling pulls `latest` implicitly.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      restaurant:
+        description: 'Target restaurant scope (blank = all restaurants on `stable`)'
+        required: false
+        type: string
+      version:
+        description: 'Optional semantic version label, e.g. v1.5.2'
+        required: false
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+concurrency:
+  # Never let two deploys race to re-point the same pointer tag.
+  group: deploy-${{ github.ref }}-${{ inputs.restaurant || 'all' }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      pointer_tag: ${{ steps.naming.outputs.pointer_tag }}
+      new_digest: ${{ steps.build.outputs.digest }}
+      previous_digest: ${{ steps.previous.outputs.digest }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve pointer tag
+        id: naming
+        run: |
+          if [ -n "${{ inputs.restaurant }}" ]; then
+            echo "pointer_tag=stable-${{ inputs.restaurant }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "pointer_tag=stable" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Captured BEFORE the push so it still points at the last known-good build.
+      # This is the revert target. Missing on the very first run — that is fine,
+      # the revert step skips when it is empty.
+      - name: Capture current pointer digest
+        id: previous
+        continue-on-error: true
+        run: |
+          IMAGE="${REGISTRY}/${IMAGE_NAME}:${{ steps.naming.outputs.pointer_tag }}"
+          DIGEST=$(docker buildx imagetools inspect "$IMAGE" --format '{{.Manifest.Digest}}' 2>/dev/null || true)
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          if [ -z "$DIGEST" ]; then
+            echo "::notice::No existing '${{ steps.naming.outputs.pointer_tag }}' tag — first deploy, revert unavailable."
+          else
+            echo "::notice::Revert target: ${DIGEST}"
+          fi
+
+      - name: Derive tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=${{ steps.naming.outputs.pointer_tag }}
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+          # `latest` is deliberately absent. Do not add it.
+          flavor: |
+            latest=false
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # The image installs all dependencies (tsx, drizzle-kit and cross-env are
+          # needed at runtime), so a cold build is slow. Cache aggressively.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  verify:
+    name: Verify deployment health
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # Ephemeral key: CI runners are disposable and must not accumulate stale
+      # tailnet nodes. Restrict this node in Tailscale ACLs to port 3000 only —
+      # it has no business reaching Portainer on 9000.
+      - name: Join tailnet
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      # Watchtower polls every 300s, then the container must start and run
+      # migrations. Waiting less than a full poll interval guarantees false
+      # failures, so the deadline covers poll + start + margin.
+      - name: Poll /api/health until healthy
+        id: health
+        run: |
+          TARGET="${{ secrets.DEPLOY_HEALTH_URL }}"
+          DEADLINE=$(( SECONDS + 300 ))
+
+          echo "Polling ${TARGET} for up to 300s..."
+          while [ $SECONDS -lt $DEADLINE ]; do
+            BODY=$(curl -fsS -m 10 "$TARGET" 2>/dev/null || true)
+            if [ -n "$BODY" ]; then
+              echo "response: $BODY"
+              # A 200 carrying db:"error" is a degraded app, not a healthy one.
+              if echo "$BODY" | grep -q '"status":"ok"' && echo "$BODY" | grep -q '"db":"connected"'; then
+                echo "healthy=true" >> "$GITHUB_OUTPUT"
+                echo "::notice::Deployment healthy."
+                exit 0
+              fi
+            fi
+            sleep 15
+          done
+
+          echo "healthy=false" >> "$GITHUB_OUTPUT"
+          echo "::error::Health check failed after 300s."
+          exit 1
+
+      - name: Log in to GHCR
+        if: failure()
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Re-point the pointer tag at the previous digest. imagetools does this
+      # server-side — no rebuild, no re-push of layers. Watchtower picks it up on
+      # its next poll.
+      - name: Revert pointer tag to last known good
+        if: failure()
+        run: |
+          PREV="${{ needs.build.outputs.previous_digest }}"
+          TAG="${{ needs.build.outputs.pointer_tag }}"
+
+          if [ -z "$PREV" ]; then
+            echo "::error::No previous digest recorded — cannot revert. Intervene manually."
+            exit 1
+          fi
+
+          echo "::warning::Reverting ${TAG} to ${PREV}"
+          docker buildx imagetools create \
+            --tag "${REGISTRY}/${IMAGE_NAME}:${TAG}" \
+            "${REGISTRY}/${IMAGE_NAME}@${PREV}"
+
+          echo "::warning::Revert pushed. Watchtower will restore it within one poll interval (300s)."

@@ -1,6 +1,23 @@
+# Local development overrides. Compose merges this on top of docker-compose.yml
+# automatically — it is NOT used on restaurant servers.
+#
+# The base file pins `app` to a published GHCR image so Watchtower can update it.
+# Development needs the opposite: build from source with hot reload. The full
+# build block lives here now (context + dockerfile included) because the base no
+# longer carries one to inherit.
 services:
+  # Development only. The base file keeps PostgreSQL internal-only (Story 1.4
+  # AC-1) so nothing on the restaurant LAN can reach it. Local work needs host
+  # access for `pnpm db:generate`, `db:migrate`, `db:seed` and psql — and this
+  # file never ships to a restaurant server.
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"
+
   app:
     build:
+      context: .
+      dockerfile: docker/Dockerfile
       target: builder
     command: pnpm dev
     volumes:
@@ -9,3 +26,6 @@ services:
       - /app/.next
     environment:
       - NODE_ENV=development
+    # Never let a local Watchtower replace the container you are actively editing.
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"

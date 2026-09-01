@@ -1,9 +1,16 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
+    # Production pulls a published image so Watchtower can update it — Watchtower
+    # cannot update a locally-built image. `docker-compose.override.yml` restores
+    # `build:` for local development, and Compose merges it automatically.
+    image: ${GHCR_IMAGE:-ghcr.io/ktneranga/carpediem-impl}:${APP_TAG:-stable}
     restart: unless-stopped
+    labels:
+      # Opt in to Watchtower updates. Watchtower runs with WATCHTOWER_LABEL_ENABLE=true,
+      # so ONLY containers carrying this label are ever touched.
+      - "com.centurylinklabs.watchtower.enable=true"
+      # Scope confines this restaurant's Watchtower to this restaurant's containers.
+      - "com.centurylinklabs.watchtower.scope=${RESTAURANT_SCOPE:-default}"
     ports:
       - "3000:3000"
     environment:
@@ -15,7 +22,7 @@ services:
       - PRINTER_PORT=${PRINTER_PORT:-9100}
       - VENDOR_SECRET=${VENDOR_SECRET:-}
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
-      - PORTAINER_URL=http://localhost:9000
+      - PORTAINER_URL=http://portainer:9000
       - RESTAURANT_NAME=${RESTAURANT_NAME:-Carpe Diem}
       - TIMEZONE=${TIMEZONE:-Asia/Colombo}
     depends_on:
@@ -44,8 +51,13 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     restart: unless-stopped
+    # AC-7: must be reachable from Tailscale peers. Tailscale traffic arrives on the
+    # tailscale0 interface, NOT loopback — a 127.0.0.1 bind locks out remote vendor access.
+    # Bound to all interfaces; access is restricted by Tailscale ACLs + the host firewall.
+    # ⚠️ DEPLOYMENT PREREQUISITE — see docker/FIREWALL.md. Without the firewall rule,
+    #    any device on the restaurant LAN can reach Portainer and control every container.
     ports:
-      - "127.0.0.1:9000:9000"
+      - "9000:9000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
@@ -55,8 +67,10 @@ services:
   uptime-kuma:
     image: louislam/uptime-kuma:1
     restart: unless-stopped
+    # AC-7: same rationale as portainer above — must be reachable over Tailscale.
+    # ⚠️ DEPLOYMENT PREREQUISITE — see docker/FIREWALL.md.
     ports:
-      - "127.0.0.1:3001:3001"
+      - "3001:3001"
     volumes:
       - uptime_kuma_data:/app/data
     networks:
@@ -65,10 +79,24 @@ services:
   watchtower:
     image: containrrr/watchtower
     restart: unless-stopped
+    # --scope confines this instance to containers labelled with the same scope.
+    # Combined with WATCHTOWER_LABEL_ENABLE below, nothing is updated unless it
+    # both opts in AND matches this restaurant's scope.
+    command: --scope ${RESTAURANT_SCOPE:-default}
     environment:
       - WATCHTOWER_POLL_INTERVAL=300
+      # Explicit opt-in. Without this, Watchtower updates EVERY container it can
+      # see — including db, portainer and uptime-kuma. Those are deliberately
+      # unlabelled and must never be auto-updated: an unattended postgres major
+      # version bump would be catastrophic.
+      - WATCHTOWER_LABEL_ENABLE=true
+      - WATCHTOWER_SCOPE=${RESTAURANT_SCOPE:-default}
+      - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
       - WATCHTOWER_HTTP_API_METRICS=true
+      # Credentials for pulling the private GHCR image. Needs read:packages ONLY.
+      - REPO_USER=${REPO_USER:-}
+      - REPO_PASS=${REPO_PASS:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:

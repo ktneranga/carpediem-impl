@@ -37,6 +37,13 @@ export const paymentMethodEnum = pgEnum('payment_method', ['cash', 'card', 'tran
 
 export const stationTypeEnum = pgEnum('station_type', ['kitchen', 'bar'])
 
+export const authModeEnum = pgEnum('auth_mode', [
+  'session_short',
+  'session_persistent',
+  'per_transaction',
+  'per_action',
+])
+
 // ── Foundation ────────────────────────────────────────────────────────────────
 
 export const tenants = pgTable('tenants', {
@@ -56,6 +63,33 @@ export const staff = pgTable('staff', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_staff_tenant_id').on(t.tenantId),
+])
+
+/**
+ * Authentication sessions — proof that a staff member entered their PIN on a device.
+ *
+ * NOT to be confused with `order_sessions`, which records a TABLE being occupied
+ * for the duration of a meal. Two unrelated concepts; the distinct names are
+ * deliberate. Architecture calls this table `sessions`; renamed to `staff_sessions`
+ * to remove the collision risk.
+ *
+ * MUTABLE by design — `last_active_at` is written on every request and rows are
+ * deleted on logout. This table must NEVER receive the append-only RULE applied
+ * to the audit tables in migration 0001.
+ */
+export const staffSessions = pgTable('staff_sessions', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  tenantId:     uuid('tenant_id').notNull().references(() => tenants.id),
+  staffId:      uuid('staff_id').notNull().references(() => staff.id),
+  // Role is denormalised onto the session on purpose: Story 2.3's middleware runs
+  // on every request and must not join to `staff` each time.
+  role:         staffRoleEnum('role').notNull(),
+  createdAt:    timestamp('created_at',     { withTimezone: true }).notNull().defaultNow(),
+  lastActiveAt: timestamp('last_active_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt:    timestamp('expires_at',     { withTimezone: true }).notNull(),
+}, (t) => [
+  index('idx_staff_sessions_staff_id').on(t.staffId),
+  index('idx_staff_sessions_expires_at').on(t.expiresAt),
 ])
 
 export const zones = pgTable('zones', {
@@ -215,6 +249,15 @@ export const tenantConfig = pgTable('tenant_config', {
   brandColor:     text('brand_color').notNull().default('#2288B4'),
   currencyCode:   text('currency_code').notNull().default('LKR'),
   taxRatePercent: integer('tax_rate_percent').notNull().default(0),
+
+  // ── Auth feature flags (prd.md:304-310) ───────────────────────────────────
+  // NOTE: NFR-S6 states a 30-minute idle timeout while the PRD's flag table
+  // specifies 5. The flag table wins — it is what tenant provisioning reads and
+  // Carpe Diem's row is explicitly 5. The NFR-S6 mismatch is recorded for the PRD.
+  authMode:              authModeEnum('auth_mode').notNull().default('session_short'),
+  sessionTimeoutMinutes: integer('session_timeout_minutes').notNull().default(5),
+  financialActionReauth: boolean('financial_action_reauth').notNull().default(true),
+
   updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('idx_tenant_config_tenant_id').on(t.tenantId),

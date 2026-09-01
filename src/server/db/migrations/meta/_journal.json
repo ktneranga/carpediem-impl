@@ -22,6 +22,13 @@
       "when": 1782032614170,
       "tag": "0002_normal_speed_demon",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788159576469,
+      "tag": "0003_rare_joseph",
+      "breakpoints": true
     }
   ]
 }

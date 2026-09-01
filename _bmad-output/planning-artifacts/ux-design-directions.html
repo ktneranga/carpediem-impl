@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CDRMS — Design Directions</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --brand-50:  #EBF8FD;
+    --brand-100: #CCF0FB;
+    --brand-200: #9DDCF5;
+    --brand-300: #7ACEED;
+    --brand-400: #6EC1E4;
+    --brand-500: #3FABD9;
+    --brand-600: #2288B4;
+    --brand-700: #1A6A8C;
+    --brand-800: #0F4560;
+    --brand-900: #082B3D;
+    --neutral-0:   #FFFFFF;
+    --neutral-50:  #F8FAFC;
+    --neutral-100: #F1F5F9;
+    --neutral-200: #E2E8F0;
+    --neutral-400: #94A3B8;
+    --neutral-600: #475569;
+    --neutral-900: #0F172A;
+    --status-open:     #22C55E;
+    --status-occupied: #F59E0B;
+    --status-alert:    #EF4444;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+    background: #1E293B;
+    color: var(--neutral-900);
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  /* ── Page Header ── */
+  .page-header {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  .page-header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #F8FAFC;
+    letter-spacing: -0.3px;
+  }
+  .page-header p {
+    font-size: 14px;
+    color: #94A3B8;
+    margin-top: 6px;
+  }
+
+  /* ── Direction Tabs ── */
+  .direction-tabs {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+  }
+  .tab-btn {
+    padding: 10px 24px;
+    border-radius: 10px;
+    border: 2px solid transparent;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    background: #334155;
+    color: #CBD5E1;
+    transition: all 0.18s;
+  }
+  .tab-btn:hover { background: #475569; color: #F1F5F9; }
+  .tab-btn.active {
+    background: var(--brand-600);
+    color: #fff;
+    border-color: var(--brand-400);
+  }
+
+  /* ── Direction Panel ── */
+  .direction-panel { display: none; }
+  .direction-panel.active { display: block; }
+
+  /* ── Direction Info Bar ── */
+  .dir-info {
+    background: #0F172A;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 18px 24px;
+    margin-bottom: 24px;
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  .dir-info-block h3 { font-size: 11px; font-weight: 600; color: var(--brand-400); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
+  .dir-info-block p { font-size: 13px; color: #CBD5E1; }
+
+  /* ── Mockup Grid ── */
+  .mockup-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* ── Device Frame ── */
+  .device {
+    background: #0F172A;
+    border-radius: 28px;
+    padding: 12px;
+    box-shadow: 0 0 0 2px #334155, 0 24px 48px rgba(0,0,0,0.5);
+  }
+  .device-screen {
+    border-radius: 18px;
+    overflow: hidden;
+    background: var(--neutral-50);
+    min-height: 560px;
+    position: relative;
+  }
+  .device-label {
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748B;
+    margin-top: 10px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+
+  /* ── Screen Annotation ── */
+  .screen-note {
+    background: #1E293B;
+    border-left: 3px solid var(--brand-400);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-top: 12px;
+  }
+  .screen-note h4 { font-size: 12px; font-weight: 700; color: var(--brand-300); margin-bottom: 6px; }
+  .screen-note ul { list-style: none; padding: 0; }
+  .screen-note ul li { font-size: 12px; color: #94A3B8; padding: 2px 0; }
+  .screen-note ul li::before { content: "→ "; color: var(--brand-500); }
+
+  /* ══════════════════════════════════════════
+     DIRECTION A — COASTAL LIGHT
+     Chips + Grid, Bottom Nav, Airy
+  ══════════════════════════════════════════ */
+
+  /* Header */
+  .a-header {
+    background: var(--brand-700);
+    padding: 14px 16px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .a-header-title { font-size: 15px; font-weight: 700; color: #fff; }
+  .a-header-sub { font-size: 11px; color: var(--brand-200); margin-top: 1px; }
+  .a-avatar {
+    width: 32px; height: 32px;
+    background: var(--brand-500);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #fff;
+  }
+
+  /* Zone chips */
+  .a-zones {
+    background: var(--neutral-0);
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--neutral-200);
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+  }
+  .a-zone-chip {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    border: 1.5px solid var(--neutral-200);
+    color: var(--neutral-600);
+    background: var(--neutral-0);
+    cursor: pointer;
+  }
+  .a-zone-chip.active {
+    background: var(--brand-600);
+    color: #fff;
+    border-color: var(--brand-600);
+  }
+
+  /* Table grid */
+  .a-table-grid {
+    padding: 14px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .a-table-card {
+    background: var(--neutral-0);
+    border-radius: 12px;
+    padding: 12px 10px;
+    border: 2px solid var(--neutral-200);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .a-table-card.open { border-color: var(--status-open); }
+  .a-table-card.occupied { border-color: var(--status-occupied); }
+  .a-table-card.alert { border-color: var(--status-alert); }
+  .a-table-num { font-size: 18px; font-weight: 700; color: var(--neutral-900); }
+  .a-table-status {
+    font-size: 10px;
+    font-weight: 600;
+    margin-top: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    display: inline-block;
+  }
+  .a-table-status.open { background: #DCFCE7; color: #166534; }
+  .a-table-status.occupied { background: #FEF3C7; color: #92400E; }
+  .a-table-status.alert { background: #FEE2E2; color: #991B1B; }
+  .a-table-detail { font-size: 10px; color: var(--neutral-400); margin-top: 3px; }
+
+  /* Bottom nav */
+  .a-bottom-nav {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: var(--neutral-0);
+    border-top: 1px solid var(--neutral-200);
+    display: flex;
+    padding: 8px 0 10px;
+  }
+  .a-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+  }
+  .a-nav-icon { font-size: 18px; }
+  .a-nav-label { font-size: 10px; font-weight: 500; color: var(--neutral-400); }
+  .a-nav-item.active .a-nav-label { color: var(--brand-600); font-weight: 700; }
+  .a-nav-item.active .a-nav-icon { filter: none; }
+
+  /* New order FAB */
+  .a-fab {
+    position: absolute;
+    bottom: 64px; right: 16px;
+    background: var(--brand-600);
+    color: #fff;
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+    box-shadow: 0 4px 12px rgba(34,136,180,0.4);
+    cursor: pointer;
+  }
+
+  /* ══════════════════════════════════════════
+     DIRECTION B — VISUAL ZONE MAP
+     Spatial floor plan, tap to enter zone
+  ══════════════════════════════════════════ */
+
+  .b-header {
+    background: var(--neutral-0);
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--neutral-200);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .b-header-title { font-size: 15px; font-weight: 700; color: var(--neutral-900); }
+  .b-header-time { font-size: 12px; color: var(--neutral-400); font-weight: 500; }
+
+  .b-map-container {
+    background: #EEF7F5;
+    margin: 14px;
+    border-radius: 16px;
+    padding: 14px;
+    position: relative;
+    border: 1.5px solid var(--neutral-200);
+    min-height: 360px;
+  }
+  .b-map-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--neutral-400);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 10px;
+  }
+
+  /* Zone areas on the map */
+  .b-zone {
+    position: absolute;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.15s;
+    padding: 8px;
+  }
+  .b-zone:hover { transform: scale(1.02); }
+  .b-zone-name { font-size: 11px; font-weight: 700; color: #fff; text-align: center; }
+  .b-zone-count { font-size: 10px; color: rgba(255,255,255,0.8); margin-top: 3px; }
+
+  /* Zone positions */
+  .b-zone-beanbags { background: var(--brand-600); top: 10px; left: 10px; width: 110px; height: 80px; }
+  .b-zone-sunbeds  { background: #E57C23; top: 10px; right: 10px; width: 110px; height: 80px; }
+  .b-zone-tables   { background: #2E7D32; bottom: 80px; left: 10px; width: 110px; height: 100px; }
+  .b-zone-rooftop  { background: #6A1B9A; bottom: 80px; right: 10px; width: 110px; height: 100px; }
+
+  /* Table dots in zones */
+  .b-table-dots { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; margin-top: 6px; }
+  .b-dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.4);
+    border: 1.5px solid rgba(255,255,255,0.7);
+  }
+  .b-dot.occ { background: rgba(255,255,255,0.9); }
+
+  /* Ocean/path area between zones */
+  .b-ocean {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 22px;
+    opacity: 0.3;
+  }
+
+  .b-bottom { padding: 0 14px 14px; }
+  .b-legend { display: flex; gap: 14px; margin-bottom: 10px; }
+  .b-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--neutral-600); }
+  .b-legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  .b-bottom-nav {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: var(--neutral-0);
+    border-top: 1px solid var(--neutral-200);
+    display: flex;
+    padding: 8px 0 10px;
+  }
+  .b-nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; }
+  .b-nav-icon { font-size: 18px; }
+  .b-nav-label { font-size: 10px; color: var(--neutral-400); font-weight: 500; }
+  .b-nav-item.active .b-nav-label { color: var(--brand-600); font-weight: 700; }
+
+  /* ══════════════════════════════════════════
+     DIRECTION C — COMPACT OPERATIONAL
+     Dense grid, more tables visible, task-focused
+  ══════════════════════════════════════════ */
+
+  .c-screen { background: var(--neutral-900); }
+
+  .c-header {
+    background: var(--neutral-900);
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #1E293B;
+  }
+  .c-header-left { display: flex; flex-direction: column; }
+  .c-header-title { font-size: 14px; font-weight: 700; color: #F1F5F9; }
+  .c-header-sub { font-size: 11px; color: var(--brand-400); margin-top: 1px; }
+  .c-badge {
+    background: var(--brand-700);
+    color: var(--brand-200);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 20px;
+  }
+
+  .c-zone-bar {
+    background: #1E293B;
+    padding: 8px 12px;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    border-bottom: 1px solid #334155;
+  }
+  .c-zone-btn {
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+    color: #64748B;
+    background: transparent;
+    cursor: pointer;
+    border: 1px solid #334155;
+  }
+  .c-zone-btn.active { background: var(--brand-700); color: var(--brand-200); border-color: var(--brand-600); }
+
+  .c-stats-bar {
+    background: #1E293B;
+    padding: 8px 12px;
+    display: flex;
+    gap: 16px;
+    border-bottom: 1px solid #334155;
+  }
+  .c-stat { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+  .c-stat-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .c-stat-text { color: #94A3B8; }
+  .c-stat-num { color: #F1F5F9; font-weight: 700; margin-left: 2px; }
+
+  .c-table-grid {
+    padding: 10px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 7px;
+  }
+  .c-table-card {
+    background: #1E293B;
+    border-radius: 8px;
+    padding: 10px 6px;
+    text-align: center;
+    cursor: pointer;
+    border: 1.5px solid #334155;
+    transition: border-color 0.15s;
+  }
+  .c-table-card.open { border-color: var(--status-open); }
+  .c-table-card.occupied { border-color: var(--status-occupied); }
+  .c-table-card.alert { border-color: var(--status-alert); }
+  .c-table-num { font-size: 16px; font-weight: 800; color: #F1F5F9; }
+  .c-table-indicator {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    margin: 4px auto 0;
+  }
+  .c-table-indicator.open { background: var(--status-open); }
+  .c-table-indicator.occupied { background: var(--status-occupied); }
+  .c-table-indicator.alert { background: var(--status-alert); }
+  .c-table-time { font-size: 9px; color: #475569; margin-top: 2px; }
+
+  .c-bottom-nav {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: #0F172A;
+    border-top: 1px solid #1E293B;
+    display: flex;
+    padding: 8px 0 10px;
+  }
+  .c-nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; }
+  .c-nav-icon { font-size: 18px; }
+  .c-nav-label { font-size: 10px; color: #475569; font-weight: 500; }
+  .c-nav-item.active .c-nav-label { color: var(--brand-400); font-weight: 700; }
+
+  .c-new-order-btn {
+    margin: 0 10px 10px;
+    background: var(--brand-700);
+    color: #fff;
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.2px;
+  }
+
+  /* ── Decision Helper ── */
+  .decision-section {
+    margin-top: 32px;
+    background: #0F172A;
+    border: 1px solid #334155;
+    border-radius: 14px;
+    padding: 24px;
+  }
+  .decision-section h2 {
+    font-size: 16px;
+    font-weight: 700;
+    color: #F1F5F9;
+    margin-bottom: 16px;
+  }
+  .decision-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .decision-card {
+    background: #1E293B;
+    border-radius: 10px;
+    padding: 16px;
+    border: 1.5px solid #334155;
+  }
+  .decision-card h3 { font-size: 13px; font-weight: 700; color: var(--brand-300); margin-bottom: 8px; }
+  .decision-card p { font-size: 12px; color: #94A3B8; line-height: 1.5; }
+  .decision-card .pro { color: #86EFAC; }
+  .decision-card .con { color: #FCA5A5; }
+
+  /* ── Comparison Overlay Helper ── */
+  .compare-bar {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+  .compare-item {
+    flex: 1;
+    min-width: 120px;
+    background: #1E293B;
+    border-radius: 8px;
+    padding: 12px;
+    border: 1.5px solid #334155;
+  }
+  .compare-item h4 { font-size: 11px; font-weight: 700; color: var(--brand-400); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .compare-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .compare-row span:first-child { font-size: 11px; color: #64748B; }
+  .compare-row span:last-child { font-size: 11px; font-weight: 600; color: #CBD5E1; }
+
+  /* Scrollbar hide */
+  .a-zones::-webkit-scrollbar,
+  .c-zone-bar::-webkit-scrollbar { display: none; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>CDRMS — Design Direction Exploration</h1>
+  <p>3 distinct visual and layout approaches for the waiter order entry interface</p>
+</div>
+
+<!-- Direction Tabs -->
+<div class="direction-tabs">
+  <button class="tab-btn active" onclick="showDir('a')">A — Coastal Light</button>
+  <button class="tab-btn" onclick="showDir('b')">B — Zone Map First</button>
+  <button class="tab-btn" onclick="showDir('c')">C — Dark Operational</button>
+</div>
+
+<!-- ════════════════════════════════════
+     DIRECTION A: COASTAL LIGHT
+════════════════════════════════════ -->
+<div class="direction-panel active" id="dir-a">
+  <div class="dir-info">
+    <div class="dir-info-block">
+      <h3>Character</h3>
+      <p>Clean, airy, app-like. Feels familiar — Instagram/Facebook skeleton.</p>
+    </div>
+    <div class="dir-info-block">
+      <h3>Navigation</h3>
+      <p>Bottom tab bar + zone selector chips + table grid</p>
+    </div>
+    <div class="dir-info-block">
+      <h3>Best for</h3>
+      <p>Standard lighting, staff new to the system, onboarding-friendly</p>
+    </div>
+    <div class="dir-info-block">
+      <h3>Trade-off</h3>
+      <p>Cards may wash out in direct beach sunlight without outdoor variant</p>
+    </div>
+  </div>
+
+  <div class="mockup-grid">
+
+    <!-- Screen 1: Zone + Table Selection -->
+    <div>
+      <div class="device">
+        <div class="device-screen" style="min-height:580px;">
+          <!-- Header -->
+          <div class="a-header">
+            <div>
+              <div class="a-header-title">Carpe Diem</div>
+              <div class="a-header-sub">Nina · Rooftop Zone</div>
+            </div>
+            <div class="a-avatar">N</div>
+          </div>
+          <!-- Zone Chips -->
+          <div class="a-zones">
+            <div class="a-zone-chip">All Zones</div>
+            <div class="a-zone-chip">Bean Bags</div>
+            <div class="a-zone-chip">Sun Beds</div>
+            <div class="a-zone-chip active">Rooftop</div>
+            <div class="a-zone-chip">Tables</div>
+          </div>
+          <!-- Table Grid -->
+          <div class="a-table-grid">
+            <div class="a-table-card open">
+              <div class="a-table-num">R1</div>
+              <div class="a-table-status open">Open</div>
+            </div>
+            <div class="a-table-card occupied">
+              <div class="a-table-num">R2</div>
+              <div class="a-table-status occupied">Busy</div>
+              <div class="a-table-detail">42 min · 3 items</div>
+            </div>
+            <div class="a-table-card occupied">
+              <div class="a-table-num">R3</div>
+              <div class="a-table-status occupied">Busy</div>
+              <div class="a-table-detail">18 min · 5 items</div>
+            </div>
+            <div class="a-table-card alert">
+              <div class="a-table-num">R4</div>
+              <div class="a-table-status alert">Attention</div>
+              <div class="a-table-detail">67 min · bill?</div>
+            </div>
+            <div class="a-table-card open">
+              <div class="a-table-num">R5</div>
+              <div class="a-table-status open">Open</div>
+            </div>
+            <div class="a-table-card open">
+              <div class="a-table-num">R6</div>
+              <div class="a-table-status open">Open</div>
+            </div>
+          </div>
+          <!-- FAB -->
+          <div class="a-fab">＋</div>
+          <!-- Bottom Nav -->
+          <div class="a-bottom-nav">
+            <div class="a-nav-item active">
+              <div class="a-nav-icon">🗂️</div>
+              <div class="a-nav-label" style="color:var(--brand-600);">Tables</div>
+            </div>
+            <div class="a-nav-item">
+              <div class="a-nav-icon">📋</div>
+              <div class="a-nav-label">Orders</div>
+            </div>
+            <div class="a-nav-item">
+              <div class="a-nav-icon">🍽️</div>
+              <div class="a-nav-label">Menu</div>
+            </div>
+            <div class="a-nav-item">
+              <div class="a-nav-icon">👤</div>
+              <div class="a-nav-label">Profile</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="device-label">Home — Table Selection</div>
+      <div class="screen-note">
+        <h4>Key decisions in this screen</h4>
+        <ul>
+          <li>Zone filter as horizontal scrollable chips</li>
+          <li>Tables shown as grid — status color-coded by border</li>
+          <li>Active zone remembered (Rooftop pre-selected)</li>
+          <li>Time + item count visible on occupied tables</li>
+          <li>FAB (floating + button) for new order without table</li>
+          <li>Bottom tab nav — familiar from Instagram/Facebook</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Screen 2: Order Entry -->
+    <div>
+      <div class="device">
+        <div class="device-screen" style="min-height:580px; background: var(--neutral-0);">
+          <!-- Header -->
+          <div style="background:var(--brand-700); padding:12px 14px; display:flex; align-items:center; gap:10px;">
+            <span style="font-size:18px; color:white; cursor:pointer;">←</span>
+            <div>
+              <div style="font-size:14px; font-weight:700; color:white;">Table R2 · Rooftop</div>
+              <div style="font-size:11px; color:var(--brand-200);">Round 1 · 3 items</div>
+            </div>
+          </div>
+          <!-- Search bar -->
+          <div style="padding:10px 12px; background:var(--neutral-50); border-bottom:1px solid var(--neutral-200);">
+            <div style="background:var(--neutral-0); border:1.5px solid var(--neutral-200); border-radius:10px; padding:9px 12px; display:flex; align-items:center; gap:8px;">
+              <span style="color:var(--neutral-400);">🔍</span>
+              <span style="font-size:13px; color:var(--neutral-400);">Search menu…</span>
+            </div>
+          </div>
+          <!-- Category chips -->
+          <div style="padding:8px 12px; display:flex; gap:6px; overflow-x:auto; border-bottom:1px solid var(--neutral-200); background:var(--neutral-0);">
+            <div style="padding:5px 12px; border-radius:16px; background:var(--brand-600); color:white; font-size:11px; font-weight:600; white-space:nowrap;">All</div>
+            <div style="padding:5px 12px; border-radius:16px; border:1px solid var(--neutral-200); color:var(--neutral-600); font-size:11px; font-weight:600; white-space:nowrap;">Mains</div>
+            <div style="padding:5px 12px; border-radius:16px; border:1px solid var(--neutral-200); color:var(--neutral-600); font-size:11px; font-weight:600; white-space:nowrap;">Drinks</div>
+            <div style="padding:5px 12px; border-radius:16px; border:1px solid var(--neutral-200); color:var(--neutral-600); font-size:11px; font-weight:600; white-space:nowrap;">Starters</div>
+            <div style="padding:5px 12px; border-radius:16px; border:1px solid var(--neutral-200); color:var(--neutral-600); font-size:11px; font-weight:600; white-space:nowrap;">Desserts</div>
+          </div>
+          <!-- Menu items -->
+          <div style="padding:8px 12px;">
+            <div style="font-size:11px; font-weight:600; color:var(--neutral-400); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Quick Items</div>
+            <div style="display:flex; gap:7px; margin-bottom:12px;">
+              <div style="padding:8px 12px; background:var(--brand-50); border:1.5px solid var(--brand-200); border-radius:8px; font-size:12px; font-weight:600; color:var(--brand-700); white-space:nowrap;">Grilled Fish</div>
+              <div style="padding:8px 12px; background:var(--brand-50); border:1.5px solid var(--brand-200); border-radius:8px; font-size:12px; font-weight:600; color:var(--brand-700); white-space:nowrap;">Lion Beer</div>
+              <div style="padding:8px 12px; background:var(--brand-50); border:1.5px solid var(--brand-200); border-radius:8px; font-size:12px; font-weight:600; color:var(--brand-700); white-space:nowrap;">Mojito</div>
+            </div>
+            <!-- Item rows -->
+            <div style="border-bottom:1px solid var(--neutral-100);">
+              <div style="padding:12px 0; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--neutral-100);">
+                <div>
+                  <div style="font-size:14px; font-weight:600; color:var(--neutral-900);">Grilled Fish</div>
+                  <div style="font-size:12px; color:var(--neutral-400);">Kitchen · LKR 1,800</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <div style="width:28px; height:28px; border-radius:50%; background:var(--brand-600); display:flex; align-items:center; justify-content:center; color:white; font-size:16px; font-weight:700;">+</div>
+                </div>
+              </div>
+              <div style="padding:12px 0; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--neutral-100);">
+                <div>
+                  <div style="font-size:14px; font-weight:600; color:var(--neutral-900);">Pasta Arrabbiata</div>
+                  <div style="font-size:12px; color:var(--neutral-400);">Kitchen · LKR 1,400</div>
+                </div>
+                <div style="width:28px; height:28px; border-radius:50%; background:var(--brand-600); display:flex; align-items:center; justify-content:center; color:white; font-size:16px; font-weight:700;">+</div>
+              </div>
+              <div style="padding:12px 0; display:flex; align-items:center; justify-content:space-between;">
+                <div>
+                  <div style="font-size:14px; font-weight:600; color:var(--neutral-900);">Mojito</div>
+                  <div style="font-size:12px; color:var(--neutral-400);">Bar · LKR 950</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; background:var(--brand-50); border-radius:20px; padding:4px 10px; border:1.5px solid var(--brand-200);">
+                  <span style="font-size:14px; color:var(--brand-700); font-weight:700; cursor:pointer;">−</span>
+                  <span style="font-size:14px; font-weight:700; color:var(--brand-700);">2</span>
+                  <span style="font-size:14px; color:var(--brand-700); font-weight:700; cursor:pointer;">+</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Send bar -->
+          <div style="position:absolute; bottom:0; left:0; right:0; padding:10px 12px 12px; background:var(--neutral-0); border-top:1px solid var(--neutral-200);">
+            <div style="background:var(--brand-700); color:white; border-radius:12px; padding:14px; text-align:center; font-size:15px; font-weight:700; cursor:pointer;">
+              Send Order · Kitchen (2) · Bar (1)
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="device-label">Order Entry Screen</div>
+      <div class="screen-note">
+        <h4>Key decisions in this screen</h4>
+        <ul>
+          <li>Search bar always at top — primary path</li>
+          <li>Category chips below search — secondary path</li>
+          <li>Per-waiter Quick Items pinned above categories</li>
+          <li>Routing preview on the Send button (Kitchen/Bar split)</li>
+          <li>Quantity stepper appears inline when item added</li>
+          <li>Bar-fixed Send Order — always reachable, never hidden</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     DIRECTION B: ZONE MAP FIRST
+════════════════════════════════════ -->
+<div class="direction-panel" id="dir-b">
+  <div class="dir-info">
+    <div class="dir-info-block">
+      <h3>Character</h3>
+      <p>Spatial, visual, map-driven. Feels like Uber — tap a location, not a list.</p>
+    </div>
+    <div class="dir-info-block">
+      <h3>Navigation</h3>
+      <p>Visual floor plan → tap zone → table grid. Spatial mental model.</p>
+    </div>
+    <div class="dir-info-block">
+      <h3>Best for</h3>
+      <p>Staff familiar with the physical layout. Situational awareness at a glance.</p>
+    </div>
+    <div class="dir-info-block">
+      <h3>Trade-off</h3>
+      <p>More taps to reach a table. Map layout needs updating if restaurant changes.</p>
+    </div>
+  </div>
+
+  <div class="mockup-grid">
+
+    <!-- Screen 1: Zone Map -->
+    <div>
+      <div class="device">
+        <div class="device-screen" style="min-height:580px; background:var(--neutral-50);">
+          <div class="b-header">
+            <div>
+              <div class="b-header-title">Carpe Diem</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div class="b-header-time">8:24 PM</div>
+              <div style="background:var(--brand-100); color:var(--brand-700); font-size:11px; font-weight:700; padding:4px 10px; border-radius:12px;">Nina</div>
+            </div>
+          </div>
+          <div style="padding:12px 14px 8px;">
+            <div style="font-size:11px; font-weight:600; color:var(--neutral-400); text-transform:uppercase; letter-spacing:0.6px;">Tap a zone to see tables</div>
+          </div>
+          <!-- Map -->
+          <div class="b-map-container">
+            <!-- Ocean decoration -->
+            <div class="b-ocean">🌊</div>
+            <!-- Zones -->
+            <div class="b-zone b-zone-beanbags">
+              <div class="b-zone-name">Bean Bags</div>
+              <div class="b-table-dots">
+                <div class="b-dot occ"></div>
+                <div class="b-dot occ"></div>
+                <div class="b-dot"></div>
+                <div class="b-dot occ"></div>
+              </div>
+              <div class="b-zone-count">3 occupied · 1 open</div>
+            </div>
+            <div class="b-zone b-zone-sunbeds">
+              <div class="b-zone-name">Sun Beds</div>
+              <div class="b-table-dots">
+                <div class="b-dot occ"></div>
+                <div class="b-dot"></div>
+                <div class="b-dot"></div>
+                <div class="b-dot"></div>
+              </div>
+              <div class="b-zone-count">1 occupied · 3 open</div>
+            </div>
+            <div class="b-zone b-zone-tables">
+              <div class="b-zone-name">Tables</div>
+              <div class="b-table-dots">
+                <div class="b-dot occ"></div>
+                <div class="b-dot occ"></div>
+                <div class="b-dot occ"></div>
+                <div class="b-dot occ"></div>
+                <div class="b-dot occ"></div>
+                <div class="b-dot"></div>
+              </div>
+              <div class="b-zone-count">5 occupied · 1 open</div>
+            </div>
+            <div class="b-zone b-zone-rooftop">
+              <div class="b-zone-name">Rooftop</div>
+              <div class="b-table-dots">
+                <div class="b-dot occ"></div>
+                <div class="b-dot"></div>
+                <div class="b-dot occ"></div>
+                <div class="b-dot"></div>
+              </div>
+              <div class="b-zone-count">2 occupied · 2 open</div>
+            </div>
+          </div>
+          <!-- Legend -->
+          <div style="padding:8px 14px;">
+            <div class="b-legend">
+              <div class="b-legend-item"><div class="b-legend-dot" style="background:rgba(255,255,255,0.9); border:1.5px solid #ccc;"></div>Open</div>
+              <div class="b-legend-item"><div class="b-legend-dot" style="background:var(--status-occupied);"></div>Occupied</div>
+              <div class="b-legend-item"><div class="b-legend-dot" style="background:var(--status-alert);"></div>Attention</div>
+            </div>
+          </div>
+          <!-- Bottom nav -->
+          <div class="b-bottom-nav">
+            <div class="b-nav-item active">
+              <div class="b-nav-icon">🗺️</div>
+              <div class="b-nav-label" style="color:var(--brand-600);">Map</div>
+            </div>
+            <div class="b-nav-item">
+              <div class="b-nav-icon">📋</div>
+              <div class="b-nav-label">Orders</div>
+            </div>
+            <div class="b-nav-item">
+              <div class="b-nav-icon">🍽️</div>
+              <div class="b-nav-label">Menu</div>
+            </div>
+            <div class="b-nav-item">
+              <div class="b-nav-icon">👤</div>
+              <div class="b-nav-label">Profile</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="device-label">Zone Map — Home Screen</div>
+      <div class="screen-note">
+        <h4>Key decisions in this screen</h4>
+        <ul>
+          <li>Restaurant layout shown spatially — tap a zone</li>
+          <li>Zone color = zone identity (not status)</li>
+          <li>Dot count shows occupied vs open at a glance</li>
+          <li>Configurable feature — restaurants without fixed zones use Direction A</li>
+          <li>Beach/outdoor metaphor matches Carpe Diem's layout</li>
+          <li>One extra tap vs Direction A to reach a table</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Screen 2: After tapping Rooftop zone -->
+    <div>
+      <div class="device">
+        <div class="device-screen" style="min-height:580px; background:var(--neutral-50);">
+          <!-- Header with back -->
+          <div style="background:#6A1B9A; padding:12px 14px; display:flex; align-items:center; gap:10px;">
+            <span style="font-size:18px; color:white; cursor:pointer;">←</span>
+            <div>
+              <div style="font-size:14px; font-weight:700; color:white;">Rooftop</div>
+              <div style="font-size:11px; color:rgba(255,255,255,0.7);">2 occupied · 4 open</div>
+            </div>
+          </div>
+          <!-- Table grid for this zone -->
+          <div style="padding:14px; display:grid; grid-template-columns: repeat(2,1fr); gap:12px;">
+            <div style="background:var(--neutral-0); border-radius:14px; padding:16px 12px; text-align:center; border:2px solid var(--status-open); box-shadow:0 2px 6px rgba(0,0,0,0.06);">
+              <div style="font-size:22px; font-weight:800; color:var(--neutral-900);">R1</div>
+              <div style="display:inline-block; margin-top:6px; padding:3px 12px; border-radius:12px; background:#DCFCE7; color:#166534; font-size:11px; font-weight:700;">Open</div>
+            </div>
+            <div style="background:var(--neutral-0); border-radius:14px; padding:16px 12px; text-align:center; border:2px solid var(--status-occupied); box-shadow:0 2px 6px rgba(0,0,0,0.06);">
+              <div style="font-size:22px; font-weight:800; color:var(--neutral-900);">R2</div>
+              <div style="display:inline-block; margin-top:6px; padding:3px 12px; border-radius:12px; background:#FEF3C7; color:#92400E; font-size:11px; font-weight:700;">Busy</div>
+              <div style="font-size:11px; color:var(--neutral-400); margin-top:4px;">42 min · 3 items</div>
+            </div>
+            <div style="background:var(--neutral-0); border-radius:14px; padding:16px 12px; text-align:center; border:2px solid var(--status-occupied); box-shadow:0 2px 6px rgba(0,0,0,0.06);">
+              <div style="font-size:22px; font-weight:800; color:var(--neutral-900);">R3</div>
+              <div style="display:inline-block; margin-top:6px; padding:3px 12px; border-radius:12px; background:#FEF3C7; color:#92400E; font-size:11px; font-weight:700;">Busy</div>
+              <div style="font-size:11px; color:var(--neutral-400); margin-top:4px;">18 min · 5 items</div>
+            </div>
+            <div style="background:var(--neutral-0); border-radius:14px; padding:16px 12px; text-align:center; border:2px solid var(--status-open); box-shadow:0 2px 6px rgba(0,0,0,0.06);">
+              <div style="font-size:22px; font-weight:800; color:var(--neutral-900);">R4</div>
+              <div style="display:inline-block; margin-top:6px; padding:3px 12px; border-radius:12px; background:#DCFCE7; color:#166534; font-size:11px; font-weight:700;">Open</div>
+            </div>
+          </div>
+          <!-- Bottom nav -->
+          <div class="b-bottom-nav">
+            <div class="b-nav-item active">
+              <div class="b-nav-icon">🗺️</div>
+              <div class="b-nav-label" style="color:var(--brand-600);">Map</div>
+            </div>
+            <div class="b-nav-item">
+              <div class="b-nav-icon">📋</div>
+              <div class="b-nav-label">Orders</div>
+            </div>
+            <div class="b-nav-item">
+              <div class="b-nav-icon">🍽️</div>
+              <div class="b-nav-label">Menu</div>
+            </div>
+            <div class="b-nav-item">
+              <div class="b-nav-icon">👤</div>
+              <div class="b-nav-label">Profile</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="device-label">After Tapping Rooftop Zone</div>
+      <div class="screen-note">
+        <h4>Key decisions in this screen</h4>
+        <ul>
+          <li>Zone color carries through as header (purple = Rooftop)</li>
+          <li>Tables larger — 2-column grid, more breathing room</li>
+          <li>Time + item count on occupied tables — waiter knows status fast</li>
+          <li>Back button returns to zone map</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     DIRECTION C: DARK OPERATIONAL
+════════════════════════════════════ -->
+<div class="direction-panel" id="dir-c">
+  <div class="dir-info">
+    <div class="dir-info-block">
+      <h3>Character</h3>
+      <p>Dense, task-focused, zero-chrome. Maximum information, minimum decoration.</p>
+    </div>
+    <div class="dir-info-block">
+      <h3>Navigation</h3>
+      <p>Dark UI, compact 4-column grid, all tables visible at once. Power-user feel.</p>
+    </div>
+    <div class="dir-info-block">
+      <h3>Best for</h3>
+      <p>Evening service, experienced staff who need speed over aesthetics.</p>
+    </div>
+    <div class="dir-info-block">
+      <h3>Trade-off</h3>
+      <p>Dark screens wash out in bright sunlight. Better for indoor or evening use.</p>
+    </div>
+  </div>
+
+  <div class="mockup-grid">
+
+    <!-- Screen 1: All tables, dense view -->
+    <div>
+      <div class="device">
+        <div class="device-screen c-screen" style="min-height:580px; background:var(--neutral-900);">
+          <div class="c-header">
+            <div class="c-header-left">
+              <div class="c-header-title">Carpe Diem POS</div>
+              <div class="c-header-sub">Nina · Active</div>
+            </div>
+            <div class="c-badge">11 of 19 occupied</div>
+          </div>
+          <div class="c-zone-bar">
+            <div class="c-zone-btn active">All</div>
+            <div class="c-zone-btn">Beans</div>
+            <div class="c-zone-btn">Sun Beds</div>
+            <div class="c-zone-btn">Tables</div>
+            <div class="c-zone-btn">Roof</div>
+          </div>
+          <div class="c-stats-bar">
+            <div class="c-stat">
+              <div class="c-stat-dot" style="background:var(--status-open);"></div>
+              <div class="c-stat-text">Open <span class="c-stat-num">8</span></div>
+            </div>
+            <div class="c-stat">
+              <div class="c-stat-dot" style="background:var(--status-occupied);"></div>
+              <div class="c-stat-text">Busy <span class="c-stat-num">9</span></div>
+            </div>
+            <div class="c-stat">
+              <div class="c-stat-dot" style="background:var(--status-alert);"></div>
+              <div class="c-stat-text">Attention <span class="c-stat-num">2</span></div>
+            </div>
+          </div>
+          <div class="c-table-grid">
+            <div class="c-table-card occupied"><div class="c-table-num">B1</div><div class="c-table-indicator occupied"></div><div class="c-table-time">34m</div></div>
+            <div class="c-table-card occupied"><div class="c-table-num">B2</div><div class="c-table-indicator occupied"></div><div class="c-table-time">21m</div></div>
+            <div class="c-table-card open"><div class="c-table-num">B3</div><div class="c-table-indicator open"></div><div class="c-table-time">—</div></div>
+            <div class="c-table-card alert"><div class="c-table-num">B4</div><div class="c-table-indicator alert"></div><div class="c-table-time">72m</div></div>
+            <div class="c-table-card open"><div class="c-table-num">S1</div><div class="c-table-indicator open"></div><div class="c-table-time">—</div></div>
+            <div class="c-table-card occupied"><div class="c-table-num">S2</div><div class="c-table-indicator occupied"></div><div class="c-table-time">15m</div></div>
+            <div class="c-table-card open"><div class="c-table-num">S3</div><div class="c-table-indicator open"></div><div class="c-table-time">—</div></div>
+            <div class="c-table-card open"><div class="c-table-num">S4</div><div class="c-table-indicator open"></div><div class="c-table-time">—</div></div>
+            <div class="c-table-card occupied"><div class="c-table-num">T1</div><div class="c-table-indicator occupied"></div><div class="c-table-time">48m</div></div>
+            <div class="c-table-card occupied"><div class="c-table-num">T2</div><div class="c-table-indicator occupied"></div><div class="c-table-time">29m</div></div>
+            <div class="c-table-card alert"><div class="c-table-num">T3</div><div class="c-table-indicator alert"></div><div class="c-table-time">81m</div></div>
+            <div class="c-table-card occupied"><div class="c-table-num">T4</div><div class="c-table-indicator occupied"></div><div class="c-table-time">11m</div></div>
+            <div class="c-table-card open"><div class="c-table-num">R1</div><div class="c-table-indicator open"></div><div class="c-table-time">—</div></div>
+            <div class="c-table-card occupied"><div class="c-table-num">R2</div><div class="c-table-indicator occupied"></div><div class="c-table-time">42m</div></div>
+            <div class="c-table-card occupied"><div class="c-table-num">R3</div><div class="c-table-indicator occupied"></div><div class="c-table-time">18m</div></div>
+            <div class="c-table-card open"><div class="c-table-num">R4</div><div class="c-table-indicator open"></div><div class="c-table-time">—</div></div>
+          </div>
+          <div class="c-new-order-btn">＋ New Order</div>
+          <div class="c-bottom-nav">
+            <div class="c-nav-item active">
+              <div class="c-nav-icon">🗂️</div>
+              <div class="c-nav-label" style="color:var(--brand-400);">Tables</div>
+            </div>
+            <div class="c-nav-item">
+              <div class="c-nav-icon">📋</div>
+              <div class="c-nav-label">Orders</div>
+            </div>
+            <div class="c-nav-item">
+              <div class="c-nav-icon">🍽️</div>
+              <div class="c-nav-label">Menu</div>
+            </div>
+            <div class="c-nav-item">
+              <div class="c-nav-icon">👤</div>
+              <div class="c-nav-label">Profile</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="device-label">All Tables — Dense View</div>
+      <div class="screen-note">
+        <h4>Key decisions in this screen</h4>
+        <ul>
+          <li>All 16+ tables visible without scrolling (4-column grid)</li>
+          <li>Status shown as small dot — experienced staff read it instantly</li>
+          <li>Time visible on every table — identifies long-open tables at a glance</li>
+          <li>Cross-zone view — see entire restaurant at once</li>
+          <li>Dark UI reduces eye strain in low-light evening service</li>
+          <li>Trade-off: harder to read in direct sunlight</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Owner Dashboard in dark mode -->
+    <div>
+      <div class="device">
+        <div class="device-screen c-screen" style="min-height:580px; background:var(--neutral-900);">
+          <div style="background:#0F172A; padding:14px 14px 10px; border-bottom:1px solid #1E293B;">
+            <div style="font-size:15px; font-weight:700; color:#F1F5F9;">Owner Dashboard</div>
+            <div style="font-size:11px; color:var(--brand-400); margin-top:2px;">Saturday — Live · 8:24 PM</div>
+          </div>
+          <!-- Revenue cards -->
+          <div style="padding:12px; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div style="background:#1E293B; border-radius:12px; padding:14px; border:1px solid #334155;">
+              <div style="font-size:10px; font-weight:600; color:#64748B; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Revenue Today</div>
+              <div style="font-size:20px; font-weight:800; color:#F1F5F9;">LKR 89K</div>
+              <div style="font-size:11px; color:#4ADE80; margin-top:3px;">↑ 12% vs yesterday</div>
+            </div>
+            <div style="background:#1E293B; border-radius:12px; padding:14px; border:1px solid #334155;">
+              <div style="font-size:10px; font-weight:600; color:#64748B; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Active Tables</div>
+              <div style="font-size:20px; font-weight:800; color:#F1F5F9;">11 / 19</div>
+              <div style="font-size:11px; color:var(--brand-400); margin-top:3px;">Peak service</div>
+            </div>
+            <div style="background:#1E293B; border-radius:12px; padding:14px; border:1.5px solid #7F1D1D;">
+              <div style="font-size:10px; font-weight:600; color:#64748B; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Cash Gap</div>
+              <div style="font-size:20px; font-weight:800; color:#FCA5A5;">LKR 700</div>
+              <div style="font-size:11px; color:#F87171; margin-top:3px;">⚠ Investigate</div>
+            </div>
+            <div style="background:#1E293B; border-radius:12px; padding:14px; border:1px solid #334155;">
+              <div style="font-size:10px; font-weight:600; color:#64748B; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Comps Today</div>
+              <div style="font-size:20px; font-weight:800; color:#F1F5F9;">2</div>
+              <div style="font-size:11px; color:#94A3B8; margin-top:3px;">LKR 2,750 total</div>
+            </div>
+          </div>
+          <!-- Inventory flags -->
+          <div style="margin:0 12px; background:#1E293B; border-radius:12px; padding:12px; border:1px solid #334155;">
+            <div style="font-size:11px; font-weight:700; color:#94A3B8; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">Inventory Flags</div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+              <span style="font-size:13px; color:#F1F5F9;">Chicken Breast</span>
+              <span style="font-size:12px; font-weight:700; color:#FCA5A5;">3 portions</span>
+            </div>
+            <div style="display:flex; justify-content:space-between;">
+              <span style="font-size:13px; color:#F1F5F9;">Tiger Beer</span>
+              <span style="font-size:12px; font-weight:700; color:#FCA5A5;">4 bottles</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="device-label">Owner Dashboard (Dark Mode)</div>
+      <div class="screen-note">
+        <h4>Key decisions in this screen</h4>
+        <ul>
+          <li>4 revenue cards — one screen, no scroll</li>
+          <li>Cash gap card highlighted in red border — owner sees it immediately</li>
+          <li>Inventory flags inline — no separate screen needed</li>
+          <li>Dark dashboard reduces glare when checking phone at night</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     DECISION HELPER
+════════════════════════════════════ -->
+<div class="decision-section">
+  <h2>Evaluation Guide — What to Look For</h2>
+  <div class="decision-grid">
+    <div class="decision-card">
+      <h3>Direction A — Coastal Light</h3>
+      <p class="pro">✓ Familiar app pattern — zero learning curve for Nina<br>✓ Onboarding-friendly for new staff<br>✓ Works well in mixed lighting</p>
+      <br>
+      <p class="con">✗ Cards need outdoor variant to survive direct sunlight<br>✗ Chip + grid = 2 interaction steps to reach table</p>
+    </div>
+    <div class="decision-card">
+      <h3>Direction B — Zone Map First</h3>
+      <p class="pro">✓ Spatially intuitive — Nina "points" at her zone<br>✓ Whole-restaurant status at a glance<br>✓ Matches Uber/PickMe mental model</p>
+      <br>
+      <p class="con">✗ One extra tap to reach a table vs Direction A<br>✗ Map layout needs configuring per restaurant<br>✗ Falls back to Direction A for non-map tenants</p>
+    </div>
+    <div class="decision-card">
+      <h3>Direction C — Dark Operational</h3>
+      <p class="pro">✓ All tables visible without scrolling<br>✓ Excellent for evening service<br>✓ Dense — experienced staff love it</p>
+      <br>
+      <p class="con">✗ Washes out in direct beach sunlight<br>✗ Higher learning curve for new staff<br>✗ Less friendly for dispute screen (customer faces it)</p>
+    </div>
+    <div class="decision-card">
+      <h3>Hybrid Option</h3>
+      <p>Mix elements across directions. Common hybrid:<br><br>
+      <span style="color:#86EFAC;">A as default</span> + Zone Map as configurable toggle (B) + Dense view as a secondary "all tables" screen (C)<br><br>
+      This is how Petpooja works — list view default, floor plan optional.</p>
+    </div>
+  </div>
+
+  <div class="compare-bar">
+    <div class="compare-item">
+      <h4>Speed to Place Order</h4>
+      <div class="compare-row"><span>Direction A</span><span>2 taps to table</span></div>
+      <div class="compare-row"><span>Direction B</span><span>3 taps to table</span></div>
+      <div class="compare-row"><span>Direction C</span><span>1 tap (all zones visible)</span></div>
+    </div>
+    <div class="compare-item">
+      <h4>Outdoor Sunlight</h4>
+      <div class="compare-row"><span>Direction A</span><span>Good (outdoor variant)</span></div>
+      <div class="compare-row"><span>Direction B</span><span>Good (light bg)</span></div>
+      <div class="compare-row"><span>Direction C</span><span>Poor (dark bg)</span></div>
+    </div>
+    <div class="compare-item">
+      <h4>Situational Awareness</h4>
+      <div class="compare-row"><span>Direction A</span><span>Per zone</span></div>
+      <div class="compare-row"><span>Direction B</span><span>Whole restaurant</span></div>
+      <div class="compare-row"><span>Direction C</span><span>Whole restaurant</span></div>
+    </div>
+    <div class="compare-item">
+      <h4>New Staff Onboarding</h4>
+      <div class="compare-row"><span>Direction A</span><span>Easiest</span></div>
+      <div class="compare-row"><span>Direction B</span><span>Easy (visual)</span></div>
+      <div class="compare-row"><span>Direction C</span><span>Harder</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function showDir(id) {
+    document.querySelectorAll('.direction-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('dir-' + id).classList.add('active');
+    event.target.classList.add('active');
+  }
+</script>
+</body>
+</html>

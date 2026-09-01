@@ -4,6 +4,24 @@ import next from 'next'
 import { Server } from 'socket.io'
 
 const dev = process.env.NODE_ENV !== 'production'
+
+// Fail at boot, not at the first login attempt during dinner service. A server
+// running with a weak or absent signing secret would issue forgeable session
+// cookies and nobody would notice until it mattered.
+// (Closes a deferred item from Story 1.1's code review.)
+const MIN_SESSION_SECRET_LENGTH = 32
+const sessionSecret = process.env.SESSION_SECRET
+
+if (!sessionSecret || sessionSecret.length < MIN_SESSION_SECRET_LENGTH) {
+  console.error(
+    `[server] SESSION_SECRET is ${!sessionSecret ? 'not set' : `only ${sessionSecret.length} characters`}. ` +
+      `It must be at least ${MIN_SESSION_SECRET_LENGTH} characters — it signs staff session cookies.\n` +
+      `        Generate one with:  openssl rand -hex 32\n` +
+      `        Set it in .env.local for local development, or in docker-compose.yml for a deployment.`,
+  )
+  process.exit(1)
+}
+
 const app = next({ dev })
 const handle = app.getRequestHandler()
 
@@ -42,6 +60,36 @@ app
       }
       process.exit(1)
     })
+
+    // Reap sessions nobody came back to. The proxy only deletes expired rows it
+    // actually encounters, so a staff member who closes the tab and never
+    // returns would leave a row forever.
+    const SWEEP_INTERVAL_MS = 10 * 60 * 1000
+    let sweepRunning = false
+
+    const sweepExpiredSessions = async () => {
+      if (sweepRunning) return // never let a slow sweep overlap itself
+      sweepRunning = true
+      try {
+        // Imports the standalone reaper, NOT the session service — that module
+        // reaches @/server/db, which is marked `server-only` and throws outside
+        // Next's module graph.
+        const { sweepExpiredSessions: sweep } = await import('./src/server/db/sweep-sessions')
+        const removed = await sweep()
+        if (removed > 0) {
+          console.log(`[sessions] Swept ${removed} expired session(s)`)
+        }
+      } catch (err) {
+        // A failed sweep is housekeeping, never a reason to take the server down.
+        console.error('[sessions] Sweep failed:', err)
+      } finally {
+        sweepRunning = false
+      }
+    }
+
+    const sweepTimer = setInterval(sweepExpiredSessions, SWEEP_INTERVAL_MS)
+    sweepTimer.unref() // do not keep the event loop alive for housekeeping
+    void sweepExpiredSessions() // clear anything stale left from a previous run
 
     httpServer.listen(port, () => {
       console.log(`> Ready on http://localhost:${port} [${dev ? 'dev' : 'production'}]`)

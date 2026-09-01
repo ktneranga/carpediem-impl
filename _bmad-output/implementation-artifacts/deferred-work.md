@@ -1,0 +1,51 @@
+# Deferred Work
+
+## Deferred from: code review of 1-1-initialize-nextjs-project-with-core-tooling (2026-06-21)
+
+- **No graceful SIGTERM/SIGINT shutdown handler** [`server.ts`] — `httpServer.close()` and `pool.end()` should be called on process signals. Deferred to Story 1.4 (Docker Compose stack) where the process lifecycle is defined.
+- **SESSION_SECRET no runtime enforcement** [`.env.example`/`server.ts`] — No startup check that SESSION_SECRET is present and ≥32 chars. Deferred to Story 2.x auth implementation where the secret is first consumed.
+- **VENDOR_SECRET / WATCHTOWER_HTTP_API_TOKEN no enforcement** [`.env.example`] — Blank values are not caught at startup. Deferred until vendor routes are implemented.
+- **`global.__io` hot-reload reassignment** [`server.ts`] — `tsx watch` restarts the full process so no stale io instances occur in practice. Revisit if HMR is ever introduced at the server layer.
+- **`getIO()` eager module-level call risk** [`src/server/socket/index.ts`] — If any Route Handler calls `getIO()` at import time (outside a request function), the module throws on load. Guidance: always call `getIO()` inside route handler functions. Enforce when first Route Handler is written (Story 2+).
+- **Socket.io accepts any LAN connection — no auth** [`server.ts`] — Any device on the restaurant LAN can connect and receive broadcasts. Deferred to Epic 2 (authentication) where the Socket.io `connection` handler will enforce session token validation.
+- **`drizzle.config.ts` `!` assertion on DATABASE_URL** [`drizzle.config.ts:8`] — Suppresses TS error but gives a cryptic failure if DATABASE_URL is unset during migration runs. Low operational impact; revisit when CI/CD pipeline is set up (Story 1.5).
+- **No startup readiness timeout** [`server.ts`] — If `app.prepare()` stalls (e.g., webpack compilation hang), the process appears alive but the port is never bound. Add a timeout watchdog when operationalizing the Docker deployment (Story 1.4).
+- **AC5 server-only build-time test abbreviated** [`src/server/db/index.ts`, `src/server/socket/index.ts`] — The `server-only` import-boundary enforcement was verified via `tsc --noEmit` only. A live test (create client component that imports server file, run `next build`, confirm error) should be done when the first Route Handler and client component coexist (Story 2.1 or 2.2).
+
+## Deferred from: code review of 1-2-configure-design-token-system (2026-06-21)
+
+- **Duplicate token values in `@layer base :root` and `@theme`** [`globals.css`] — Every hex value is declared twice. `@layer base` block added as Turbopack dev-mode workaround (tokens not emitted until a utility references them). In `next build`, `@theme` emits all tokens unconditionally. Verify with a production build and consolidate to `@theme` only if confirmed. Risk: color values can drift between the two blocks during maintenance.
+- **`x-staff-role` header cast without runtime validation** [`layout.tsx:21`] — `as 'waiter' | 'owner' | 'kitchen' | null` is TypeScript-only. Unexpected middleware header values write arbitrary strings to `data-context`, silently breaking role-based styling. Add `includes()` whitelist guard in Story 2.2 when session middleware sets the header.
+- **`[data-context]` on `<html>` excludes `<html>` itself from variant scope** [`globals.css:7-9`] — `&:is([data-context="waiter"] *)` requires the target element to be a descendant of the attribute holder. `<html>` is not a descendant of itself. No current issue (no styles target `<html>` directly), but document as constraint: never apply `waiter:`/`owner:`/`kitchen:` utilities to the `<html>` element itself.
+- **Custom `--text-*` tokens lack `--{name}--line-height` companion variables** [`globals.css:107-113`] — Tailwind v4 expects `--text-display--line-height` alongside `--text-display` for computed line-heights. Without companions, utilities use Tailwind's default `calc(1em + 0.5rem)`. Specify line-heights when typography is formally defined in component stories.
+- **Dev Notes `@custom-variant` example shows invalid curly-brace syntax** [`1-2-configure-design-token-system.md:164-167`] — Shows `{ [data-context="waiter"] & }` which PostCSS rejects. Correct form is `(&:is([data-context="waiter"] *))`. Debug log in the story has the correct form. Update the Dev Notes template if `create-story` propagates this pattern into future stories.
+
+## Deferred from: code review of 1-3-establish-database-schema-and-migration-pipeline (2026-06-21)
+
+- **Missing CHECK constraints for positive/range integers** [`src/server/db/schema.ts`] — `cover_count >= 1`, `quantity > 0`, `amount_paisa > 0`, `portion_count IS NULL OR portion_count > 0`, `port BETWEEN 1 AND 65535`. Application-layer Zod validation handles these per architecture; adding CHECKs to append-only tables is irreversible. Revisit when API Route Handlers are written (Story 3+).
+- **`taxRatePercent` no range constraint** [`tenant_config`] — No `CHECK (tax_rate_percent BETWEEN 0 AND 10000)`. Deferred to Story 10.x tenant config management.
+- **`migrate.sh` needs `pg_isready` health check** [`docker/scripts/migrate.sh`] — Without a readiness loop, the script fails immediately if PostgreSQL is still initializing. Docker Compose `depends_on` health check handles this in Story 1.4.
+- **`TRUNCATE` bypasses BEFORE row-level triggers on append-only tables** [`src/server/db/migrations/0001_append_only_rules.sql`] — TRUNCATE requires TABLE privilege. Deferred to Story 1.4 where the app DB user is created with restricted privileges (no TRUNCATE).
+- **`tenant_config.updatedAt` not auto-refreshed on UPDATE** [`src/server/db/schema.ts:205`] — No ON UPDATE trigger; application code must set `updatedAt` manually. Deferred to Story 10.x tenant config management.
+- **No unique constraint on `(tenant_id, label)` in `tables` and `(tenant_id, name)` in `zones`** [`src/server/db/schema.ts`] — Duplicate labels/names possible. Deferred to Story 3.x zone/table CRUD where application-layer uniqueness is enforced.
+- **`orderEvents.menuItemId` nullable without event-type enforcement** [`src/server/db/schema.ts:130`] — `ITEM_ADDED`/`ITEM_REMOVED` etc. can be inserted with `menuItemId = NULL`. Application-layer Zod validation handles this. Defer to when Route Handlers are written.
+- **`order_sessions.closedAt` could be earlier than `openedAt`** [`src/server/db/schema.ts:115`] — No `CHECK` constraint. Application-layer validation handles this. Defer.
+- **No `onDelete`/`onUpdate` referential action on any FK** [`src/server/db/schema.ts`] — All FKs default to NO ACTION. Intentional per architecture; cascade semantics designed when tenant offboarding (Story 10.x) is implemented.
+- **`tenant_config.brandColor` unconstrained `text`** [`src/server/db/schema.ts:209`] — Any string accepted. Input validated at API layer (Story 10.x). If rendered directly into CSS, sanitize before use.
+- **`db:generate` and `db:migrate` have no `--config` flag** [`package.json`] — Rely on implicit `drizzle.config.ts` discovery. Low risk with config at repo root. Specify `--config drizzle.config.ts` when project structure changes.
+- **`compRecords.amountPaysa` no positivity constraint** [`src/server/db/schema.ts:161`] — Zero or negative comp amounts accepted. Application-layer Zod validation handles this.
+
+## Deferred from: code review of 1-4-configure-docker-compose-stack-and-health-endpoint (2026-06-21)
+
+- **`SESSION_SECRET` silently empty if unset** [`docker-compose.yml:15`] — `${SESSION_SECRET}` has no `:-fallback`. Docker Compose injects empty string if unset. App should validate at startup. Deferred to Epic 2 (auth implementation) where the secret is first consumed.
+- **`WATCHTOWER_HTTP_API_TOKEN` can be empty — API unauthenticated** [`docker-compose.yml:68`] — Default `:-` fallback means Watchtower HTTP API starts with no token. Mitigated by `internal` Docker network isolation. Deferred; enforce when vendor ops Story 11.x configures Watchtower API access.
+- **`pg_isready` healthcheck passes before WAL recovery completes on hard shutdown** [`docker-compose.yml:37`] — PostgreSQL accepts connections before WAL replay finishes after power loss. Migration or queries run during this window may block. Low probability for a low-write-volume LAN POS. Deferred; fix with `psql -c "SELECT 1"` healthcheck if startup failures are observed in production.
+- **Watchtower-triggered restart drops active Socket.io sessions mid-service** [`docker-compose.yml:58`] — Watchtower restarts the app container immediately when a new image is available, severing all WebSocket connections. Socket.io clients will reconnect but in-flight order/payment operations may be lost. Mitigated operationally: push new image builds only after service hours. Deferred to Story 11.x vendor ops.
+- **No SIGTERM handler in `server.ts`** [`server.ts`] — Pre-existing from Story 1.1. `docker stop` → SIGTERM → process exits immediately, dropping in-flight HTTP requests and Socket.io connections. Add `httpServer.close()` + `io.close()` + `pool.end()` on SIGTERM. Deferred; compound with Story 1.1 deferred item.
+- **Migration race on crash-restart** [`docker/scripts/migrate.sh`] — If container crashes mid-migration, drizzle-kit's advisory lock may block on restart until PostgreSQL idle-timeout clears the dangling lock. Unlikely for a single-tenant POS. Deferred; add `lock_timeout` to DATABASE_URL if observed.
+
+## Deferred from: code review of 1-4 and 1-5 (2026-08-21)
+
+- **Proxy defines no `has`, `set`, or `ownKeys` traps** [`src/server/db/index.ts:46`] — `'execute' in db` returns false and `Object.keys(db)` returns `[]`, because those operations hit the empty Proxy target rather than the real drizzle instance. No current call site depends on either. Add the traps when one does.
+- **No pool shutdown path** [`src/server/db/index.ts`] — the lazily cached pool is never closed. Compounds the pre-existing missing SIGTERM handler from Story 1.1; fix both together when the process lifecycle is addressed.
+- **`WATCHTOWER_HTTP_API_TOKEN` may still be empty** [`docker-compose.yml:92`] — pre-existing from Story 1.4. Mitigated while the Watchtower API port stays unpublished; becomes live the moment it is exposed. `WATCHTOWER_HTTP_API_METRICS=true` is already set, so this is one published port away from mattering.
