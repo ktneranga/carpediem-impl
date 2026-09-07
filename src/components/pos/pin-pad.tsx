@@ -4,15 +4,23 @@ import { useCallback, useState } from 'react'
 import { Delete } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const MIN_PIN_LENGTH = 4
-const MAX_PIN_LENGTH = 6
-const SHORT_PIN_ERROR = `PIN must be at least ${MIN_PIN_LENGTH} digits`
+/**
+ * Fixed at 4 (2026-09-06). PINs were 4–6 digits; the range was reduced because
+ * staff have to recall these from memory during service, and a longer PIN buys
+ * accountability that a forgotten one immediately loses.
+ *
+ * A single fixed length is what makes auto-submit possible: the pad knows the
+ * entry is finished on the fourth digit, so there is no confirm button to tap
+ * and nothing to decide. With a range, 4 and 5 digits were indistinguishable
+ * from "still typing".
+ *
+ * The server enforces the same length (src/app/api/auth/login/route.ts). If this
+ * ever changes, change both — a client that submits 4 digits to a server
+ * expecting 6 fails with a validation error the staff member cannot act on.
+ */
+const PIN_LENGTH = 4
 
-const DIGIT_ROWS = [
-  ['1', '2', '3'],
-  ['4', '5', '6'],
-  ['7', '8', '9'],
-] as const
+const DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const
 
 export type PINPadProps = {
   /**
@@ -21,17 +29,18 @@ export type PINPadProps = {
    * NEVER log the value passed here (NFR-S1).
    */
   onSubmit: (pin: string) => void
-  /** Server-side rejection message, e.g. "Incorrect PIN". Triggers the shake. */
+  /** Server-side rejection message. Triggers the shake. */
   error?: string | null
   /** Blocks all input, e.g. while an auth request is in flight. */
   disabled?: boolean
   /** Context label — "Confirm your PIN" for financial reauth, staff name for a user switch. */
   label?: string
+  /** Sub-label under the title. The sign-in screen states why it is being seen again. */
+  hint?: string
 }
 
-export function PINPad({ onSubmit, error, disabled = false, label }: PINPadProps) {
+export function PINPad({ onSubmit, error, disabled = false, label, hint }: PINPadProps) {
   const [pin, setPin] = useState('')
-  const [localError, setLocalError] = useState<string | null>(null)
   // Hides the parent's error once the staff member starts a fresh attempt.
   const [errorDismissed, setErrorDismissed] = useState(false)
   // Changes on every new parent error so the shake replays rather than sitting
@@ -48,36 +57,36 @@ export function PINPad({ onSubmit, error, disabled = false, label }: PINPadProps
     setErrorNonce((n) => n + 1)
   }
 
-  // A server rejection outranks local validation.
-  const visibleError = (errorDismissed ? null : error) ?? localError
+  // Only the server can reject a PIN now. There is no local validation left:
+  // a too-short PIN is unreachable, because the pad submits the moment the
+  // fourth digit lands and cannot hold a fifth.
+  const visibleError = errorDismissed ? null : error
 
   const submit = useCallback(
     (value: string) => {
-      // Wipe before invoking so the value cannot linger if the callback throws (AC-6).
+      // Wipe before invoking so the value cannot linger if the callback throws.
       setPin('')
-      setLocalError(null)
       onSubmit(value)
     },
     [onSubmit],
   )
 
   const clearErrors = useCallback(() => {
-    setLocalError(null)
     setErrorDismissed(true)
   }, [])
 
   const handleDigit = useCallback(
     (digit: string) => {
-      if (disabled || pin.length >= MAX_PIN_LENGTH) return
+      if (disabled || pin.length >= PIN_LENGTH) return
 
       clearErrors()
       const next = pin + digit
       setPin(next)
 
-      // Auto-submit on the 6th digit (AC-8). Computed from the closure value and
+      // Auto-submit on the final digit. Computed from the closure value and
       // called directly — NOT from inside a setState updater. React may invoke an
       // updater twice under Strict Mode, which would submit the credential twice.
-      if (next.length === MAX_PIN_LENGTH) {
+      if (next.length === PIN_LENGTH) {
         submit(next)
       }
     },
@@ -96,48 +105,54 @@ export function PINPad({ onSubmit, error, disabled = false, label }: PINPadProps
     setPin((current) => current.slice(0, -1))
   }, [disabled, clearErrors])
 
-  const handleSubmit = useCallback(() => {
-    if (disabled) return
-
-    if (pin.length < MIN_PIN_LENGTH) {
-      setLocalError(SHORT_PIN_ERROR)
-      setErrorDismissed(true)
-      return
-    }
-
-    submit(pin)
-  }, [disabled, pin, submit])
-
+  // 96px keys. Press is scale 0.97 plus a 6% darken and a drop to the pressed
+  // shadow — never a colour change, which reads as a state rather than a touch.
   const keyClasses = cn(
-    'size-20 rounded-2xl text-h1 font-semibold leading-none',
-    'bg-neutral-0 text-neutral-900 border border-neutral-200',
-    'transition-colors active:bg-brand-100',
-    'disabled:opacity-40 disabled:active:bg-neutral-0',
-    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
+    'size-24 rounded-waiter border border-slate-200 bg-white shadow-el-1',
+    'text-fs-24 font-bold text-slate-900 tabular-nums leading-none',
+    'transition-[transform,box-shadow,background-color] duration-80 ease-standard',
+    'active:scale-[0.97] active:bg-slate-100 active:shadow-pressed',
+    'disabled:opacity-40 disabled:active:scale-100 disabled:active:bg-white',
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+  )
+
+  /** Clear and backspace are recessive: they sit on the app ground, not a card. */
+  const utilityKeyClasses = cn(
+    keyClasses,
+    'bg-slate-100 text-fs-12 font-semibold tracking-micro text-slate-600 uppercase shadow-none',
   )
 
   return (
-    <div className="flex select-none flex-col items-center gap-space-6">
-      {label ? <p className="text-h2 font-medium text-neutral-900">{label}</p> : null}
+    <div className="flex select-none flex-col items-center gap-sp-5">
+      {label ? (
+        <div className="flex flex-col items-center gap-sp-1">
+          <p className="text-fs-18 font-bold tracking-title text-slate-900">{label}</p>
+          {hint ? <p className="text-fs-12 text-slate-400">{hint}</p> : null}
+        </div>
+      ) : null}
 
       {/* `key` forces a remount on each new error so the shake actually replays. */}
       <div
         key={errorNonce}
-        className={cn('flex flex-col items-center gap-space-2', visibleError && 'animate-shake')}
+        className={cn('flex flex-col items-center gap-sp-2', visibleError && 'animate-shake')}
       >
         {/* Dots are decorative — the live region carries the meaning, so a screen
-            reader announces a count rather than six bullet glyphs. Digits are
-            never rendered anywhere in the DOM (AC-10). */}
-        <div aria-live="polite" className="flex flex-col items-center gap-space-2">
-          <div aria-hidden="true" className="flex gap-space-3">
-            {Array.from({ length: MAX_PIN_LENGTH }, (_, index) => (
+            reader announces a count rather than four bullet glyphs. Digits are
+            never rendered anywhere in the DOM.
+
+            Four dots is also the only progress cue a staff member needs now:
+            the pad submits when the last one fills, so the dots show exactly how
+            far along they are with no ambiguity about when it ends. */}
+        <div aria-live="polite" className="flex flex-col items-center gap-sp-2">
+          <div aria-hidden="true" className="flex gap-sp-3">
+            {Array.from({ length: PIN_LENGTH }, (_, index) => (
               <span
                 key={index}
                 className={cn(
-                  'size-4 rounded-full border-2 transition-colors',
+                  'size-3.5 rounded-pill border-2 transition-colors duration-80 ease-standard',
                   index < pin.length
-                    ? 'border-brand-600 bg-brand-600'
-                    : 'border-neutral-400 bg-transparent',
+                    ? 'border-brand-500 bg-brand-500'
+                    : 'border-slate-200 bg-transparent',
                 )}
               />
             ))}
@@ -151,8 +166,8 @@ export function PINPad({ onSubmit, error, disabled = false, label }: PINPadProps
         <p
           role="alert"
           className={cn(
-            'min-h-[1.25rem] text-small',
-            visibleError ? 'text-status-alert' : 'text-transparent',
+            'min-h-5 text-fs-12 font-semibold',
+            visibleError ? 'text-unavailable-ink' : 'text-transparent',
           )}
         >
           {visibleError ?? ' '}
@@ -161,75 +176,69 @@ export function PINPad({ onSubmit, error, disabled = false, label }: PINPadProps
 
       {/* Digits are captured only through buttons. No <input> anywhere — even a
           readOnly one can summon the virtual keyboard on some Android builds
-          and shift the layout out from under the pad (AC-2). */}
-      <div className="flex flex-col gap-space-3">
-        {DIGIT_ROWS.map((row) => (
-          <div key={row.join('')} className="flex gap-space-3">
-            {row.map((digit) => (
-              <button
-                key={digit}
-                type="button"
-                disabled={disabled}
-                aria-label={`Enter digit ${digit}`}
-                onClick={() => handleDigit(digit)}
-                className={keyClasses}
-              >
-                {digit}
-              </button>
-            ))}
-          </div>
-        ))}
-
-        <div className="flex gap-space-3">
+          and shift the layout out from under the pad. */}
+      <div className="grid grid-cols-3 gap-sp-3">
+        {DIGITS.map((digit) => (
           <button
+            key={digit}
             type="button"
             disabled={disabled}
-            aria-label="Clear all digits"
-            onClick={handleClear}
-            className={cn(keyClasses, 'text-small font-medium text-neutral-600')}
-          >
-            Clear
-          </button>
-
-          <button
-            type="button"
-            disabled={disabled}
-            aria-label="Enter digit 0"
-            onClick={() => handleDigit('0')}
+            aria-label={`Enter digit ${digit}`}
+            onClick={() => handleDigit(digit)}
             className={keyClasses}
           >
-            0
+            {digit}
           </button>
+        ))}
 
-          <button
-            type="button"
-            disabled={disabled}
-            aria-label="Delete last digit"
-            onClick={handleBackspace}
-            className={cn(keyClasses, 'flex items-center justify-center text-neutral-600')}
-          >
-            <Delete aria-hidden="true" className="size-7" />
-          </button>
-        </div>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label="Clear all digits"
+          onClick={handleClear}
+          className={utilityKeyClasses}
+        >
+          Clr
+        </button>
+
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label="Enter digit 0"
+          onClick={() => handleDigit('0')}
+          className={keyClasses}
+        >
+          0
+        </button>
+
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label="Delete last digit"
+          onClick={handleBackspace}
+          className={cn(utilityKeyClasses, 'flex items-center justify-center')}
+        >
+          <Delete aria-hidden="true" className="size-6" strokeWidth={2} />
+        </button>
       </div>
 
-      {/* Submit still exists despite auto-submit: 4- and 5-digit PINs never reach
-          the auto-submit threshold and would otherwise be unsubmittable. */}
-      <button
-        type="button"
-        disabled={disabled}
-        aria-label="Submit PIN"
-        onClick={handleSubmit}
-        className={cn(
-          'h-space-12 w-full rounded-2xl text-h2 font-semibold',
-          'bg-brand-600 text-neutral-0',
-          'transition-colors active:bg-brand-700',
-          'disabled:opacity-40 disabled:active:bg-brand-600',
-          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700',
-        )}
-      >
-        Submit
-      </button>
+      {/*
+        No confirm button, by design.
+
+        The system rule is "auto-submit on the last digit — no confirm button",
+        which only works when every PIN is the same length. It now is: PIN_LENGTH
+        is fixed at 4, so the fourth digit unambiguously ends the entry. A Sign in
+        button here could never be in a valid state — below four digits it would
+        have to refuse, and at four the pad has already submitted — so it would
+        be a dead control on the one screen every shift starts with.
+
+        The previous version of this file said to remove it the day PIN length
+        became fixed. That day is today.
+      */}
+
+      <p className="text-fs-12 text-slate-400">
+        {PIN_LENGTH} digits · signs in automatically · no keyboard, ever
+      </p>
     </div>
   )
 }

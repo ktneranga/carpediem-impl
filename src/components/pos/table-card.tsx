@@ -1,98 +1,129 @@
 'use client'
 
+import { STATUS_TONES, type TableStatus } from '@/lib/design'
+import { elapsed } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-/**
- * Values match `tableStatusEnum` in the schema EXACTLY:
- *   pgEnum('table_status', ['open', 'occupied', 'unavailable'])
- *
- * epics.md calls the third state "closed" and the UX spec calls it "alert".
- * Neither exists in the database. `alert` is the colour token used to render
- * `unavailable`, not a status. Using the wrong name here means Story 3.2 passes
- * `unavailable` from the query and the card silently renders unstyled.
- */
-export type TableStatus = 'open' | 'occupied' | 'unavailable'
+export type { TableStatus }
 
 export type TableCardProps = {
-  /** Free text as stored — "R2", "Table 4". Do not prefix it. */
+  /** Free text as stored — "R03", "T12". Do not prefix it. */
   label: string
   zoneName: string
   status: TableStatus
+  /** Seat count from `tables.capacity`. Absent on tables never given one. */
+  capacity?: number | null
   elapsedMinutes?: number
   itemCount?: number
   selected?: boolean
   onSelect: () => void
 }
 
-const STATUS_LABEL: Record<TableStatus, string> = {
-  open: 'Open',
-  occupied: 'Occupied',
-  unavailable: 'Unavailable',
-}
-
-const STATUS_DOT: Record<TableStatus, string> = {
-  open: 'bg-status-open',
-  occupied: 'bg-status-occupied',
-  unavailable: 'bg-status-alert',
-}
-
 export function TableCard({
   label,
   zoneName,
   status,
+  capacity,
   elapsedMinutes,
   itemCount,
   selected = false,
   onSelect,
 }: TableCardProps) {
+  const tone = STATUS_TONES[status]
   const showOccupiedDetail = status === 'occupied' && elapsedMinutes !== undefined
 
-  // Accessible name merges both specs: epics wanted "Table 4 — Occupied", the UX
-  // spec wanted "Table R2, occupied, 42 minutes". Elapsed time is included only
-  // when it exists, so a non-occupied card is not padded with meaningless detail.
+  // An unavailable table cannot be seated, so the card is not an operable
+  // control — and it must say so to assistive tech, not just to the mouse.
+  // Guarding only in the caller left a focusable button that announced itself as
+  // a toggle, animated on press, and did nothing; and any future consumer that
+  // forgot the caller-side guard silently lost the behaviour entirely.
+  const isInert = status === 'unavailable'
+
+  // Accessible name carries the same facts the card shows, in the same order.
   const accessibleName = showOccupiedDetail
-    ? `${label}, ${STATUS_LABEL[status].toLowerCase()}, ${elapsedMinutes} minutes`
-    : `${label}, ${STATUS_LABEL[status].toLowerCase()}`
+    ? `${label}, ${tone.label.toLowerCase()}, ${elapsed(elapsedMinutes)}`
+    : `${label}, ${tone.label.toLowerCase()}`
 
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={isInert ? undefined : onSelect}
       aria-label={accessibleName}
-      aria-pressed={selected}
+      aria-disabled={isInert || undefined}
+      aria-pressed={isInert ? undefined : selected}
       className={cn(
-        // MINIMUM dimensions, not fixed ones. The ACs say "≥ 44px" and "≥ 80px",
-        // and `size-*` would pin height exactly — clipping the four stacked rows
-        // (label, zone, status, occupied detail) inside 44px of box.
-        // Owner/compact baseline; the waiter variant enlarges via [data-context],
-        // which layout.tsx sets server-side from the staff role.
-        'min-h-11 min-w-11 waiter:min-h-20 waiter:min-w-20',
-        'flex flex-col items-start justify-between gap-space-1 rounded-2xl p-space-3',
-        'bg-neutral-0 text-left transition-colors active:bg-neutral-100',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
-        // Selected is signalled by border weight AND colour, never colour alone.
-        selected
-          ? 'border-2 border-brand-600 ring-2 ring-brand-200'
-          : 'border border-neutral-200',
+        // Saturated band + tinted body + matching edge, so status reads without
+        // focusing. `overflow-hidden` is what lets the band meet the 20px corner
+        // cleanly instead of poking a square shoulder through it.
+        'relative flex h-30 flex-col overflow-hidden rounded-card border-2 text-left',
+        'transition-[transform,box-shadow] duration-120 ease-standard',
+        // No press feedback on an inert card — animating a tap that does nothing
+        // reads as the app having missed the input.
+        !isInert && 'active:scale-[0.97] active:shadow-pressed',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+        // Selection is three simultaneous signals — 2px brand border, el-3, and
+        // a 30% blue halo — because outdoors one signal is not enough.
+        selected ? 'border-brand-500 shadow-selected' : cn(tone.edge, 'shadow-el-1'),
       )}
     >
-      <span className="flex w-full items-center gap-space-1">
-        {/* Decorative — the status word beside it carries the meaning, and the
-            aria-label carries it for assistive tech. */}
-        <span aria-hidden="true" className={cn('size-2 shrink-0 rounded-full', STATUS_DOT[status])} />
-        <span className="truncate text-h2 font-semibold text-neutral-900">{label}</span>
+      {/* Band — the half a waiter reads from ten metres. */}
+      <span
+        className={cn(
+          'flex shrink-0 items-center justify-between gap-sp-2 px-sp-3 py-sp-2',
+          // brand-700, not brand-500: white text on brand-500 is 3.9:1 and fails
+          // AA at these sizes, the same trap the --*-band tokens exist to avoid.
+          selected ? 'bg-brand-700' : tone.band,
+        )}
+      >
+        <span className="truncate text-fs-18 font-extrabold tracking-title text-white">
+          {label}
+        </span>
+        {/* The word, always. Hue is accompanied by the label; the label is not
+            optional — so selection is carried by the border, elevation and halo,
+            and never by replacing the one thing that must not be misread. */}
+        <span className="shrink-0 text-fs-12 font-semibold tracking-micro text-white uppercase">
+          {tone.label}
+        </span>
       </span>
 
-      <span className="truncate text-micro text-neutral-600">{zoneName}</span>
+      {/* Body — tinted, and hatched on unavailable so the state survives even if
+          hue fails entirely (glare, greyscale, colour blindness). */}
+      <span
+        className={cn(
+          'relative flex flex-1 flex-col justify-center gap-sp-1 px-sp-3 py-sp-2',
+          selected ? 'bg-white' : tone.body,
+          status === 'unavailable' && 'hatch-unavailable',
+        )}
+      >
+        {status === 'occupied' ? (
+          <>
+            <span className={cn('text-fs-16 font-semibold tabular-nums', tone.ink)}>
+              {elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : '—'}
+            </span>
+            <span className={cn('text-fs-12 tabular-nums', tone.ink)}>
+              {itemCount !== undefined ? `${itemCount} item${itemCount === 1 ? '' : 's'}` : 'No items yet'}
+              {capacity != null ? ` · seats ${capacity}` : ''}
+            </span>
+          </>
+        ) : status === 'unavailable' ? (
+          <span className={cn('text-fs-14 font-semibold', tone.ink)}>Not in service</span>
+        ) : (
+          <>
+            <span
+              className={cn('text-fs-16 font-semibold', selected ? 'text-slate-900' : tone.ink)}
+            >
+              Ready to seat
+            </span>
+            {capacity != null ? (
+              <span className={cn('text-fs-12 tabular-nums', selected ? 'text-slate-600' : tone.ink)}>
+                seats {capacity}
+              </span>
+            ) : null}
+          </>
+        )}
 
-      {/* Status as text, not colour alone (prd.md accessibility rule). */}
-      <span className="text-micro font-medium text-neutral-600">{STATUS_LABEL[status]}</span>
-
-      {showOccupiedDetail ? (
-        <span className="text-micro text-neutral-600">
-          {elapsedMinutes}m{itemCount !== undefined ? ` · ${itemCount} item${itemCount === 1 ? '' : 's'}` : ''}
-        </span>
-      ) : null}
+        <span className="sr-only">{zoneName}</span>
+      </span>
     </button>
   )
 }

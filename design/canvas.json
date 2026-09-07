@@ -1,0 +1,33 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1194, "h": 834, "title": "Table Grid" },
+    { "file": "OrderEntry.dc.html", "x": 1294, "y": 0, "w": 1194, "h": 834, "title": "Order Entry" },
+    { "file": "Dashboard.dc.html", "x": 2588, "y": 0, "w": 390, "h": 1260, "title": "Owner Dashboard" },
+    { "file": "Login.dc.html", "x": 0, "y": 954, "w": 1194, "h": 834, "title": "Sign In" },
+    { "file": "Tokens.dc.html", "x": 1294, "y": 954, "w": 1000, "h": 1180, "title": "Design System" }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -190,
+      "w": 560,
+      "text": "Carpe Diem RMS — coastal blue kept from the existing token system (brand-600 #2288B4, Inter Variable, slate neutrals).\n\nEvolved from the Chili POS reference: corner badges, tinted card bodies, status pills, soft elevation, and the bottom live-order strip.\n\nSix status tint/ink values are NEW — globals.css has only the solid colours today."
+    },
+    {
+      "id": "not-built",
+      "x": 1294,
+      "y": -190,
+      "w": 460,
+      "text": "Order Entry is Epic 4 — not built yet. Shown here so the system is settled before it is coded.\n\nSeat slots, 86'd items and the sent/locked round reflect the real data model."
+    },
+    {
+      "id": "dark-layer",
+      "x": 2588,
+      "y": -270,
+      "w": 390,
+      "text": "Owner Dashboard — the only dark screen, read on a phone at night.\n\nThe dark layer is NEW. Page #0F172A and ink #F8FAFC / #94A3B8 are existing tokens; surface #1E293B, hairline #263449 and secondary ink #CBD5E1 are additions in the same slate family.\n\nCash #2288B4 vs Card #D55181 is the one place two colours must be told apart — validated for colour-vision deficiency on this surface. Every other chart is one series, one hue.\n\nComps are a ledger, not a chart: the reason code and the approver are the point."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

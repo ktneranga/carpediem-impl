@@ -83,7 +83,7 @@ export async function proxy(request: NextRequest) {
     return unauthenticated(request)
   }
 
-  if (!isRoleAllowed(request.nextUrl.pathname, session.role)) {
+  if (!isRoleAllowed(request.nextUrl.pathname, session.role, request.method)) {
     return forbidden(request)
   }
 

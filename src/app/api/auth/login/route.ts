@@ -7,9 +7,14 @@ import { db } from '@/server/db'
 import { staff, tenants } from '@/server/db/schema'
 import { createSession, SESSION_COOKIE_NAME } from '@/server/services/session.service'
 
-// PIN never reaches bcrypt unless it is exactly 4-6 digits.
+// PIN never reaches bcrypt unless it is exactly 4 digits.
+//
+// Narrowed from 4-6 on 2026-09-06. PINPad is fixed at 4 and auto-submits on the
+// last digit; leaving the server accepting 5 and 6 would mean the two disagreed
+// about what a valid credential looks like, and any 5- or 6-digit PIN still in
+// the database would be unenterable from the only pad that exists.
 const loginSchema = z.object({
-  pin: z.string().regex(/^\d{4,6}$/),
+  pin: z.string().regex(/^\d{4}$/),
 })
 
 /**
@@ -35,7 +40,7 @@ export async function POST(request: Request) {
     // Deliberately does NOT include Zod's issue list — its default error echoes
     // the received value, which here is the plaintext PIN (NFR-S1).
     return NextResponse.json(
-      { success: false, error: { code: 'INVALID_BODY', message: 'PIN must be 4-6 digits' } },
+      { success: false, error: { code: 'INVALID_BODY', message: 'PIN must be 4 digits' } },
       { status: 400 },
     )
   }

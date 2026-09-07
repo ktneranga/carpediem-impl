@@ -97,7 +97,7 @@ The owner's current role is the entire operating system — audit trail, fraud d
 
 The core chain must work end-to-end before launch. Nothing is optional within this list.
 
-1. **Zone-aware table management** — 4 zones (bean bags, sun beds, tables, rooftop), table status (open/occupied/closed)
+1. **Zone-aware table management** — 4 zones (bean bags, sun beds, tables, rooftop), table status (open/occupied/unavailable), within-zone table merging, and staff-initiated out-of-service with owner-only restoration *(scope amended 2026-09-06; "closed" corrected to "unavailable", which is the actual `tableStatusEnum` value)*
 2. **Order entry** — multi-round open tabs, multi-destination routing (Kitchen KOT, Pizza Kitchen KOT, Bar BOT), item modifiers
 3. **Ticket output** — ESC/POS thermal printer for KOT, KOT-P, BOT, and bills (Carpe Diem v1); KDS/BOT tablet display mode built-in but configuration-disabled
 4. **Bill generation** — single-payer bill and mid-settlement drag-and-drop split (whole-item assignment to individual persons, separate bill per person, independent settlement by any payment method)
@@ -325,7 +325,7 @@ Each restaurant is an **isolated single-tenant deployment** — one Docker Compo
 
 ### RBAC Matrix
 
-Staff authenticate via **4–6 digit PIN code** on the shared device. Each action is recorded with the authenticated staff member's identity. PIN is set by the owner during staff setup.
+Staff authenticate via a **4 digit PIN code** on the shared device. Each action is recorded with the authenticated staff member's identity. PIN is set by the owner during staff setup.
 
 | Capability | Owner | Manager | Staff | Kitchen/Bar |
 |---|---|---|---|---|
@@ -430,7 +430,7 @@ Printer integration and mid-settlement drag-and-drop are the two highest-effort 
 - **FR15:** System generates a KOT-P (Pizza Kitchen Order Ticket) for pizza kitchen-destined items on order submission
 - **FR16:** System generates a BOT (Bar Order Ticket) for bar-destined items on order submission
 - **FR17:** System prints generated tickets to a configured ESC/POS thermal printer
-- **FR18:** Each printed ticket includes table identifier, seat identifiers, item names, quantities, and the ticket type label (KOT / KOT-P / BOT)
+- **FR18:** Each printed ticket includes **every table identifier in the session** (e.g. `BB1 + BB3` for a merged group), seat identifiers, item names, quantities, and the ticket type label (KOT / KOT-P / BOT) *(amended 2026-09-06 for FR62 — a merged party's ticket naming one table leaves the runner with two possible destinations)*
 - **FR19:** System displays tickets on a KDS/BOT screen when display mode is enabled per station (configuration-driven)
 - **FR20:** Kitchen/Bar staff can mark a displayed ticket as in-progress or completed (when KDS mode is enabled)
 
@@ -462,7 +462,7 @@ Printer integration and mid-settlement drag-and-drop are the two highest-effort 
 
 ### Staff Authentication & Access Control
 
-- **FR38:** Staff can authenticate on any device using a personal 4–6 digit PIN
+- **FR38:** Staff can authenticate on any device using a personal 4 digit PIN. *(AMENDED 2026-09-06: was 4–6 digits. Reduced to a single fixed length because staff recall these from memory mid-service, and a longer PIN buys accountability that a forgotten one immediately loses. A fixed length is also what allows the pad to sign in automatically on the last digit, removing the confirm tap from the action every shift begins with.)*
 - **FR39:** Owner can create, edit, and deactivate staff accounts, assigning each a role and PIN
 - **FR40:** System enforces role-based access — each capability is available only to roles that hold the relevant permission
 - **FR41:** Session duration and expiry behaviour is controlled by the tenant's `auth_mode` and `session_timeout_minutes` configuration flags
@@ -489,6 +489,9 @@ Printer integration and mid-settlement drag-and-drop are the two highest-effort 
 - **FR53:** Owner can access the dashboard remotely from any network-connected device
 - **FR54:** Manager can view a shift-level summary of revenue, comps, and payment gaps
 - **FR60:** Owner and Manager can view tables with orders open beyond a configurable time threshold, flagged on the dashboard as long-open alerts
+- **FR61:** Staff can close an open table session without payment, recording a reason (`abandoned` — opened in error or the party left before ordering; `walkout` — the party left without paying). The table returns to `open` immediately on all devices. Closing without payment is recorded in the append-only audit trail with the acting staff member, and appears on the owner dashboard distinctly from settled sessions. *(Added 2026-09-06 — sprint-change-proposal-2026-09-06.md. Before this, a table could be occupied but never released: the only close in the plan was a side effect of full payment, so a mis-tap, a party leaving before ordering, or a walkout left the table permanently occupied.)*
+- **FR62:** Staff can merge two or more tables **within the same zone** into a single order, either before taking the order or mid-service. A merged group behaves as one session for ordering, ticketing and billing, while every table in the group displays as occupied and shows the group it belongs to. Staff can un-merge a table from a group while the session is open. Merging across zones is out of scope for v1. *(Added 2026-09-06 — sprint-change-proposal-2026-09-06-merge-and-availability.md. The positioning at prd.md:38-40 promised merged tables as a core differentiator, but no FR, no story and no schema support existed: `order_sessions.table_id` was single-valued.)*
+- **FR63:** Any staff member can take a table **out of service** with a reason. **Only an owner can return a table to service.** Both actions are recorded in the append-only audit trail with the acting staff member, the reason, and a timestamp. *(Added 2026-09-06. Asymmetric by design: taking a table out fails safe, returning it to service is the risky direction.)*
 
 ### System Configuration & Tenant Management
 

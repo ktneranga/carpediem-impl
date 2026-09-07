@@ -205,7 +205,7 @@ pnpm add @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities
 
 ### Authentication & Security
 
-**PIN hashing:** `bcrypt` at cost factor 10. Applied to all 4–6 digit PINs at rest. Plaintext PIN never persisted, logged, or transmitted (NFR-S1).
+**PIN hashing:** `bcrypt` at cost factor 10. Applied to all 4 digit PINs at rest (amended 2026-09-06 from 4–6; see PRD FR38). Plaintext PIN never persisted, logged, or transmitted (NFR-S1).
 
 **Session storage:** PostgreSQL `sessions` table — not JWT. JWTs are stateless and cannot be invalidated immediately; the `session_short` auth mode requires expiry on idle timeout. Schema:
 ```
@@ -246,6 +246,33 @@ Node.js built-in `net` module — TCP client inside `POST /api/print` Route Hand
 
 **Error handling standard:**
 All Route Handlers return `{ success: boolean, data?: T, error?: { code: string, message: string } }`. Error codes are machine-readable constants (e.g., `PRINTER_TIMEOUT`, `ITEM_UNAVAILABLE`, `SESSION_EXPIRED`). Client-side error handling maps codes to user-facing messages in the UI layer.
+
+---
+
+### Data model — merged table sessions
+
+Added 2026-09-06 (FR62, `sprint-change-proposal-2026-09-06-merge-and-availability.md`).
+
+A seating can span several tables **within one zone**. One `order_sessions` row represents the party; `order_session_tables` maps it to every table it occupies.
+
+```sql
+order_session_tables (
+  session_id  uuid not null references order_sessions(id),
+  table_id    uuid not null references tables(id),
+  attached_at timestamptz not null default now(),
+  released_at timestamptz,
+  primary key (session_id, table_id)
+)
+
+create unique index idx_one_open_session_per_table
+  on order_session_tables (table_id) where released_at is null;
+```
+
+This index **replaces** `idx_order_sessions_one_open_per_table`. The original cannot express the invariant once tables live in a join table — a partial index cannot reach into another table to ask whether the session is open. Holding `released_at` on the join row keeps the constraint self-contained and makes un-merge a single write.
+
+`order_sessions.table_id` is retained as the **primary** table for breadcrumbs, labels and ticket headers; the join table holds every table including the primary.
+
+**One session, not linked sessions.** Orders, bills, payments and the audit trail all key on `session_id`. Keeping one session means each of them works unchanged — Epic 6 needs no new concept, and "merged tables settle individually" is delivered by the existing split-by-person. Linked sessions would require fanning out across a group on every read, in application code, permanently.
 
 ---
 
@@ -378,7 +405,10 @@ const createOrderSchema = z.object({ ... })
 'ticket:printed'        // ESC/POS confirmed
 'printer:alert'         // printer failure
 'inventory:depleted'    // item hit zero
-'table:status_changed'  // occupancy change
+'table:status_changed'  // occupancy change — emitted PER TABLE, so a merged
+                        // group produces one event per table (amended 2026-09-06,
+                        // FR62). The client patches one row per event, so no
+                        // client change was needed.
 
 // Client → server (commands, present tense)
 'table:subscribe'       // client joins a room

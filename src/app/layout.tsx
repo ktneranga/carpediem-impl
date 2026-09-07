@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import '@fontsource-variable/inter'
 import './globals.css'
+import { Providers } from './providers'
 
 export const metadata: Metadata = {
   title: 'Carpe Diem RMS',
@@ -34,7 +35,11 @@ export default async function RootLayout({
       {...(role ? { 'data-context': role } : {})}
       className="antialiased"
     >
-      <body className="min-h-full">{children}</body>
+      {/* Providers is the only client boundary here — this layout stays a Server
+          Component so it can keep reading headers() for data-context. */}
+      <body className="min-h-full">
+        <Providers>{children}</Providers>
+      </body>
     </html>
   )
 }

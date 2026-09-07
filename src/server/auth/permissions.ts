@@ -22,6 +22,27 @@ export type StaffRole = (typeof staffRoleEnum.enumValues)[number]
 export type RoutePolicy = {
   prefix: string
   roles: StaffRole[]
+  /**
+   * Methods EXEMPT from this policy — everything else it governs.
+   *
+   * Stated as an exemption list, not an allowlist, so the default direction
+   * matches the rest of this file: anything not named is restricted. The first
+   * version of this field listed the governed methods instead
+   * (`['POST','PATCH','DELETE']`), which meant an unlisted verb matched no
+   * policy at all and fell through to default-allow — so a future
+   * `PUT /api/tables/:id` would have silently been reachable by every role,
+   * with no missing-policy error to surface it. Caught in Story 3.3's review.
+   *
+   * Omitted means the policy governs all methods, so every policy written
+   * before method-awareness existed keeps its original meaning.
+   *
+   * `/api/tables` needs to be READABLE by every role — the landing screen
+   * renders the table grid whoever is signed in — while every write beneath it
+   * must exclude kitchen staff, who are display-only (prd.md:348). A path-only
+   * policy cannot express that: adding `/api/tables` for owner+waiter would
+   * have 403'd the grid for kitchen users.
+   */
+  exemptMethods?: string[]
 }
 
 export const ROUTE_ROLES: RoutePolicy[] = [
@@ -42,6 +63,29 @@ export const ROUTE_ROLES: RoutePolicy[] = [
   { prefix: '/api/orders', roles: ['owner', 'waiter'] },
   { prefix: '/api/bills', roles: ['owner', 'waiter'] },
   { prefix: '/api/payments', roles: ['owner', 'waiter'] },
+
+  // Opening and closing table sessions is order entry, so it follows the same
+  // rule. Reads are exempt because every role's landing screen calls
+  // GET /api/tables; every write — including verbs that do not exist yet — is
+  // owner + waiter.
+  //
+  // NOTE for whoever adds table CRUD: prd.md:341-357 reserves table
+  // configuration for owner, but this prefix cannot distinguish
+  // `POST /api/tables` (create a table, owner-only) from
+  // `POST /api/tables/:id/sessions` (seat a table, waiters too). When a CRUD
+  // handler lands, give it its own longer-prefix policy — longest match wins,
+  // so `/api/tables/config` or similar will correctly override this entry.
+  {
+    prefix: '/api/tables',
+    roles: ['owner', 'waiter'],
+    exemptMethods: ['GET', 'HEAD'],
+  },
+
+  // The order entry screen itself. Kitchen staff are excluded from opening
+  // sessions, so letting them read the order screen — covers, timing, session
+  // detail — by typing a URL would make that exclusion cosmetic. The table grid
+  // at `/` stays open to every role; this is only the per-table screen.
+  { prefix: '/tables', roles: ['owner', 'waiter'] },
 ]
 
 /**
@@ -53,22 +97,40 @@ export const ROUTE_ROLES: RoutePolicy[] = [
  * the moment it is added, and would surface as a confusing 403 rather than an
  * obvious missing-policy error.
  */
-export function findRoutePolicy(pathname: string): RoutePolicy | null {
+export function findRoutePolicy(pathname: string, method?: string): RoutePolicy | null {
   let match: RoutePolicy | null = null
 
   for (const policy of ROUTE_ROLES) {
-    if (pathname === policy.prefix || pathname.startsWith(`${policy.prefix}/`)) {
-      if (!match || policy.prefix.length > match.prefix.length) {
-        match = policy
-      }
+    if (pathname !== policy.prefix && !pathname.startsWith(`${policy.prefix}/`)) continue
+
+    // Method filtering happens DURING matching, not after.
+    //
+    // Filtering afterwards would let a method-mismatched longest prefix shadow a
+    // shorter policy that does apply, silently widening access. A policy that
+    // does not govern this method is simply not a candidate.
+    //
+    // Exemption, not allowlist: only the methods named are skipped, so any verb
+    // nobody thought about stays governed.
+    if (policy.exemptMethods && method && policy.exemptMethods.includes(method.toUpperCase())) {
+      continue
+    }
+
+    if (!match || policy.prefix.length > match.prefix.length) {
+      match = policy
     }
   }
 
   return match
 }
 
-/** True when the role may access the path. Unrestricted paths allow any role. */
-export function isRoleAllowed(pathname: string, role: StaffRole): boolean {
-  const policy = findRoutePolicy(pathname)
+/**
+ * True when the role may access the path. Unrestricted paths allow any role.
+ *
+ * `method` is optional so existing callers and tests keep working; omitting it
+ * means no exemption can apply, so the policy governs everything — the
+ * conservative direction (deny more, never less).
+ */
+export function isRoleAllowed(pathname: string, role: StaffRole, method?: string): boolean {
+  const policy = findRoutePolicy(pathname, method)
   return policy === null || policy.roles.includes(role)
 }

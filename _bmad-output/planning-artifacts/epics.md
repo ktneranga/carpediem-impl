@@ -40,7 +40,7 @@ This document provides the complete epic and story breakdown for the Carpe Diem 
 - FR15: System generates a KOT-P (Pizza Kitchen Order Ticket) for pizza kitchen-destined items on order submission
 - FR16: System generates a BOT (Bar Order Ticket) for bar-destined items on order submission
 - FR17: System prints generated tickets to a configured ESC/POS thermal printer
-- FR18: Each printed ticket includes table identifier, seat identifiers, item names, quantities, and ticket type label (KOT / KOT-P / BOT)
+- FR18: Each printed ticket includes **every table identifier in the session** (e.g. `BB1 + BB3`), seat identifiers, item names, quantities, and ticket type label (KOT / KOT-P / BOT) *(amended 2026-09-06 for FR62 merged tables)*
 - FR19: System displays tickets on a KDS/BOT screen when display mode is enabled per station (configuration-driven)
 - FR20: Kitchen/Bar staff can mark a displayed ticket as in-progress or completed (when KDS mode is enabled)
 
@@ -68,7 +68,7 @@ This document provides the complete epic and story breakdown for the Carpe Diem 
 - FR37: Owner and Manager can manually reset or adjust portion counts (e.g., at start of service)
 
 **Staff Authentication & Access Control**
-- FR38: Staff can authenticate on any device using a personal 4–6 digit PIN
+- FR38: Staff can authenticate on any device using a personal 4 digit PIN *(amended 2026-09-06 from 4–6)*
 - FR39: Owner can create, edit, and deactivate staff accounts, assigning each a role and PIN
 - FR40: System enforces role-based access — each capability is available only to roles holding the relevant permission
 - FR41: Session duration and expiry behaviour is controlled by the tenant's `auth_mode` and `session_timeout_minutes` configuration flags
@@ -341,7 +341,7 @@ _Actionable requirements from the UX Design Specification:_
 - FR15 (KOT-P generation for pizza kitchen items)
 - FR16 (BOT generation for bar items)
 - FR17 (print to configured ESC/POS thermal printer)
-- FR18 (ticket includes table, seats, items, quantities, ticket type label)
+- FR18 (ticket includes **all** session table identifiers, seats, items, quantities, ticket type label — amended 2026-09-06 for merged tables)
 - FR19 (KDS display when display mode enabled per station)
 - FR20 (kitchen/bar staff mark ticket in-progress or completed on KDS)
 - UX-DR10 (KOTTicket component — table, seats, items, type label, in-progress/completed states)
@@ -690,14 +690,14 @@ So that I can use it on a tablet in direct sunlight without browser chrome, conf
 ### Story 2.1: Build PINPad Component
 
 As a staff member,
-I want a touch-friendly PIN entry pad that accepts my 4–6 digit PIN without invoking the device keyboard,
+I want a touch-friendly PIN entry pad that accepts my 4 digit PIN without invoking the device keyboard,
 So that I can authenticate quickly on any tablet or touchscreen without the software keyboard obscuring the screen.
 
 **Acceptance Criteria:**
 
 **Given** the PINPad component is rendered
 **When** a staff member views it
-**Then** it displays a digit grid (1–9, then 0) plus Clear and Submit buttons; a PIN dot progress indicator showing filled/empty dots per entered digit; all digit buttons are 80×80px
+**Then** it displays a digit grid (1–9, then 0) plus Clear and backspace keys — no Submit button, since entry ends on the fourth digit *(amended 2026-09-06)*; a PIN dot progress indicator of four dots showing filled/empty per entered digit; all digit buttons are 96×96px *(amended 2026-09-06: was 80×80px; the design pass raised the key size and the first PIN amendment missed this line)*
 
 **Given** a staff member taps a digit button
 **When** the tap is registered
@@ -715,13 +715,15 @@ So that I can authenticate quickly on any tablet or touchscreen without the soft
 **When** they tap Clear
 **Then** all entered digits are removed and all dots return to empty state
 
-**Given** a staff member has entered their full PIN (4–6 digits)
-**When** they tap Submit
-**Then** the component calls the provided `onSubmit` callback with the entered PIN string; the PIN value is cleared from component state immediately after the callback is invoked
+**Given** a staff member has entered their fourth digit
+**When** that digit lands
+**Then** the component calls the provided `onSubmit` callback with the entered PIN string automatically, with no confirm tap; the PIN value is cleared from component state immediately after the callback is invoked
 
-**Given** a staff member taps Submit with fewer than 4 digits entered
-**When** the submission is attempted
-**Then** submission is rejected; an inline error "PIN must be at least 4 digits" is shown; `onSubmit` is not called
+**Given** a staff member has entered fewer than four digits
+**When** they stop entering
+**Then** nothing is submitted and no error is shown — an incomplete PIN is a normal intermediate state, not a mistake; Clear and backspace remain available
+
+> **Amended 2026-09-06.** These two ACs previously described a Submit button and a "PIN must be at least 4 digits" error. Both are gone. PIN length is now fixed at 4 (PRD FR38, amended the same day), which makes the fourth digit an unambiguous end of entry — so the pad signs in on its own. A confirm button could no longer be in a valid state: below four digits it would have to refuse, and at four the pad has already submitted. The short-PIN error is likewise unreachable, because the pad cannot hold a fifth digit and submits on the fourth.
 
 ---
 
@@ -895,9 +897,9 @@ So that I can instantly know which tables are available without hunting.
 
 **Given** the table grid is displayed
 **When** another device opens or closes a table session
-**Then** the affected `TableCard` updates its status colour and label within 2 seconds via Socket.io `table:statusChanged` event; no manual refresh is required
+**Then** the affected `TableCard` updates its status colour and label within 2 seconds via Socket.io `table:status_changed` event; no manual refresh is required
 
-**Given** the Socket.io `table:statusChanged` event is received
+**Given** the Socket.io `table:status_changed` event is received
 **When** TanStack Query processes the invalidation
 **Then** only the affected table's data is refetched; the full table list is not re-fetched
 
@@ -905,9 +907,9 @@ So that I can instantly know which tables are available without hunting.
 **When** a waiter views its `TableCard`
 **Then** the card is tappable and navigates to the table detail/order screen
 
-**Given** a table with status "closed"
+**Given** a table with status `unavailable`
 **When** a waiter views its `TableCard`
-**Then** the card is visually distinct (greyed or `status-alert` colour); tapping it does not open a session; a "Closed" label is visible
+**Then** the card is visually distinct (greyed or `status-alert` colour); tapping it does not open a session; an "Unavailable" label is visible
 
 **Given** `GET /api/tables` is called to load the grid data
 **When** the Route Handler responds
@@ -925,27 +927,29 @@ So that I can start taking an order immediately without any setup steps.
 
 **Given** a waiter taps an "open" table card
 **When** the tap is registered
-**Then** `POST /api/tables/:tableId/sessions` is called; a new `order_session` row is created with `table_id`, `opened_by_staff_id` (from `x-staff-id` header), `opened_at`, and `status: "active"`; the table status updates to "occupied"
+**Then** `POST /api/tables/:tableId/sessions` is called *(amended 2026-09-06: accepts an optional `additionalTableIds` array for a merged seating — all tables must share a zone, see Story 3.8)*; a new `order_sessions` row is created with `table_id` (the primary table), `opened_by_staff_id` (from `x-staff-id` header), and `opened_at`, **plus one `order_session_tables` row per table in the group**; `closed_at` is left NULL, which is what marks the session open; `tables.status` updates to `occupied` for every table in the group
 
 **Given** the session is created successfully
 **When** the Route Handler returns
-**Then** the waiter is navigated to the order entry screen for that table; the `ContextHeader` breadcrumb updates to reflect the selected table; a `table:statusChanged` Socket.io event is emitted to all connected clients
+**Then** the waiter is navigated to the order entry screen for that table; the `ContextHeader` breadcrumb updates to reflect the selected table; a `table:status_changed` Socket.io event is emitted to all connected clients
 
 **Given** two waiters tap the same "open" table simultaneously
 **When** both `POST /api/tables/:tableId/sessions` requests arrive concurrently
-**Then** exactly one session is created; the second request receives HTTP 409 with `{ success: false, error: { code: "TABLE_ALREADY_OCCUPIED" } }`; no duplicate session rows exist (enforced by a unique constraint on `table_id` where `status = "active"`)
+**Then** exactly one session is created; the second request receives HTTP 409 with `{ success: false, error: { code: "TABLE_ALREADY_OCCUPIED" } }`; no duplicate session rows exist — enforced by the existing partial unique index `idx_order_sessions_one_open_per_table` on `table_id WHERE closed_at IS NULL`, not by application logic
 
 **Given** a waiter attempts to open a session on an already "occupied" table
 **When** `POST /api/tables/:tableId/sessions` is called
 **Then** HTTP 409 is returned with `{ success: false, error: { code: "TABLE_ALREADY_OCCUPIED" } }`; no new session is created
 
-**Given** a waiter attempts to open a session on a "closed" table
+**Given** a waiter attempts to open a session on an `unavailable` table
 **When** `POST /api/tables/:tableId/sessions` is called
 **Then** HTTP 422 is returned with `{ success: false, error: { code: "TABLE_NOT_AVAILABLE" } }`; no session is created
 
 **Given** the `order_session` row that was just created
 **When** inspected in the database
-**Then** `opened_by_staff_id` matches the `x-staff-id` header from the request; `status` is `"active"`; `closed_at` is null
+**Then** `opened_by_staff_id` matches the `x-staff-id` header from the request; `closed_at` is NULL; `closed_by_staff_id` is NULL
+
+> **Schema note (corrected 2026-08-21):** `order_sessions` has **no `status` column**. An open session is one whose `closed_at IS NULL` — that is also what the partial unique index keys on. Earlier drafts of these ACs referred to `status: "active"`, which does not exist; implementing against it would fail at the first insert. Table availability is a separate column, `tables.status`, whose values are `open | occupied | unavailable` (there is no `closed`).
 
 ---
 
@@ -963,11 +967,11 @@ So that I can check what's open across the restaurant without navigating to each
 
 **Given** the occupied tables summary view is displayed
 **When** a table session is closed on another device
-**Then** that table's card is removed from the summary within 2 seconds via Socket.io `table:statusChanged` event
+**Then** that table's card is removed from the summary within 2 seconds via Socket.io `table:status_changed` event
 
 **Given** the occupied tables summary view is displayed
 **When** a new table session is opened on another device
-**Then** that table's card appears in the summary within 2 seconds via Socket.io `table:statusChanged` event
+**Then** that table's card appears in the summary within 2 seconds via Socket.io `table:status_changed` event
 
 **Given** a waiter taps an occupied table card in the summary view
 **When** the tap is registered
@@ -1012,6 +1016,164 @@ So that staff can orient themselves spatially if the restaurant layout benefits 
 **Then** it is read from the `tenant_config` table at request time, not hardcoded; changing the value in the database takes effect without a code deployment
 
 ---
+### Story 3.6: Implement Close Table Without Payment
+
+> **Added 2026-09-06** by `sprint-change-proposal-2026-09-06.md`. Raised from the running application: a table could be occupied but never released. The only close in the entire plan was a side effect of full payment (Story 6.5), and that path is gated on a settled bill — which a session with no items can never produce. Mis-taps, parties leaving before ordering, and walkouts all left a table permanently occupied.
+
+As a waiter,
+I want to release a table that was opened by mistake or whose party left without ordering or paying,
+So that the floor plan stays true and a wrong tap is not permanent.
+
+**Acceptance Criteria:**
+
+**Given** a waiter is on the order screen for an open session with no submitted items
+**When** they tap "Close table" and choose the reason `abandoned`
+**Then** `POST /api/tables/:tableId/sessions/close` is called with `{ reason: "abandoned" }`; the `order_sessions` row has `closed_at` and `closed_by_staff_id` set; **`released_at` is set on every `order_session_tables` row for the session and every table in the group returns to `open`** *(amended 2026-09-06 for merged tables, Story 3.8)*; a `table:status_changed` event is emitted per affected table and every connected device updates within 2 seconds
+
+**Given** the session being closed has submitted items
+**When** the waiter chooses the reason `abandoned`
+**Then** HTTP 409 is returned with `{ success: false, error: { code: "SESSION_HAS_ITEMS" } }` — a session with orders in it is a walkout or a bill, never an abandonment; the reason must be `walkout`, which requires the confirmation below
+
+**Given** a waiter closes a session with submitted items as `walkout`
+**When** the close is submitted
+**Then** an explicit confirmation is required before the request is sent, stating the unpaid total; the session closes; the unpaid amount is recorded so it is not silently lost from revenue
+
+**Given** any session is closed without payment
+**When** the close transaction commits
+**Then** an append-only `order_events` row is written with `event_type: 'SESSION_CLOSED'`, the acting `staff_id`, and `notes` carrying the reason; this happens in the same transaction as the close, so a closed session always has its audit record
+
+**Given** a session is opened
+**When** the `order_sessions` row is created
+**Then** an append-only `order_events` row is written with `event_type: 'SESSION_OPENED'` and the acting `staff_id`, in the same transaction — closing the existing gap where sessions are created with no audit event at all despite the enum value existing (retrofit to Story 3.3's endpoint)
+
+**Given** two devices attempt to close the same session simultaneously
+**When** both requests arrive concurrently
+**Then** exactly one succeeds; the second receives HTTP 409 with `{ code: "SESSION_ALREADY_CLOSED" }`; the close is conditional on `closed_at IS NULL` within the transaction, so the database decides the winner rather than application logic — the same principle as Story 3.3's open path
+
+**Given** a kitchen staff member attempts to close a session
+**When** `POST /api/tables/:tableId/sessions/close` is called
+**Then** HTTP 403 is returned — closing is a write beneath `/api/tables`, already restricted to owner + waiter by the method-scoped policy added in Story 3.3
+
+> **Schema note:** No migration is required. `SESSION_OPENED` and `SESSION_CLOSED` already exist as distinct values in `orderEventTypeEnum` (separate from `SESSION_SETTLED`), and `order_sessions` already carries `closed_at` and `closed_by_staff_id`. The data model anticipated a close that is not a settlement; only the epics failed to spec it.
+
+> **Shared service:** the close logic belongs in one place. Story 6.5's settled auto-close calls the same service with reason `settled`, so a settled close and an unpaid close produce identical session and audit records, differing only in reason.
+
+---
+
+### Story 3.7: Implement Table Availability (Out of Service / Return to Service)
+
+> **Added 2026-09-06** by `sprint-change-proposal-2026-09-06-merge-and-availability.md`. `tables.status` has an `unavailable` value that only the seed ever set — no route could change it, so a waiter finding a broken sun bed could not stop guests being seated there, and nobody could put it back.
+
+As a waiter,
+I want to take a broken or unusable table out of service immediately,
+So that guests are not seated at it while I find someone to fix it.
+
+As an owner,
+I want to be the only person who can return a table to service,
+So that a table is not made bookable again before the problem is actually resolved.
+
+**Acceptance Criteria:**
+
+**Given** a waiter or owner selects a table with no open session
+**When** `POST /api/tables/:tableId/out-of-service` is called with `{ reason: string }`
+**Then** `tables.status` becomes `unavailable`; the reason is stored; a `table:status_changed` event is emitted and every device updates within 2 seconds; HTTP 200 is returned
+
+**Given** a table has an open session
+**When** taking it out of service is attempted
+**Then** HTTP 409 is returned with `{ success: false, error: { code: "TABLE_HAS_OPEN_SESSION" } }` — close or settle the session first; a table with guests at it cannot silently vanish from the floor plan
+
+**Given** an owner selects a table that is out of service
+**When** `POST /api/config/tables/:tableId/return-to-service` is called
+**Then** `tables.status` returns to `open`; the stored reason is cleared; a `table:status_changed` event is emitted; HTTP 200 is returned
+
+**Given** a waiter or kitchen staff member attempts to return a table to service
+**When** `POST /api/config/tables/:tableId/return-to-service` is called
+**Then** HTTP 403 is returned — enforced by the existing `{ prefix: '/api/config', roles: ['owner'] }` policy, which is why this route is namespaced under config rather than under `/api/tables`
+
+**Given** a waiter selects an unavailable table on the floor screen
+**When** the action strip renders
+**Then** it shows the table state and the stored reason with **no** return-to-service control; an owner in the same position sees the control. Hiding the button is courtesy — the 403 above is the enforcement
+
+**Given** any availability change
+**When** the transaction commits
+**Then** an append-only audit row records the acting staff member, the direction of the change, the reason, and a timestamp — `tables.status` changes are currently unrecorded, so nobody can answer "who took table 6 out and why"
+
+> **Routing note:** return-to-service is deliberately `/api/config/...` and out-of-service is `/api/tables/...`. The two existing policies then produce the asymmetry with **no `permissions.ts` change at all**. Prefix matching cannot distinguish `/api/tables/:id/x` from `/api/tables/:id/y` because the dynamic segment defeats longest-prefix specialisation — the namespace is what carries the permission.
+
+> **Schema note:** storing the reason needs a column (`tables.unavailable_reason text`, nullable) — the only schema change in this story, and it is additive.
+
+---
+
+### Story 3.8: Implement Within-Zone Table Merging
+
+> **Added 2026-09-06** by the same proposal. The PRD names merged tables as a core differentiator (`prd.md:38-40`) but no FR, story or schema support existed — `order_sessions.table_id` was single-valued, so one order across two tables was not merely unbuilt, it was inexpressible. Scope confirmed with Teran: merging happens **within a zone**, not across.
+
+As a waiter,
+I want to seat one party across two or more tables in the same zone and take a single order for them,
+So that a group that needs more space is still one order, one ticket and one bill.
+
+**Acceptance Criteria:**
+
+**Given** a waiter selects an open table and taps "Merge"
+**When** the merge mode is active
+**Then** the action strip shows the anchor table, an instruction to tap tables to add, and Cancel / Done; tapping a table toggles it into the group with a clear visual state. Merging is an **explicit mode** — single-tap never changes meaning outside it, because a tap that sometimes selects and sometimes adds produces wrong merges during service, and a wrong merge puts one party's items on another party's bill
+
+**Given** a merge group is confirmed on tables with no open session
+**When** `POST /api/tables/:tableId/sessions` is called with `{ additionalTableIds: [...] }`
+**Then** one `order_sessions` row is created and one `order_session_tables` row per table; every table's status becomes `occupied`; a `table:status_changed` event is emitted **per table**; HTTP 201 is returned
+
+**Given** a merge is attempted across zones
+**When** the request is submitted
+**Then** HTTP 422 is returned with `{ code: "CROSS_ZONE_MERGE" }`; all tables in a group must share a `zone_id`
+
+**Given** a waiter merges an additional table into a table that already has an open session
+**When** `POST /api/tables/:tableId/merge` is called with `{ tableIds: [...] }`
+**Then** the named tables join the existing session; they become `occupied`; the order, its items and its audit trail are untouched
+
+**Given** both tables in a merge attempt already have open sessions
+**When** the merge is submitted
+**Then** HTTP 409 is returned with `{ code: "BOTH_TABLES_OCCUPIED" }` — combining two live orders is retroactive item re-assignment, which is a Growth-tier feature (`prd.md:113`) and requires deciding whose items are whose
+
+**Given** a table belongs to a merged group
+**When** its card renders on the floor screen
+**Then** it displays as occupied, shows the group it belongs to (e.g. `BB1 + BB3`), and shares the group's elapsed time and totals — a waiter glancing at the second table must not see an unexplained occupied table
+
+**Given** a waiter un-merges a table from an open group
+**When** `POST /api/tables/:tableId/unmerge` is called
+**Then** `released_at` is set on that `order_session_tables` row; the table returns to `open`; the session and its order continue on the remaining tables; if the released table was the primary, another table in the group is promoted
+
+**Given** a merged session is closed or settled
+**When** the close transaction commits
+**Then** `released_at` is set on **every** table in the group and all of them return to `open`
+
+**Given** an order is submitted from a merged session
+**When** the ticket is generated
+**Then** it names every table in the session (FR18, amended 2026-09-06) — a runner with one table name and two possible destinations cannot deliver
+
+**Given** any merge or un-merge
+**When** the transaction commits
+**Then** an append-only audit row records the acting staff member, the tables affected, and the direction
+
+> **Schema — the one structural change:**
+> ```sql
+> order_session_tables (
+>   session_id  uuid not null references order_sessions(id),
+>   table_id    uuid not null references tables(id),
+>   attached_at timestamptz not null default now(),
+>   released_at timestamptz,
+>   primary key (session_id, table_id)
+> )
+> create unique index idx_one_open_session_per_table
+>   on order_session_tables (table_id) where released_at is null;
+> ```
+> This index **replaces** `idx_order_sessions_one_open_per_table`. The old one cannot express the invariant once tables live in a join table: a partial index cannot reach into another table to ask whether the session is open. Putting `released_at` on the join row makes the constraint self-contained and gives un-merge for free.
+>
+> `order_sessions.table_id` is retained as the **primary** table for breadcrumbs, labels and ticket headers. The join table holds every table including the primary. Migration backfills one join row per existing session.
+
+> **Why one session rather than linked sessions:** orders, bills, payments and the audit trail already hang off `session_id`. One session means every one of them works unchanged — Epic 6 in particular needs no new concept, and the PRD's "merged tables settle individually" is delivered by the existing split-by-person. Linked sessions would mean fanning out across a group on every read, in application code, forever.
+
+---
+
 
 ## Epic 4: Order Entry & Multi-Destination Routing
 
@@ -1213,7 +1375,7 @@ So that the KDS screen has a tested, accessible ticket card ready to compose.
 
 **Given** the `KOTTicket` component is rendered with ticket data
 **When** a kitchen or bar staff member views it
-**Then** the card displays: ticket type label (KOT / KOT-P / BOT) prominently; table identifier; all seat slot assignments with their items; item names and quantities per seat; submitted timestamp in human-readable format (e.g., "2:34 PM")
+**Then** the card displays: ticket type label (KOT / KOT-P / BOT) prominently; **every table identifier in the session** (e.g. `BB1 + BB3` for a merged group — amended 2026-09-06); all seat slot assignments with their items; item names and quantities per seat; submitted timestamp in human-readable format (e.g., "2:34 PM")
 
 **Given** the `KOTTicket` component in its default (new) state
 **When** it is rendered
@@ -1305,7 +1467,7 @@ So that I can manage production flow without relying on paper tickets when KDS m
 
 **Given** a kitchen staff member taps "In Progress" on a `KOTTicket` card
 **When** `PATCH /api/tickets/:ticketId/status` is called with `{ status: "in_progress" }`
-**Then** the ticket's status is updated in the database; the `KOTTicket` card transitions to `"in-progress"` state on all KDS screens displaying that ticket via Socket.io `ticket:statusChanged` event
+**Then** the ticket's status is updated in the database; the `KOTTicket` card transitions to `"in-progress"` state on all KDS screens displaying that ticket via Socket.io `ticket:status_changed` event
 
 **Given** a kitchen staff member taps "Done" on a `KOTTicket` card
 **When** `PATCH /api/tickets/:ticketId/status` is called with `{ status: "completed" }`
@@ -1495,7 +1657,7 @@ So that every payment is captured and the table closes automatically when fully 
 
 **Given** the last open bill in a session is marked `"settled"`
 **When** the payment Route Handler checks remaining open bills
-**Then** the `order_session` record is updated to `status: "closed"` with `closed_at` set; a `table:statusChanged` Socket.io event is emitted; the table's status returns to `"open"` on all connected devices within 2 seconds
+**Then** it calls the shared session-close service introduced in Story 3.6 with reason `settled`, which sets `closed_at` and `closed_by_staff_id` (there is no `status` column — see the schema note on Story 3.3), writes the `SESSION_CLOSED` audit event, and emits `table:status_changed`; `tables.status` returns to `open` on all connected devices within 2 seconds. The close is **not** reimplemented here — a settled close and an unpaid close must produce identical session and audit records, differing only in reason. *(Amended 2026-09-06 by sprint-change-proposal-2026-09-06.md.)*
 
 **Given** any payment amount written to the database
 **When** the `payment_record` row is inspected
@@ -1955,6 +2117,12 @@ So that I can control exactly who can access the system and what each person is 
 **When** `POST /api/staff` is called
 **Then** the PIN is hashed with bcrypt (cost 10) server-side before storage; the plaintext PIN is never written to the database, logged, or returned in any response; a new `staff` row is created with `name`, `role`, `pin_hash`, `active: true`, and `created_at`; HTTP 201 is returned
 
+**Given** an owner submits a new or changed PIN for any staff member
+**When** the PIN is validated before saving
+**Then** it is rejected with HTTP 409 and the message "That PIN is already in use" if any other **active** staff member in the tenant already holds it; the check is performed by comparing the candidate PIN against every active `pin_hash` with bcrypt, because salted hashes cannot be compared directly and a unique index on `pin_hash` would not work
+
+> **Added 2026-09-06 by the Story 3.3 code review.** A PIN is the entire credential — the login request carries no staff id or selector, and `POST /api/auth/login` loops every active staff member and takes the first bcrypt match. Two staff sharing a PIN therefore attributes every action by the second to the first, silently and permanently, which defeats the append-only audit trail this product is built around. Fixing PIN length at 4 digits (FR38, amended the same day) shrank the space to 10,000 values and raised the collision probability roughly 100x: negligible at 3 staff, better than even odds that some pair collides at around 25. The comparison costs one bcrypt call per active staff member, which is the same cost the login route already pays on every sign-in, and it happens only when a PIN is set.
+
 **Given** the create form is submitted
 **When** the `role` field is inspected
 **Then** it accepts only: `"staff"`, `"manager"`, `"owner"`, `"kitchen"`; any other value returns HTTP 422
@@ -2000,6 +2168,8 @@ So that the system accurately reflects the physical layout and production setup 
 **Given** an owner edits a zone name or table identifier
 **When** `PATCH /api/zones/:zoneId` or `PATCH /api/tables/:tableId` is called
 **Then** the name or identifier is updated; the change is reflected in the waiter's UI on next load; active sessions on affected tables are not disrupted
+
+> **Amended 2026-09-06.** Two notes for whoever builds this story. (1) **Table availability is NOT owned here** — taking a table out of service and returning it are Story 3.7, and return-to-service is namespaced under `/api/config` so the existing owner-only policy enforces it. (2) `PATCH /api/tables/:tableId` as written sits under the `/api/tables` prefix, which is `owner + waiter` for every write — so this rename route is currently **waiter-reachable**, against `prd.md:341-357` reserving configuration for owner. Move it under `/api/config/tables/:tableId` or give it explicit owner-only enforcement. A dynamic path segment defeats longest-prefix specialisation, so the namespace is what carries the permission.
 
 **Given** an owner attempts to delete a zone or table that has an active session
 **When** the deletion is submitted

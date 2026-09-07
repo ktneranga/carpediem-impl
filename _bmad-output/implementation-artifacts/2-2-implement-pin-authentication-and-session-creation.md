@@ -2,6 +2,8 @@
 
 Status: review
 
+> ⚠️ **SUPERSEDED IN PART — 2026-09-06.** PIN length was fixed at 4 digits (PRD FR38, amended). The PIN pad now auto-submits on the fourth digit; the Submit button, the `SHORT_PIN_ERROR` path and the 4–6 digit range described below no longer exist, and the login schema is `/^\d{4}$/`. Digit keys are 96×96px, not 80×80px. This file is a point-in-time record and is deliberately NOT rewritten — read `epics.md` Story 2.1 for the current acceptance criteria, and Story 3.3's Review Findings for why the change was made.
+
 - **Epic:** 2 — Staff Authentication & Session Management
 - **Story ID:** 2.2
 - **Story Key:** 2-2-implement-pin-authentication-and-session-creation

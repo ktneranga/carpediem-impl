@@ -1,0 +1,269 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    a { color: #2288B4; } a:hover { color: #1A6A8C; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 1194px; height: 834px; display: flex; flex-direction: column; background: #F1F5F9; overflow: hidden;">
+
+  <!-- Header — brand-700, always visible -->
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 76px; background: #1A6A8C; flex-shrink: 0;">
+    <div style="display: flex; align-items: center; gap: 20px;">
+      <div style="display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; background: rgba(255,255,255,0.14);">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 3px;">
+        <div style="font-size: 18px; font-weight: 700; color: #FFFFFF; letter-spacing: -0.01em;">Carpe Diem</div>
+        <div style="display: flex; align-items: center; gap: 7px; font-size: 13px; color: #9DDCF5;">
+          <span style="font-weight: 500;">Zones</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7ACEED" stroke-width="2.5" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+          <span>All zones</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 14px 7px 8px; border-radius: 999px; background: rgba(255,255,255,0.14);">
+        <div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 999px; background: #6EC1E4; font-size: 12px; font-weight: 700; color: #0F4560;">N</div>
+        <span style="font-size: 14px; font-weight: 600; color: #FFFFFF;">Nina</span>
+        <span style="padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,0.2); font-size: 10px; font-weight: 600; color: #EBF8FD; letter-spacing: 0.04em; text-transform: uppercase;">Waiter</span>
+      </div>
+      <div style="font-size: 15px; font-weight: 600; color: #CCF0FB; font-variant-numeric: tabular-nums;">19:42</div>
+    </div>
+  </div>
+
+  <!-- Zone filter -->
+  <div style="display: flex; align-items: center; gap: 10px; padding: 18px 24px 14px; flex-shrink: 0;">
+    <div style="padding: 10px 20px; border-radius: 999px; background: #2288B4; font-size: 14px; font-weight: 600; color: #FFFFFF; box-shadow: 0 1px 3px rgba(34,136,180,0.3);">All Zones</div>
+    <div style="padding: 10px 20px; border-radius: 999px; background: #FFFFFF; border: 1.5px solid #E2E8F0; font-size: 14px; font-weight: 600; color: #475569;">Bean Bags</div>
+    <div style="padding: 10px 20px; border-radius: 999px; background: #FFFFFF; border: 1.5px solid #E2E8F0; font-size: 14px; font-weight: 600; color: #475569;">Sun Beds</div>
+    <div style="padding: 10px 20px; border-radius: 999px; background: #FFFFFF; border: 1.5px solid #E2E8F0; font-size: 14px; font-weight: 600; color: #475569;">Tables</div>
+    <div style="padding: 10px 20px; border-radius: 999px; background: #FFFFFF; border: 1.5px solid #E2E8F0; font-size: 14px; font-weight: 600; color: #475569;">Rooftop</div>
+
+    <div style="flex-grow: 1;"></div>
+
+    <div style="display: flex; align-items: center; gap: 16px; font-size: 13px; font-weight: 500; color: #475569;">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="width: 8px; height: 8px; border-radius: 999px; background: #22C55E;"></span>
+        <span>8 open</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="width: 8px; height: 8px; border-radius: 999px; background: #F59E0B;"></span>
+        <span>3 occupied</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Table grid -->
+  <div style="flex-grow: 1; padding: 6px 24px 0; overflow: hidden;">
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px;">
+
+      <!-- OCCUPIED — amber tint body, corner badge, elapsed + items -->
+      <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 148px; padding: 14px 14px 12px; border-radius: 16px; background: #FFFBEB; border: 2px solid #F59E0B; box-shadow: 0 1px 3px rgba(15,23,42,0.06);">
+        <div style="position: absolute; top: -2px; left: -2px; padding: 5px 13px; border-radius: 16px 0 16px 0; background: #F59E0B; font-size: 14px; font-weight: 700; color: #FFFFFF;">B1</div>
+        <div style="display: flex; justify-content: flex-end;">
+          <span style="font-size: 12px; font-weight: 600; color: #92400E; font-variant-numeric: tabular-nums;">19:00</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+          <div style="font-size: 15px; font-weight: 600; color: #0F172A;">4 guests</div>
+          <div style="font-size: 12px; color: #92400E;">42 min &middot; 7 items</div>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #FEF3C7; font-size: 11px; font-weight: 600; color: #92400E;">Occupied</span>
+          <span style="font-size: 11px; font-weight: 500; color: #94A3B8;">Bean Bags</span>
+        </div>
+      </div>
+
+      <!-- OPEN -->
+      <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 148px; padding: 14px 14px 12px; border-radius: 16px; background: #FFFFFF; border: 2px solid #22C55E; box-shadow: 0 1px 3px rgba(15,23,42,0.06);">
+        <div style="position: absolute; top: -2px; left: -2px; padding: 5px 13px; border-radius: 16px 0 16px 0; background: #22C55E; font-size: 14px; font-weight: 700; color: #FFFFFF;">B2</div>
+        <div></div>
+        <div style="font-size: 15px; font-weight: 600; color: #94A3B8;">Seats 2</div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #DCFCE7; font-size: 11px; font-weight: 600; color: #166534;">Open</span>
+          <span style="font-size: 11px; font-weight: 500; color: #94A3B8;">Bean Bags</span>
+        </div>
+      </div>
+
+      <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 148px; padding: 14px 14px 12px; border-radius: 16px; background: #FFFFFF; border: 2px solid #22C55E; box-shadow: 0 1px 3px rgba(15,23,42,0.06);">
+        <div style="position: absolute; top: -2px; left: -2px; padding: 5px 13px; border-radius: 16px 0 16px 0; background: #22C55E; font-size: 14px; font-weight: 700; color: #FFFFFF;">B3</div>
+        <div></div>
+        <div style="font-size: 15px; font-weight: 600; color: #94A3B8;">Seats 4</div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #DCFCE7; font-size: 11px; font-weight: 600; color: #166534;">Open</span>
+          <span style="font-size: 11px; font-weight: 500; color: #94A3B8;">Bean Bags</span>
+        </div>
+      </div>
+
+      <!-- OCCUPIED, long-running -->
+      <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 148px; padding: 14px 14px 12px; border-radius: 16px; background: #FFFBEB; border: 2px solid #F59E0B; box-shadow: 0 1px 3px rgba(15,23,42,0.06);">
+        <div style="position: absolute; top: -2px; left: -2px; padding: 5px 13px; border-radius: 16px 0 16px 0; background: #F59E0B; font-size: 14px; font-weight: 700; color: #FFFFFF;">S1</div>
+        <div style="display: flex; justify-content: flex-end;">
+          <span style="font-size: 12px; font-weight: 600; color: #92400E; font-variant-numeric: tabular-nums;">19:34</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+          <div style="font-size: 15px; font-weight: 600; color: #0F172A;">2 guests</div>
+          <div style="font-size: 12px; color: #92400E;">8 min &middot; 1 item</div>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #FEF3C7; font-size: 11px; font-weight: 600; color: #92400E;">Occupied</span>
+          <span style="font-size: 11px; font-weight: 500; color: #94A3B8;">Sun Beds</span>
+        </div>
+      </div>
+
+      <!-- UNAVAILABLE — muted, inert -->
+      <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 148px; padding: 14px 14px 12px; border-radius: 16px; background: #FEF2F2; border: 2px solid #FCA5A5; box-shadow: none; opacity: 0.85;">
+        <div style="position: absolute; top: -2px; left: -2px; padding: 5px 13px; border-radius: 16px 0 16px 0; background: #EF4444; font-size: 14px; font-weight: 700; color: #FFFFFF;">S2</div>
+        <div></div>
+        <div style="font-size: 13px; font-weight: 500; color: #991B1B;">Umbrella broken</div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #FEE2E2; font-size: 11px; font-weight: 600; color: #991B1B;">Unavailable</span>
+          <span style="font-size: 11px; font-weight: 500; color: #94A3B8;">Sun Beds</span>
+        </div>
+      </div>
+
+      <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 148px; padding: 14px 14px 12px; border-radius: 16px; background: #FFFFFF; border: 2px solid #22C55E; box-shadow: 0 1px 3px rgba(15,23,42,0.06);">
+        <div style="position: absolute; top: -2px; left: -2px; padding: 5px 13px; border-radius: 16px 0 16px 0; background: #22C55E; font-size: 14px; font-weight: 700; color: #FFFFFF;">S3</div>
+        <div></div>
+        <div style="font-size: 15px; font-weight: 600; color: #94A3B8;">Seats 2</div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #DCFCE7; font-size: 11px; font-weight: 600; color: #166534;">Open</span>
+          <span style="font-size: 11px; font-weight: 500; color: #94A3B8;">Sun Beds</span>
+        </div>
+      </div>
+
+      <!-- SELECTED — brand ring, the tap target -->
+      <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 148px; padding: 14px 14px 12px; border-radius: 16px; background: #FFFFFF; border: 2px solid #2288B4; box-shadow: 0 0 0 4px #CCF0FB, 0 4px 10px rgba(34,136,180,0.15);">
+        <div style="position: absolute; top: -2px; left: -2px; padding: 5px 13px; border-radius: 16px 0 16px 0; background: #2288B4; font-size: 14px; font-weight: 700; color: #FFFFFF;">T1</div>
+        <div></div>
+        <div style="font-size: 15px; font-weight: 600; color: #0F172A;">Seats 4</div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #EBF8FD; font-size: 11px; font-weight: 600; color: #1A6A8C;">Selected</span>
+          <span style="font-size: 11px; font-weight: 500; color: #94A3B8;">Tables</span>
+        </div>
+      </div>
+
+      <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 148px; padding: 14px 14px 12px; border-radius: 16px; background: #FFFFFF; border: 2px solid #22C55E; box-shadow: 0 1px 3px rgba(15,23,42,0.06);">
+        <div style="position: absolute; top: -2px; left: -2px; padding: 5px 13px; border-radius: 16px 0 16px 0; background: #22C55E; font-size: 14px; font-weight: 700; color: #FFFFFF;">T2</div>
+        <div></div>
+        <div style="font-size: 15px; font-weight: 600; color: #94A3B8;">Seats 4</div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #DCFCE7; font-size: 11px; font-weight: 600; color: #166534;">Open</span>
+          <span style="font-size: 11px; font-weight: 500; color: #94A3B8;">Tables</span>
+        </div>
+      </div>
+
+      <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 148px; padding: 14px 14px 12px; border-radius: 16px; background: #FFFBEB; border: 2px solid #F59E0B; box-shadow: 0 1px 3px rgba(15,23,42,0.06);">
+        <div style="position: absolute; top: -2px; left: -2px; padding: 5px 13px; border-radius: 16px 0 16px 0; background: #F59E0B; font-size: 14px; font-weight: 700; color: #FFFFFF;">T3</div>
+        <div style="display: flex; justify-content: flex-end;">
+          <span style="font-size: 12px; font-weight: 600; color: #92400E; font-variant-numeric: tabular-nums;">18:35</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+          <div style="font-size: 15px; font-weight: 600; color: #0F172A;">6 guests</div>
+          <div style="font-size: 12px; color: #92400E;">67 min &middot; 12 items</div>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #FEF3C7; font-size: 11px; font-weight: 600; color: #92400E;">Occupied</span>
+          <span style="font-size: 11px; font-weight: 500; color: #94A3B8;">Tables</span>
+        </div>
+      </div>
+
+      <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 148px; padding: 14px 14px 12px; border-radius: 16px; background: #FFFFFF; border: 2px solid #22C55E; box-shadow: 0 1px 3px rgba(15,23,42,0.06);">
+        <div style="position: absolute; top: -2px; left: -2px; padding: 5px 13px; border-radius: 16px 0 16px 0; background: #22C55E; font-size: 14px; font-weight: 700; color: #FFFFFF;">T4</div>
+        <div></div>
+        <div style="font-size: 15px; font-weight: 600; color: #94A3B8;">Seats 6</div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #DCFCE7; font-size: 11px; font-weight: 600; color: #166534;">Open</span>
+          <span style="font-size: 11px; font-weight: 500; color: #94A3B8;">Tables</span>
+        </div>
+      </div>
+
+      <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 148px; padding: 14px 14px 12px; border-radius: 16px; background: #FFFFFF; border: 2px solid #22C55E; box-shadow: 0 1px 3px rgba(15,23,42,0.06);">
+        <div style="position: absolute; top: -2px; left: -2px; padding: 5px 13px; border-radius: 16px 0 16px 0; background: #22C55E; font-size: 14px; font-weight: 700; color: #FFFFFF;">R1</div>
+        <div></div>
+        <div style="font-size: 15px; font-weight: 600; color: #94A3B8;">Seats 4</div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #DCFCE7; font-size: 11px; font-weight: 600; color: #166534;">Open</span>
+          <span style="font-size: 11px; font-weight: 500; color: #94A3B8;">Rooftop</span>
+        </div>
+      </div>
+
+      <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 148px; padding: 14px 14px 12px; border-radius: 16px; background: #FFFFFF; border: 2px solid #22C55E; box-shadow: 0 1px 3px rgba(15,23,42,0.06);">
+        <div style="position: absolute; top: -2px; left: -2px; padding: 5px 13px; border-radius: 16px 0 16px 0; background: #22C55E; font-size: 14px; font-weight: 700; color: #FFFFFF;">R2</div>
+        <div></div>
+        <div style="font-size: 15px; font-weight: 600; color: #94A3B8;">Seats 4</div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #DCFCE7; font-size: 11px; font-weight: 600; color: #166534;">Open</span>
+          <span style="font-size: 11px; font-weight: 500; color: #94A3B8;">Rooftop</span>
+        </div>
+      </div>
+
+      <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 148px; padding: 14px 14px 12px; border-radius: 16px; background: #FEF2F2; border: 2px solid #FCA5A5; box-shadow: none; opacity: 0.85;">
+        <div style="position: absolute; top: -2px; left: -2px; padding: 5px 13px; border-radius: 16px 0 16px 0; background: #EF4444; font-size: 14px; font-weight: 700; color: #FFFFFF;">R3</div>
+        <div></div>
+        <div style="font-size: 13px; font-weight: 500; color: #991B1B;">Reserved private</div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #FEE2E2; font-size: 11px; font-weight: 600; color: #991B1B;">Unavailable</span>
+          <span style="font-size: 11px; font-weight: 500; color: #94A3B8;">Rooftop</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Live order strip — Chili's bottom chips, our data -->
+  <div style="display: flex; align-items: center; gap: 12px; padding: 14px 24px 16px; background: #FFFFFF; border-top: 1px solid #E2E8F0; flex-shrink: 0;">
+    <span style="font-size: 11px; font-weight: 700; color: #94A3B8; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap;">In service</span>
+
+    <div style="display: flex; align-items: center; gap: 11px; padding: 8px 16px 8px 8px; border-radius: 999px; background: #F8FAFC; border: 1px solid #E2E8F0;">
+      <div style="display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 999px; background: #F59E0B; font-size: 13px; font-weight: 700; color: #FFFFFF;">B1</div>
+      <div style="display: flex; flex-direction: column; gap: 1px;">
+        <span style="font-size: 13px; font-weight: 600; color: #0F172A;">7 items</span>
+        <span style="font-size: 11px; color: #94A3B8;">42 min &middot; Kitchen</span>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 11px; padding: 8px 16px 8px 8px; border-radius: 999px; background: #F8FAFC; border: 1px solid #E2E8F0;">
+      <div style="display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 999px; background: #F59E0B; font-size: 13px; font-weight: 700; color: #FFFFFF;">S1</div>
+      <div style="display: flex; flex-direction: column; gap: 1px;">
+        <span style="font-size: 13px; font-weight: 600; color: #0F172A;">1 item</span>
+        <span style="font-size: 11px; color: #94A3B8;">8 min &middot; Bar</span>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 11px; padding: 8px 16px 8px 8px; border-radius: 999px; background: #FFFBEB; border: 1px solid #FDE68A;">
+      <div style="display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 999px; background: #F59E0B; font-size: 13px; font-weight: 700; color: #FFFFFF;">T3</div>
+      <div style="display: flex; flex-direction: column; gap: 1px;">
+        <span style="font-size: 13px; font-weight: 600; color: #0F172A;">12 items</span>
+        <span style="font-size: 11px; color: #92400E; font-weight: 500;">67 min &middot; bill?</span>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1;"></div>
+
+    <!-- Primary action — appears only with a table selected -->
+    <div style="display: flex; align-items: center; gap: 10px; padding: 15px 30px; border-radius: 14px; background: #2288B4; box-shadow: 0 2px 6px rgba(34,136,180,0.32);">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+      <span style="font-size: 16px; font-weight: 600; color: #FFFFFF;">Start order &middot; T1</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

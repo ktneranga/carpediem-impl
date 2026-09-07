@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    a { color: #2288B4; } a:hover { color: #1A6A8C; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 1000px; height: 1180px; padding: 40px; background: #FFFFFF; overflow: hidden;">
+
+  <div style="display: flex; flex-direction: column; gap: 34px;">
+
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="font-size: 26px; font-weight: 700; color: #0F172A; letter-spacing: -0.02em;">Carpe Diem &mdash; Design System</div>
+      <div style="font-size: 14px; color: #475569; max-width: 640px; line-height: 1.6; text-wrap: pretty;">Coastal blue identity from the existing token system, evolved with the reference's card anatomy, tint fills and corner badges. Values marked <span style="color: #B45309; font-weight: 600;">NEW</span> are additions <code style="font-size: 13px; background: #F1F5F9; padding: 1px 5px; border-radius: 4px;">globals.css</code> does not yet carry.</div>
+    </div>
+
+    <!-- Brand ramp -->
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="font-size: 12px; font-weight: 700; color: #94A3B8; letter-spacing: 0.07em; text-transform: uppercase;">Brand &mdash; coastal sky blue</div>
+      <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px;">
+        <div style="display: flex; flex-direction: column; gap: 6px;"><div style="height: 56px; border-radius: 10px; background: #EBF8FD; border: 1px solid #E2E8F0;"></div><div style="font-size: 11px; font-weight: 600; color: #0F172A;">brand-50</div><div style="font-size: 10px; color: #94A3B8;">#EBF8FD</div></div>
+        <div style="display: flex; flex-direction: column; gap: 6px;"><div style="height: 56px; border-radius: 10px; background: #CCF0FB;"></div><div style="font-size: 11px; font-weight: 600; color: #0F172A;">brand-100</div><div style="font-size: 10px; color: #94A3B8;">#CCF0FB</div></div>
+        <div style="display: flex; flex-direction: column; gap: 6px;"><div style="height: 56px; border-radius: 10px; background: #6EC1E4;"></div><div style="font-size: 11px; font-weight: 600; color: #0F172A;">brand-400</div><div style="font-size: 10px; color: #94A3B8;">#6EC1E4</div></div>
+        <div style="display: flex; flex-direction: column; gap: 6px;"><div style="height: 56px; border-radius: 10px; background: #2288B4;"></div><div style="font-size: 11px; font-weight: 600; color: #0F172A;">brand-600</div><div style="font-size: 10px; color: #94A3B8;">#2288B4 &middot; AA</div></div>
+        <div style="display: flex; flex-direction: column; gap: 6px;"><div style="height: 56px; border-radius: 10px; background: #1A6A8C;"></div><div style="font-size: 11px; font-weight: 600; color: #0F172A;">brand-700</div><div style="font-size: 10px; color: #94A3B8;">#1A6A8C &middot; AAA</div></div>
+      </div>
+      <div style="font-size: 12px; color: #475569;"><strong style="color: #0F172A;">brand-600</strong> primary actions &middot; <strong style="color: #0F172A;">brand-700</strong> header and headings &middot; <strong style="color: #0F172A;">brand-50</strong> secondary fills</div>
+    </div>
+
+    <!-- Status pairs -->
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="font-size: 12px; font-weight: 700; color: #94A3B8; letter-spacing: 0.07em; text-transform: uppercase;">Table status &mdash; solid, tint, ink</div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;">
+
+        <div style="display: flex; flex-direction: column; gap: 9px; padding: 14px; border-radius: 14px; border: 1px solid #E2E8F0;">
+          <div style="display: flex; gap: 7px;">
+            <div style="flex-grow: 1; height: 40px; border-radius: 8px; background: #22C55E;"></div>
+            <div style="flex-grow: 1; height: 40px; border-radius: 8px; background: #DCFCE7;"></div>
+          </div>
+          <div style="font-size: 13px; font-weight: 600; color: #0F172A;">open</div>
+          <div style="font-size: 11px; color: #94A3B8; line-height: 1.5;">#22C55E border &middot; badge<br>#DCFCE7 tint <span style="color: #B45309; font-weight: 600;">NEW</span><br>#166534 ink <span style="color: #B45309; font-weight: 600;">NEW</span></div>
+          <span style="align-self: flex-start; padding: 3px 10px; border-radius: 999px; background: #DCFCE7; font-size: 11px; font-weight: 600; color: #166534;">Open</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 9px; padding: 14px; border-radius: 14px; border: 1px solid #E2E8F0;">
+          <div style="display: flex; gap: 7px;">
+            <div style="flex-grow: 1; height: 40px; border-radius: 8px; background: #F59E0B;"></div>
+            <div style="flex-grow: 1; height: 40px; border-radius: 8px; background: #FEF3C7;"></div>
+          </div>
+          <div style="font-size: 13px; font-weight: 600; color: #0F172A;">occupied</div>
+          <div style="font-size: 11px; color: #94A3B8; line-height: 1.5;">#F59E0B border &middot; badge<br>#FEF3C7 tint <span style="color: #B45309; font-weight: 600;">NEW</span><br>#92400E ink <span style="color: #B45309; font-weight: 600;">NEW</span></div>
+          <span style="align-self: flex-start; padding: 3px 10px; border-radius: 999px; background: #FEF3C7; font-size: 11px; font-weight: 600; color: #92400E;">Occupied</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 9px; padding: 14px; border-radius: 14px; border: 1px solid #E2E8F0;">
+          <div style="display: flex; gap: 7px;">
+            <div style="flex-grow: 1; height: 40px; border-radius: 8px; background: #EF4444;"></div>
+            <div style="flex-grow: 1; height: 40px; border-radius: 8px; background: #FEE2E2;"></div>
+          </div>
+          <div style="font-size: 13px; font-weight: 600; color: #0F172A;">unavailable</div>
+          <div style="font-size: 11px; color: #94A3B8; line-height: 1.5;">#EF4444 badge &middot; #FCA5A5 border<br>#FEE2E2 tint <span style="color: #B45309; font-weight: 600;">NEW</span><br>#991B1B ink <span style="color: #B45309; font-weight: 600;">NEW</span></div>
+          <span style="align-self: flex-start; padding: 3px 10px; border-radius: 999px; background: #FEE2E2; font-size: 11px; font-weight: 600; color: #991B1B;">Unavailable</span>
+        </div>
+
+      </div>
+      <div style="font-size: 12px; color: #475569;">Names match <code style="font-size: 12px; background: #F1F5F9; padding: 1px 5px; border-radius: 4px;">tableStatusEnum</code> exactly. Colour never carries status alone &mdash; every card pairs it with a text label.</div>
+    </div>
+
+    <!-- Type -->
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="font-size: 12px; font-weight: 700; color: #94A3B8; letter-spacing: 0.07em; text-transform: uppercase;">Type &mdash; Inter Variable</div>
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: 14px; background: #F8FAFC;">
+        <div style="display: flex; align-items: baseline; gap: 16px;"><span style="width: 84px; font-size: 11px; color: #94A3B8; flex-shrink: 0;">display 32</span><span style="font-size: 32px; font-weight: 700; color: #0F172A; letter-spacing: -0.02em;">LKR 4,500</span></div>
+        <div style="display: flex; align-items: baseline; gap: 16px;"><span style="width: 84px; font-size: 11px; color: #94A3B8; flex-shrink: 0;">h1 24</span><span style="font-size: 24px; font-weight: 700; color: #0F172A;">Rooftop</span></div>
+        <div style="display: flex; align-items: baseline; gap: 16px;"><span style="width: 84px; font-size: 11px; color: #94A3B8; flex-shrink: 0;">h2 18</span><span style="font-size: 18px; font-weight: 600; color: #0F172A;">Table T1 &middot; 4 guests</span></div>
+        <div style="display: flex; align-items: baseline; gap: 16px;"><span style="width: 84px; font-size: 11px; color: #94A3B8; flex-shrink: 0;">body 16</span><span style="font-size: 16px; color: #0F172A;">Grilled Seer Fish</span></div>
+        <div style="display: flex; align-items: baseline; gap: 16px;"><span style="width: 84px; font-size: 11px; color: #94A3B8; flex-shrink: 0;">small 14</span><span style="font-size: 14px; color: #475569;">42 min &middot; 7 items</span></div>
+        <div style="display: flex; align-items: baseline; gap: 16px;"><span style="width: 84px; font-size: 11px; color: #94A3B8; flex-shrink: 0;">micro 12</span><span style="font-size: 12px; color: #94A3B8;">Sent 19:44 &middot; Round 1</span></div>
+      </div>
+    </div>
+
+    <!-- Elevation / radius / targets -->
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;">
+
+      <div style="display: flex; flex-direction: column; gap: 11px;">
+        <div style="font-size: 12px; font-weight: 700; color: #94A3B8; letter-spacing: 0.07em; text-transform: uppercase;">Elevation <span style="color: #B45309;">NEW</span></div>
+        <div style="display: flex; flex-direction: column; gap: 9px;">
+          <div style="padding: 11px 13px; border-radius: 12px; background: #FFFFFF; border: 1px solid #E2E8F0; font-size: 11px; color: #475569;">flat &mdash; 1px border</div>
+          <div style="padding: 11px 13px; border-radius: 12px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(15,23,42,0.06); font-size: 11px; color: #475569;">card &mdash; 0 1px 3px /.06</div>
+          <div style="padding: 11px 13px; border-radius: 12px; background: #FFFFFF; box-shadow: 0 4px 20px rgba(15,23,42,0.07); font-size: 11px; color: #475569;">panel &mdash; 0 4px 20px /.07</div>
+          <div style="padding: 11px 13px; border-radius: 12px; background: #2288B4; box-shadow: 0 2px 8px rgba(34,136,180,0.32); font-size: 11px; color: #FFFFFF;">action &mdash; tinted glow</div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 11px;">
+        <div style="font-size: 12px; font-weight: 700; color: #94A3B8; letter-spacing: 0.07em; text-transform: uppercase;">Radius <span style="color: #B45309;">NEW</span></div>
+        <div style="display: flex; flex-direction: column; gap: 9px;">
+          <div style="padding: 11px 13px; border-radius: 8px; background: #F1F5F9; font-size: 11px; color: #475569;">8 &mdash; chips, tags</div>
+          <div style="padding: 11px 13px; border-radius: 12px; background: #F1F5F9; font-size: 11px; color: #475569;">12 &mdash; inner surfaces</div>
+          <div style="padding: 11px 13px; border-radius: 16px; background: #F1F5F9; font-size: 11px; color: #475569;">16 &mdash; cards</div>
+          <div style="padding: 11px 13px; border-radius: 999px; background: #F1F5F9; font-size: 11px; color: #475569;">999 &mdash; pills, avatars</div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 11px;">
+        <div style="font-size: 12px; font-weight: 700; color: #94A3B8; letter-spacing: 0.07em; text-transform: uppercase;">Touch targets</div>
+        <div style="display: flex; flex-direction: column; gap: 9px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 44px; height: 44px; border-radius: 11px; background: #F1F5F9; border: 1px solid #E2E8F0;"></div>
+            <div style="font-size: 11px; color: #475569; line-height: 1.5;"><strong style="color: #0F172A;">44px</strong><br>owner &middot; kitchen</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 80px; height: 80px; border-radius: 16px; background: #EBF8FD; border: 1.5px solid #2288B4;"></div>
+            <div style="font-size: 11px; color: #475569; line-height: 1.5;"><strong style="color: #0F172A;">80px</strong><br>waiter &mdash; outdoor,<br>one-handed</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Card anatomy -->
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="font-size: 12px; font-weight: 700; color: #94A3B8; letter-spacing: 0.07em; text-transform: uppercase;">Table card anatomy <span style="color: #B45309;">NEW</span></div>
+      <div style="display: flex; gap: 20px; align-items: flex-start;">
+
+        <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; width: 200px; height: 148px; padding: 14px 14px 12px; border-radius: 16px; background: #FFFBEB; border: 2px solid #F59E0B; box-shadow: 0 1px 3px rgba(15,23,42,0.06); flex-shrink: 0;">
+          <div style="position: absolute; top: -2px; left: -2px; padding: 5px 13px; border-radius: 16px 0 16px 0; background: #F59E0B; font-size: 14px; font-weight: 700; color: #FFFFFF;">T3</div>
+          <div style="display: flex; justify-content: flex-end;"><span style="font-size: 12px; font-weight: 600; color: #92400E;">18:35</span></div>
+          <div style="display: flex; flex-direction: column; gap: 5px;">
+            <div style="font-size: 15px; font-weight: 600; color: #0F172A;">6 guests</div>
+            <div style="font-size: 12px; color: #92400E;">67 min &middot; 12 items</div>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="padding: 3px 10px; border-radius: 999px; background: #FEF3C7; font-size: 11px; font-weight: 600; color: #92400E;">Occupied</span>
+            <span style="font-size: 11px; font-weight: 500; color: #94A3B8;">Tables</span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 4px;">
+          <div style="display: flex; gap: 9px; font-size: 12px; color: #475569;"><span style="color: #B45309; font-weight: 700; width: 14px;">1</span><span><strong style="color: #0F172A;">Corner badge</strong> &mdash; solid status colour, table label in white. Readable across a deck.</span></div>
+          <div style="display: flex; gap: 9px; font-size: 12px; color: #475569;"><span style="color: #B45309; font-weight: 700; width: 14px;">2</span><span><strong style="color: #0F172A;">2px status border</strong> &mdash; the card itself carries state, not a dot.</span></div>
+          <div style="display: flex; gap: 9px; font-size: 12px; color: #475569;"><span style="color: #B45309; font-weight: 700; width: 14px;">3</span><span><strong style="color: #0F172A;">Tinted body</strong> on occupied only &mdash; open stays white so free tables read as negative space.</span></div>
+          <div style="display: flex; gap: 9px; font-size: 12px; color: #475569;"><span style="color: #B45309; font-weight: 700; width: 14px;">4</span><span><strong style="color: #0F172A;">Elapsed &middot; items</strong> &mdash; the two numbers a waiter scans for.</span></div>
+          <div style="display: flex; gap: 9px; font-size: 12px; color: #475569;"><span style="color: #B45309; font-weight: 700; width: 14px;">5</span><span><strong style="color: #0F172A;">Status pill + zone</strong> &mdash; the text half of the colour rule.</span></div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

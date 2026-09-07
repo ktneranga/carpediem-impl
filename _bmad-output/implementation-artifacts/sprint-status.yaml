@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-03
-last_updated: 2026-08-21
+last_updated: 2026-09-06
 project: carpe-diem-restaurant
 project_key: NOKEY
 tracking_system: file-system
@@ -63,10 +63,18 @@ development_status:
   # ── Epic 3: Zone & Table Navigation ──────────────────────────────────────
   epic-3: in-progress
   3-1-build-navigation-components: review
-  3-2-implement-zone-filtered-table-grid-with-real-time-status: backlog
-  3-3-implement-open-table-session: backlog
+  3-2-implement-zone-filtered-table-grid-with-real-time-status: in-progress
+  3-3-implement-open-table-session: done
   3-4-implement-occupied-tables-summary-view: backlog  # DEFERRED post-demo — polish
   3-5-implement-zone-map-toggle: backlog  # DEFERRED post-demo — polish
+  # Added 2026-09-06 by sprint-change-proposal-2026-09-06.md — no way to release a
+  # table without payment; run BEFORE Epic 4, every session opened until then is stuck
+  3-6-implement-close-table-without-payment: in-progress
+  # Added 2026-09-06 by sprint-change-proposal-2026-09-06-merge-and-availability.md
+  # 3-7 first (small, no schema change), then 3-8 BEFORE Epic 4 — every order,
+  # ticket and billing story built on one-table-per-session raises its cost
+  3-7-implement-table-availability: backlog
+  3-8-implement-within-zone-table-merging: backlog
   epic-3-retrospective: optional
 
   # ── Epic 4: Order Entry & Multi-Destination Routing ──────────────────────

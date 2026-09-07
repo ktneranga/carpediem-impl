@@ -1,118 +1,221 @@
 @import "tailwindcss";
 
+/* ═════════════════════════════════════════════════════════════════════════════
+   Carpe Diem RMS — Design System v1.0 (September 2026)
+
+   The published system ships as `styles.css` + a `tokens/` folder. This project
+   is Tailwind v4, so the same tokens live in `@theme` instead — one source, both
+   CSS custom properties and generated utilities. Values are the system's; only
+   the plumbing differs.
+
+   Governing rule: every screen must make the recorded path FASTER than the
+   verbal shortcut. Nothing below may cost legibility in direct sunlight.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 /* ── [data-context] custom variants ───────────────────────────────────────────
    Set on <html> server-side from the authenticated staff role (see layout.tsx).
-   Usage: waiter:text-brand-700  owner:text-neutral-600  kitchen:text-display
+   Density is the main dial between surfaces — not a different visual language.
+   Usage: waiter:text-brand-700  owner:text-slate-600  kitchen:text-fs-40
    ─────────────────────────────────────────────────────────────────────────── */
 @custom-variant waiter (&:is([data-context="waiter"] *));
 @custom-variant owner (&:is([data-context="owner"] *));
 @custom-variant kitchen (&:is([data-context="kitchen"] *));
 
-/* ── Design token system: CSS custom properties always available on :root ─────
-   Declared here (not only in @theme) so they are present for JavaScript access,
-   calc() expressions, and inline styles — regardless of which Tailwind utilities
-   are used on a given page.
-   ─────────────────────────────────────────────────────────────────────────── */
-@layer base {
-  :root {
-    /* Brand palette — Coastal sky blue anchor */
-    --color-brand-50:  #EBF8FD;
-    --color-brand-100: #CCF0FB;
-    --color-brand-200: #9DDCF5;
-    --color-brand-300: #7ACEED;
-    --color-brand-400: #6EC1E4;
-    --color-brand-500: #3FABD9;
-    --color-brand-600: #2288B4;   /* 4.6:1 on white ✅ WCAG AA */
-    --color-brand-700: #1A6A8C;   /* 7.1:1 on white ✅ WCAG AAA (waiter context) */
-    --color-brand-800: #0F4560;
-    --color-brand-900: #082B3D;
+/* Night theme — the owner dashboard, read on a phone after service. */
+@custom-variant night (&:is([data-theme="night"] *));
 
-    /* Structural palette — Slate family */
-    --color-neutral-0:   #FFFFFF;
-    --color-neutral-50:  #F8FAFC;
-    --color-neutral-100: #F1F5F9;
-    --color-neutral-200: #E2E8F0;
-    --color-neutral-400: #94A3B8;
-    --color-neutral-600: #475569;
-    --color-neutral-900: #0F172A;
-
-    /* Semantic status colors — always paired with icons */
-    --color-status-open:     #22C55E;
-    --color-status-occupied: #F59E0B;
-    --color-status-alert:    #EF4444;
-    --color-status-info:     #3B82F6;
-
-    /* Spacing scale — 4px base unit */
-    --spacing-space-1:  4px;
-    --spacing-space-2:  8px;
-    --spacing-space-3:  12px;
-    --spacing-space-4:  16px;
-    --spacing-space-6:  24px;
-    --spacing-space-8:  32px;
-    --spacing-space-12: 48px;
-
-    /* Typography scale */
-    --text-display: 2rem;
-    --text-h1:      1.5rem;
-    --text-h2:      1.125rem;
-    --text-body:    1rem;
-    --text-small:   0.875rem;
-    --text-micro:   0.75rem;
-  }
-}
-
-/* ── Tailwind v4 @theme: generates utilities from the same token values ────────
-   text-brand-*, bg-brand-*, border-brand-*, p-space-*, text-display, etc.
-   ─────────────────────────────────────────────────────────────────────────── */
 @theme {
-  /* Brand palette */
-  --color-brand-50:  #EBF8FD;
-  --color-brand-100: #CCF0FB;
-  --color-brand-200: #9DDCF5;
-  --color-brand-300: #7ACEED;
-  --color-brand-400: #6EC1E4;
-  --color-brand-500: #3FABD9;
-  --color-brand-600: #2288B4;
+  /* ── Brand — coastal sky blue ───────────────────────────────────────────────
+     Stored per tenant for white-labelling, so it appears as INTERFACE colour —
+     selected states, primary buttons, breadcrumbs, chart series — never as a
+     decorative wash. Maximum two background colours per screen. */
+  --color-brand-900: #0C4257;
   --color-brand-700: #1A6A8C;
-  --color-brand-800: #0F4560;
-  --color-brand-900: #082B3D;
+  --color-brand-500: #2288B4;   /* primary */
+  --color-brand-300: #6EC1E4;
+  --color-brand-100: #CFEBF8;
+  --color-brand-050: #EBF8FD;   /* tint */
 
-  /* Structural palette */
-  --color-neutral-0:   #FFFFFF;
-  --color-neutral-50:  #F8FAFC;
-  --color-neutral-100: #F1F5F9;
-  --color-neutral-200: #E2E8F0;
-  --color-neutral-400: #94A3B8;
-  --color-neutral-600: #475569;
-  --color-neutral-900: #0F172A;
+  /* ── Neutrals — slate. Structure only. ───────────────────────────────────── */
+  --color-slate-900: #0F172A;
+  --color-slate-600: #475569;
+  --color-slate-400: #94A3B8;
+  --color-slate-200: #E2E8F0;
+  --color-slate-100: #F1F5F9;   /* app background */
+  --color-white:     #FFFFFF;   /* card */
 
-  /* Semantic status colors */
-  --color-status-open:     #22C55E;
-  --color-status-occupied: #F59E0B;
-  --color-status-alert:    #EF4444;
-  --color-status-info:     #3B82F6;
+  /* ── Status uses tinted pairs, never a single hue ────────────────────────────
+     Each status is a QUADRUPLE: a saturated edge/band colour, a pale chip fill,
+     a paler body tint, and a dark ink for text. That is what lets a card read
+     from ten metres and still pass contrast at arm's length.
 
-  /* Spacing scale — 4px base unit */
-  --spacing-space-1:  4px;
-  --spacing-space-2:  8px;
-  --spacing-space-3:  12px;
-  --spacing-space-4:  16px;
-  --spacing-space-6:  24px;
-  --spacing-space-8:  32px;
-  --spacing-space-12: 48px;
+     Colour never carries meaning alone — every status ships with its word. */
+  /* NOTE: --*-edge is for borders and 1px rules only. White text on it fails
+     contrast — use --*-band for any filled surface carrying white text. */
+  --color-open-edge: #22C55E;
+  --color-open-chip: #DCFCE7;
+  --color-open-body: #F0FDF4;
+  --color-open-ink:  #0F5F2F;
+  /* Band fill. Darker than --edge so WHITE text on it clears WCAG AA 4.5:1
+     (5.02:1). The edge value fails at 2.28:1 and must not carry white text. */
+  --color-open-band: #15803D;
 
-  /* Typography */
+  --color-occupied-edge: #F59E0B;
+  --color-occupied-chip: #FEF3C7;
+  --color-occupied-body: #FFFBEB;
+  --color-occupied-ink:  #7C4A03;
+  --color-occupied-band: #B45309;   /* 5.04:1 with white; --edge was 2.15:1 */
+
+  --color-unavailable-edge: #EF4444;
+  --color-unavailable-chip: #FEE2E2;
+  --color-unavailable-body: #FEF2F2;
+  --color-unavailable-ink:  #8F1414;
+  --color-unavailable-band: #B91C1C; /* 6.54:1 with white; --edge was 3.76:1 */
+
+  /* ── Route colours — the only non-status accents ──────────────────────────── */
+  --color-route-kitchen: #2288B4;
+  --color-route-pizza:   #C2410C;
+  --color-route-bar:     #7C3AED;
+
+  /* ── Night theme surfaces ───────────────────────────────────────────────────
+     Owner dashboard only. Status tints become translucent overlays here — a
+     pale body tint on a dark ground would glow rather than recede. */
+  --color-night-app:      #0F172A;
+  --color-night-sunken:   #0B1220;
+  --color-night-card:     #1E293B;
+  --color-night-raised:   #26334A;
+  --color-night-hairline: #263449;
+  --color-night-text:     #F8FAFC;
+  --color-night-muted:    #94A3B8;
+  --color-night-second:   #CBD5E1;
+
+  --color-night-open-body:        rgba(34, 197, 94, 0.14);
+  --color-night-occupied-body:    rgba(245, 158, 11, 0.14);
+  --color-night-unavailable-body: rgba(239, 68, 68, 0.14);
+
+  /* ── Typography ─────────────────────────────────────────────────────────────
+     Inter throughout. 40 and 56 exist for kitchen tickets and dashboard hero
+     figures only. Weights: 400 body, 600 labels, 700 titles, 800 money and
+     table numbers. All figures tabular so totals and elapsed times do not
+     shimmer while they tick. */
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
 
-  --text-display: 2rem;
-  --text-h1:      1.5rem;
-  --text-h2:      1.125rem;
-  --text-body:    1rem;
-  --text-small:   0.875rem;
-  --text-micro:   0.75rem;
+  --text-fs-12: 12px;
+  --text-fs-14: 14px;
+  --text-fs-16: 16px;
+  --text-fs-18: 18px;
+  --text-fs-24: 24px;
+  --text-fs-32: 32px;
+  --text-fs-40: 40px;
+  --text-fs-56: 56px;
 
-  /* Motion — PINPad error feedback (Story 2.1). Generates `animate-shake`. */
+  --tracking-title: -0.02em;   /* 18px and up */
+  --tracking-micro: 0.08em;    /* uppercase micro-labels only */
+
+  /* ── Spacing ────────────────────────────────────────────────────────────────
+     Waiter flow uses 12–16px gutters with 80px+ controls; the owner dashboard
+     drops to 8–12px with 44px controls. */
+  --spacing-sp-1: 4px;
+  --spacing-sp-2: 8px;
+  --spacing-sp-3: 12px;
+  --spacing-sp-4: 16px;
+  --spacing-sp-5: 24px;
+  --spacing-sp-6: 32px;
+  --spacing-sp-7: 48px;
+
+  /* ── Touch targets ──────────────────────────────────────────────────────────
+     Non-negotiable. Sunlight, motion and wet hands make anything smaller
+     unusable. Tokens, not bare numbers, so a violation is visible at review. */
+  --spacing-touch-waiter:   80px;
+  --spacing-touch-kitchen:  56px;
+  --spacing-touch-standard: 44px;
+
+  /* ── Corner radii — bigger element, bigger radius ──────────────────────────── */
+  --radius-chip:    6px;    /* chips and route tags */
+  --radius-control: 10px;   /* standard controls */
+  --radius-waiter:  14px;   /* waiter buttons and menu cards */
+  --radius-card:    20px;   /* table cards */
+  --radius-panel:   28px;   /* large panels */
+  --radius-pill:    999px;  /* status */
+
+  /* ── Elevation — two-part slate-tinted shadows ──────────────────────────────
+     A tight contact shadow plus a wide ambient one. Filled buttons also carry
+     --inset-shadow-top, a 1px white inner highlight — that is what stops them
+     looking flat in sunlight. Pressed states swap to --shadow-pressed. */
+  --shadow-el-1: 0 1px 2px rgba(15, 23, 42, 0.06), 0 2px 8px rgba(15, 23, 42, 0.04);
+  --shadow-el-2: 0 1px 2px rgba(15, 23, 42, 0.10), 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-el-3: 0 2px 4px rgba(15, 23, 42, 0.10), 0 8px 24px rgba(15, 23, 42, 0.12);
+  --shadow-el-4: 0 4px 8px rgba(15, 23, 42, 0.12), 0 24px 48px rgba(15, 23, 42, 0.18);
+
+  /* Its own Tailwind namespace, so it COMPOSES with a shadow-el-* rather than
+     overwriting it. As --shadow-inset-top it shared the --tw-shadow variable
+     with the elevation shadows, and the later utility silently won — filled
+     buttons rendered with the 1px highlight and no elevation at all, which is
+     the exact flat-in-sunlight result this token exists to prevent. */
+  --inset-shadow-top: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  --shadow-pressed:   0 1px 1px rgba(15, 23, 42, 0.10);
+
+  /* Selection is three simultaneous signals: 2px brand border, el-3, and a 30%
+     blue halo — because outdoors one signal is not enough. */
+  --shadow-selected: 0 0 0 4px rgba(34, 136, 180, 0.30),
+                     0 2px 4px rgba(15, 23, 42, 0.10),
+                     0 8px 24px rgba(15, 23, 42, 0.12);
+
+  /* ── Motion ─────────────────────────────────────────────────────────────────
+     Nothing bounces, nothing springs, nothing has an entrance animation — a
+     waiter mid-service must not wait on a transition, and kitchen tickets never
+     animate in or out. */
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.3, 1);
+
+  --duration-80:  80ms;
+  --duration-120: 120ms;
+  --duration-180: 180ms;
+  --duration-260: 260ms;
+
+  /* PIN error feedback. Generates `animate-shake`. */
   --animate-shake: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* The same tokens as plain custom properties, for JavaScript access, calc() and
+   inline styles — independent of which utilities a given page happens to use. */
+@layer base {
+  :root {
+    --color-brand-900: #0C4257;
+    --color-brand-700: #1A6A8C;
+    --color-brand-500: #2288B4;
+    --color-brand-300: #6EC1E4;
+    --color-brand-100: #CFEBF8;
+    --color-brand-050: #EBF8FD;
+
+    --color-slate-900: #0F172A;
+    --color-slate-600: #475569;
+    --color-slate-400: #94A3B8;
+    --color-slate-200: #E2E8F0;
+    --color-slate-100: #F1F5F9;
+    --color-white:     #FFFFFF;
+
+    --color-open-edge: #22C55E;
+    --color-open-chip: #DCFCE7;
+    --color-open-body: #F0FDF4;
+    --color-open-ink:  #0F5F2F;
+    --color-open-band: #15803D;
+
+    --color-occupied-edge: #F59E0B;
+    --color-occupied-chip: #FEF3C7;
+    --color-occupied-body: #FFFBEB;
+    --color-occupied-ink:  #7C4A03;
+    --color-occupied-band: #B45309;
+
+    --color-unavailable-edge: #EF4444;
+    --color-unavailable-chip: #FEE2E2;
+    --color-unavailable-body: #FEF2F2;
+    --color-unavailable-ink:  #8F1414;
+    --color-unavailable-band: #B91C1C;
+
+    --color-route-kitchen: #2288B4;
+    --color-route-pizza:   #C2410C;
+    --color-route-bar:     #7C3AED;
+  }
 }
 
 @keyframes shake {
@@ -130,10 +233,9 @@
   }
 }
 
-/* Horizontal scroll without a visible scrollbar — the zone chip bar scrolls by
+/* Horizontal scroll without a visible scrollbar — the zone filter scrolls by
    touch, and a scrollbar would eat vertical space on a tablet for no benefit.
-   Tailwind v4 has no built-in equivalent. Declared with @utility (not a plain
-   class) so it composes with variants. */
+   Declared with @utility (not a plain class) so it composes with variants. */
 @utility no-scrollbar {
   scrollbar-width: none;
   &::-webkit-scrollbar {
@@ -141,9 +243,25 @@
   }
 }
 
-/* ── Base styles ──────────────────────────────────────────────────────────── */
+/* The 135° hatch at 10% red is the ONE exception to flat-colour-only: a pattern
+   used as a status carrier, so `unavailable` stays distinguishable from
+   `occupied` even if hue fails entirely (glare, greyscale, colour blindness). */
+@utility hatch-unavailable {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(239, 68, 68, 0.10) 0 6px,
+    transparent 6px 12px
+  );
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
 body {
-  background-color: var(--color-neutral-50);
-  color: var(--color-neutral-900);
+  background-color: var(--color-slate-100);
+  color: var(--color-slate-900);
   font-family: var(--font-sans);
+}
+
+[data-theme="night"] body {
+  background-color: var(--color-night-app);
+  color: var(--color-night-text);
 }

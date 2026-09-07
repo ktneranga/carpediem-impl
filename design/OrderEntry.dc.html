@@ -1,0 +1,231 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    a { color: #2288B4; } a:hover { color: #1A6A8C; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 1194px; height: 834px; display: flex; flex-direction: column; background: #F1F5F9; overflow: hidden;">
+
+  <!-- Header with table breadcrumb -->
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 76px; background: #1A6A8C; flex-shrink: 0;">
+    <div style="display: flex; align-items: center; gap: 20px;">
+      <div style="display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; background: rgba(255,255,255,0.14);">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 3px;">
+        <div style="font-size: 18px; font-weight: 700; color: #FFFFFF; letter-spacing: -0.01em;">Table T1 &middot; 4 guests</div>
+        <div style="display: flex; align-items: center; gap: 7px; font-size: 13px; color: #9DDCF5;">
+          <span style="font-weight: 500;">Zones</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7ACEED" stroke-width="2.5" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+          <span style="font-weight: 500;">Tables</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7ACEED" stroke-width="2.5" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+          <span>T1</span>
+        </div>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 14px 7px 8px; border-radius: 999px; background: rgba(255,255,255,0.14);">
+        <div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 999px; background: #6EC1E4; font-size: 12px; font-weight: 700; color: #0F4560;">N</div>
+        <span style="font-size: 14px; font-weight: 600; color: #FFFFFF;">Nina</span>
+      </div>
+      <div style="font-size: 15px; font-weight: 600; color: #CCF0FB; font-variant-numeric: tabular-nums;">19:48</div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-grow: 1; gap: 16px; padding: 16px 16px 0; overflow: hidden;">
+
+    <!-- Menu side -->
+    <div style="display: flex; flex-direction: column; gap: 14px; flex-grow: 1; overflow: hidden;">
+
+      <div style="display: flex; align-items: center; gap: 12px; padding: 13px 18px; border-radius: 14px; background: #FFFFFF; border: 1px solid #E2E8F0;">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <span style="font-size: 15px; color: #94A3B8;">Search the menu&hellip;</span>
+      </div>
+
+      <!-- Categories — active uses the brand tint, matching the reference's fill treatment -->
+      <div style="display: flex; gap: 10px;">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; width: 104px; height: 82px; border-radius: 14px; background: #EBF8FD; border: 1.5px solid #2288B4;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1A6A8C" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span style="font-size: 13px; font-weight: 600; color: #1A6A8C;">All</span>
+          <span style="font-size: 10px; color: #2288B4;">104 items</span>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; width: 104px; height: 82px; border-radius: 14px; background: #FFFFFF; border: 1px solid #E2E8F0;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round"><path d="M4 13h16a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M8 8V5M12 8V4M16 8V5"/></svg>
+          <span style="font-size: 13px; font-weight: 600; color: #0F172A;">Kitchen</span>
+          <span style="font-size: 10px; color: #94A3B8;">48 items</span>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; width: 104px; height: 82px; border-radius: 14px; background: #FFFFFF; border: 1px solid #E2E8F0;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16l-7 8v7l-2 1v-8z"/></svg>
+          <span style="font-size: 13px; font-weight: 600; color: #0F172A;">Bar</span>
+          <span style="font-size: 10px; color: #94A3B8;">34 items</span>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; width: 104px; height: 82px; border-radius: 14px; background: #FFFFFF; border: 1px solid #E2E8F0;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>
+          <span style="font-size: 13px; font-weight: 600; color: #0F172A;">Pizza</span>
+          <span style="font-size: 10px; color: #94A3B8;">22 items</span>
+        </div>
+      </div>
+
+      <!-- Menu items — text-first, no food photography (a beach kitchen has none) -->
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;">
+
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 15px; border-radius: 16px; background: #FFFFFF; border: 1px solid #E2E8F0; box-shadow: 0 1px 3px rgba(15,23,42,0.05);">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
+            <span style="font-size: 15px; font-weight: 600; color: #0F172A; line-height: 1.35; text-wrap: pretty;">Grilled Seer Fish</span>
+            <span style="padding: 2px 7px; border-radius: 6px; background: #FEF3C7; font-size: 10px; font-weight: 600; color: #92400E; white-space: nowrap;">Kitchen</span>
+          </div>
+          <div style="font-size: 17px; font-weight: 700; color: #2288B4;">LKR 1,800</div>
+          <div style="display: flex; align-items: center; justify-content: center; height: 40px; border-radius: 11px; background: #EBF8FD; font-size: 14px; font-weight: 600; color: #1A6A8C;">Add</div>
+        </div>
+
+        <!-- In-cart state: stepper replaces Add -->
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 15px; border-radius: 16px; background: #FFFFFF; border: 2px solid #2288B4; box-shadow: 0 2px 8px rgba(34,136,180,0.12);">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
+            <span style="font-size: 15px; font-weight: 600; color: #0F172A; line-height: 1.35; text-wrap: pretty;">Mojito</span>
+            <span style="padding: 2px 7px; border-radius: 6px; background: #DCFCE7; font-size: 10px; font-weight: 600; color: #166534; white-space: nowrap;">Bar</span>
+          </div>
+          <div style="font-size: 17px; font-weight: 700; color: #2288B4;">LKR 950</div>
+          <div style="display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 5px; border-radius: 11px; background: #EBF8FD;">
+            <div style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; background: #FFFFFF;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1A6A8C" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/></svg>
+            </div>
+            <span style="font-size: 16px; font-weight: 700; color: #1A6A8C; font-variant-numeric: tabular-nums;">2</span>
+            <div style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; background: #2288B4;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 15px; border-radius: 16px; background: #FFFFFF; border: 1px solid #E2E8F0; box-shadow: 0 1px 3px rgba(15,23,42,0.05);">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
+            <span style="font-size: 15px; font-weight: 600; color: #0F172A; line-height: 1.35; text-wrap: pretty;">Prawn Fried Rice</span>
+            <span style="padding: 2px 7px; border-radius: 6px; background: #FEF3C7; font-size: 10px; font-weight: 600; color: #92400E; white-space: nowrap;">Kitchen</span>
+          </div>
+          <div style="font-size: 17px; font-weight: 700; color: #2288B4;">LKR 1,450</div>
+          <div style="display: flex; align-items: center; justify-content: center; height: 40px; border-radius: 11px; background: #EBF8FD; font-size: 14px; font-weight: 600; color: #1A6A8C;">Add</div>
+        </div>
+
+        <!-- 86'd item: inventory hit zero -->
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 15px; border-radius: 16px; background: #F8FAFC; border: 1px solid #E2E8F0; opacity: 0.7;">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
+            <span style="font-size: 15px; font-weight: 600; color: #94A3B8; line-height: 1.35; text-decoration: line-through; text-wrap: pretty;">Lagoon Crab</span>
+            <span style="padding: 2px 7px; border-radius: 6px; background: #FEE2E2; font-size: 10px; font-weight: 600; color: #991B1B; white-space: nowrap;">86'd</span>
+          </div>
+          <div style="font-size: 17px; font-weight: 700; color: #CBD5E1;">LKR 3,200</div>
+          <div style="display: flex; align-items: center; justify-content: center; height: 40px; border-radius: 11px; background: #F1F5F9; font-size: 13px; font-weight: 600; color: #94A3B8;">Out of stock</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 15px; border-radius: 16px; background: #FFFFFF; border: 1px solid #E2E8F0; box-shadow: 0 1px 3px rgba(15,23,42,0.05);">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
+            <span style="font-size: 15px; font-weight: 600; color: #0F172A; line-height: 1.35; text-wrap: pretty;">King Coconut</span>
+            <span style="padding: 2px 7px; border-radius: 6px; background: #DCFCE7; font-size: 10px; font-weight: 600; color: #166534; white-space: nowrap;">Bar</span>
+          </div>
+          <div style="font-size: 17px; font-weight: 700; color: #2288B4;">LKR 400</div>
+          <div style="display: flex; align-items: center; justify-content: center; height: 40px; border-radius: 11px; background: #EBF8FD; font-size: 14px; font-weight: 600; color: #1A6A8C;">Add</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 11px; padding: 15px; border-radius: 16px; background: #FFFFFF; border: 1px solid #E2E8F0; box-shadow: 0 1px 3px rgba(15,23,42,0.05);">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
+            <span style="font-size: 15px; font-weight: 600; color: #0F172A; line-height: 1.35; text-wrap: pretty;">Margherita</span>
+            <span style="padding: 2px 7px; border-radius: 6px; background: #FEF3C7; font-size: 10px; font-weight: 600; color: #92400E; white-space: nowrap;">Pizza</span>
+          </div>
+          <div style="font-size: 17px; font-weight: 700; color: #2288B4;">LKR 1,600</div>
+          <div style="display: flex; align-items: center; justify-content: center; height: 40px; border-radius: 11px; background: #EBF8FD; font-size: 14px; font-weight: 600; color: #1A6A8C;">Add</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Order panel -->
+    <div style="display: flex; flex-direction: column; width: 372px; border-radius: 18px 18px 0 0; background: #FFFFFF; border: 1px solid #E2E8F0; border-bottom: none; flex-shrink: 0; overflow: hidden;">
+
+      <!-- Seat slots — the multi-seat model, not a generic cart -->
+      <div style="display: flex; gap: 7px; padding: 16px 16px 12px;">
+        <div style="flex-grow: 1; padding: 9px 0; border-radius: 10px; background: #2288B4; text-align: center; font-size: 13px; font-weight: 600; color: #FFFFFF;">Seat 1</div>
+        <div style="flex-grow: 1; padding: 9px 0; border-radius: 10px; background: #F1F5F9; text-align: center; font-size: 13px; font-weight: 600; color: #475569;">Seat 2</div>
+        <div style="flex-grow: 1; padding: 9px 0; border-radius: 10px; background: #F1F5F9; text-align: center; font-size: 13px; font-weight: 600; color: #475569;">Shared</div>
+        <div style="display: flex; align-items: center; justify-content: center; width: 38px; border-radius: 10px; border: 1.5px dashed #CBD5E1;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 9px; padding: 4px 16px; flex-grow: 1;">
+
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 13px; border-radius: 13px; background: #F8FAFC;">
+          <div style="display: flex; flex-direction: column; gap: 3px;">
+            <span style="font-size: 14px; font-weight: 600; color: #0F172A;">Grilled Seer Fish</span>
+            <span style="font-size: 11px; color: #94A3B8;">No chilli &middot; Kitchen</span>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 3px;">
+            <span style="font-size: 14px; font-weight: 700; color: #0F172A; font-variant-numeric: tabular-nums;">1,800</span>
+            <span style="font-size: 11px; color: #94A3B8;">&times;1</span>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 13px; border-radius: 13px; background: #F8FAFC;">
+          <div style="display: flex; flex-direction: column; gap: 3px;">
+            <span style="font-size: 14px; font-weight: 600; color: #0F172A;">Mojito</span>
+            <span style="font-size: 11px; color: #94A3B8;">Bar</span>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 3px;">
+            <span style="font-size: 14px; font-weight: 700; color: #0F172A; font-variant-numeric: tabular-nums;">1,900</span>
+            <span style="font-size: 11px; color: #94A3B8;">&times;2</span>
+          </div>
+        </div>
+
+        <!-- Already sent — locked, append-only -->
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 13px; border-radius: 13px; background: #FFFFFF; border: 1px dashed #E2E8F0;">
+          <div style="display: flex; flex-direction: column; gap: 3px;">
+            <span style="font-size: 14px; font-weight: 600; color: #94A3B8;">King Coconut</span>
+            <span style="display: flex; align-items: center; gap: 5px; font-size: 11px; color: #166534;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+              Sent 19:44 &middot; Round 1
+            </span>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 3px;">
+            <span style="font-size: 14px; font-weight: 700; color: #94A3B8; font-variant-numeric: tabular-nums;">800</span>
+            <span style="font-size: 11px; color: #94A3B8;">&times;2</span>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px; padding: 16px; border-top: 1px solid #E2E8F0; background: #F8FAFC;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 14px; color: #475569;">Round 2 subtotal</span>
+          <span style="font-size: 14px; font-weight: 600; color: #0F172A; font-variant-numeric: tabular-nums;">LKR 3,700</span>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 15px; font-weight: 700; color: #0F172A;">Table total</span>
+          <span style="font-size: 21px; font-weight: 700; color: #2288B4; font-variant-numeric: tabular-nums;">LKR 4,500</span>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+          <div style="display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #E2E8F0;">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 9px; flex-grow: 1; height: 56px; border-radius: 14px; background: #2288B4; box-shadow: 0 2px 8px rgba(34,136,180,0.32);">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="7"/><path d="M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2"/></svg>
+            <span style="font-size: 16px; font-weight: 600; color: #FFFFFF;">Send round 2</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

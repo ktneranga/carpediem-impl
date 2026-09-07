@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    a { color: #2288B4; } a:hover { color: #1A6A8C; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 1194px; height: 834px; display: flex; background: #F1F5F9; overflow: hidden;">
+
+  <!-- Brand panel — the coastal identity carries the left third -->
+  <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; width: 430px; padding: 56px 48px; background: #1A6A8C; flex-shrink: 0; overflow: hidden;">
+
+    <!-- Depth: soft coastal wash, no gradient banding -->
+    <div style="position: absolute; top: -140px; right: -170px; width: 420px; height: 420px; border-radius: 999px; background: rgba(110,193,228,0.16);"></div>
+    <div style="position: absolute; bottom: -190px; left: -130px; width: 400px; height: 400px; border-radius: 999px; background: rgba(204,240,251,0.09);"></div>
+
+    <div style="position: relative; display: flex; align-items: center; gap: 14px;">
+      <div style="display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 15px; background: #6EC1E4;">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#0F4560" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 16c1.8 0 1.8-1.6 3.6-1.6S7.4 16 9.2 16s1.8-1.6 3.6-1.6S14.6 16 16.4 16s1.8-1.6 3.6-1.6"/>
+          <path d="M2 20c1.8 0 1.8-1.6 3.6-1.6S7.4 20 9.2 20s1.8-1.6 3.6-1.6S14.6 20 16.4 20s1.8-1.6 3.6-1.6"/>
+          <circle cx="17" cy="6" r="3"/>
+        </svg>
+      </div>
+      <div style="font-size: 21px; font-weight: 700; color: #FFFFFF; letter-spacing: -0.015em;">Carpe Diem</div>
+    </div>
+
+    <div style="position: relative; display: flex; flex-direction: column; gap: 14px;">
+      <div style="font-size: 34px; font-weight: 700; color: #FFFFFF; line-height: 1.15; letter-spacing: -0.02em; text-wrap: pretty;">Every order,<br>accounted for.</div>
+      <div style="font-size: 15px; color: #9DDCF5; line-height: 1.6; max-width: 290px; text-wrap: pretty;">Sign in with your PIN. Every action you take is recorded under your name.</div>
+    </div>
+
+    <div style="position: relative; display: flex; align-items: center; gap: 9px;">
+      <span style="width: 7px; height: 7px; border-radius: 999px; background: #22C55E;"></span>
+      <span style="font-size: 12px; font-weight: 500; color: #7ACEED;">Running on the restaurant network</span>
+    </div>
+  </div>
+
+  <!-- PIN entry -->
+  <div style="display: flex; flex-grow: 1; align-items: center; justify-content: center;">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 30px; width: 400px; padding: 44px 40px 40px; border-radius: 26px; background: #FFFFFF; box-shadow: 0 4px 20px rgba(15,23,42,0.07), 0 1px 3px rgba(15,23,42,0.05);">
+
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 7px;">
+        <div style="font-size: 21px; font-weight: 700; color: #0F172A; letter-spacing: -0.01em;">Enter your PIN</div>
+        <div style="font-size: 14px; color: #94A3B8;">4 to 6 digits</div>
+      </div>
+
+      <!-- Progress dots — masked, never digits -->
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+        <div style="display: flex; gap: 13px;">
+          <span style="width: 15px; height: 15px; border-radius: 999px; background: #2288B4;"></span>
+          <span style="width: 15px; height: 15px; border-radius: 999px; background: #2288B4;"></span>
+          <span style="width: 15px; height: 15px; border-radius: 999px; background: #2288B4;"></span>
+          <span style="width: 15px; height: 15px; border-radius: 999px; border: 2px solid #CBD5E1; background: transparent;"></span>
+          <span style="width: 15px; height: 15px; border-radius: 999px; border: 2px solid #CBD5E1; background: transparent;"></span>
+          <span style="width: 15px; height: 15px; border-radius: 999px; border: 2px solid #CBD5E1; background: transparent;"></span>
+        </div>
+        <div style="height: 18px; font-size: 13px; font-weight: 500; color: #94A3B8;">3 digits entered</div>
+      </div>
+
+      <!-- Keypad — 80px targets -->
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px;">
+        <div style="display: flex; align-items: center; justify-content: center; height: 80px; border-radius: 18px; background: #FFFFFF; border: 1.5px solid #E2E8F0; font-size: 26px; font-weight: 600; color: #0F172A;">1</div>
+        <div style="display: flex; align-items: center; justify-content: center; height: 80px; border-radius: 18px; background: #FFFFFF; border: 1.5px solid #E2E8F0; font-size: 26px; font-weight: 600; color: #0F172A;">2</div>
+        <div style="display: flex; align-items: center; justify-content: center; height: 80px; border-radius: 18px; background: #FFFFFF; border: 1.5px solid #E2E8F0; font-size: 26px; font-weight: 600; color: #0F172A;">3</div>
+        <div style="display: flex; align-items: center; justify-content: center; height: 80px; border-radius: 18px; background: #FFFFFF; border: 1.5px solid #E2E8F0; font-size: 26px; font-weight: 600; color: #0F172A;">4</div>
+        <!-- pressed state -->
+        <div style="display: flex; align-items: center; justify-content: center; height: 80px; border-radius: 18px; background: #EBF8FD; border: 1.5px solid #2288B4; font-size: 26px; font-weight: 600; color: #1A6A8C;">5</div>
+        <div style="display: flex; align-items: center; justify-content: center; height: 80px; border-radius: 18px; background: #FFFFFF; border: 1.5px solid #E2E8F0; font-size: 26px; font-weight: 600; color: #0F172A;">6</div>
+        <div style="display: flex; align-items: center; justify-content: center; height: 80px; border-radius: 18px; background: #FFFFFF; border: 1.5px solid #E2E8F0; font-size: 26px; font-weight: 600; color: #0F172A;">7</div>
+        <div style="display: flex; align-items: center; justify-content: center; height: 80px; border-radius: 18px; background: #FFFFFF; border: 1.5px solid #E2E8F0; font-size: 26px; font-weight: 600; color: #0F172A;">8</div>
+        <div style="display: flex; align-items: center; justify-content: center; height: 80px; border-radius: 18px; background: #FFFFFF; border: 1.5px solid #E2E8F0; font-size: 26px; font-weight: 600; color: #0F172A;">9</div>
+
+        <div style="display: flex; align-items: center; justify-content: center; height: 80px; border-radius: 18px; background: #F8FAFC; border: 1.5px solid #E2E8F0; font-size: 14px; font-weight: 600; color: #475569;">Clear</div>
+        <div style="display: flex; align-items: center; justify-content: center; height: 80px; border-radius: 18px; background: #FFFFFF; border: 1.5px solid #E2E8F0; font-size: 26px; font-weight: 600; color: #0F172A;">0</div>
+        <div style="display: flex; align-items: center; justify-content: center; height: 80px; border-radius: 18px; background: #F8FAFC; border: 1.5px solid #E2E8F0;">
+          <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/>
+            <path d="M17 9l-5 6M12 9l5 6"/>
+          </svg>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 60px; border-radius: 16px; background: #2288B4; box-shadow: 0 2px 8px rgba(34,136,180,0.32); font-size: 17px; font-weight: 600; color: #FFFFFF;">Sign in</div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
