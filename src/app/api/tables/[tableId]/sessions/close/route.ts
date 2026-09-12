@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { and, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/server/db'
-import { orderEvents, orderSessions, tables } from '@/server/db/schema'
+import { orderEvents, orderSessions, orderSessionTables, tables } from '@/server/db/schema'
 import {
   closeSession,
   SessionAlreadyClosedError,
@@ -92,7 +92,17 @@ export async function POST(
     const [session] = await db
       .select({ id: orderSessions.id })
       .from(orderSessions)
-      .where(and(eq(orderSessions.tableId, tableId), isNull(orderSessions.closedAt)))
+      // Through the join table: a session no longer belongs to one table, and
+      // order_sessions.table_id is only the PRIMARY. Matching on that alone
+      // would fail to find the session from any other table in a merged group.
+      .innerJoin(orderSessionTables, eq(orderSessionTables.sessionId, orderSessions.id))
+      .where(
+        and(
+          eq(orderSessionTables.tableId, tableId),
+          isNull(orderSessionTables.releasedAt),
+          isNull(orderSessions.closedAt),
+        ),
+      )
       .limit(1)
 
     // 409, not 404: the table exists, there is simply nothing open on it. Either
@@ -124,11 +134,13 @@ export async function POST(
     }
 
     let closedAt: Date
+    let releasedTableIds: string[]
     try {
       const result = await db.transaction((tx) =>
-        closeSession(tx, { sessionId: session.id, tableId: table.id, staffId, reason }),
+        closeSession(tx, { sessionId: session.id, staffId, reason }),
       )
       closedAt = result.closedAt
+      releasedTableIds = result.releasedTableIds
     } catch (error) {
       if (error instanceof SessionAlreadyClosedError) {
         // Another device won the race between our read and the UPDATE.
@@ -137,14 +149,27 @@ export async function POST(
       throw error
     }
 
-    // After the commit, never inside it — the same rule as the open route.
-    emitTableStatusChanged({
-      tableId: table.id,
-      status: 'open',
-      sessionId: null,
-      openedAt: null,
-      itemCount: 0,
-    })
+    // One event per RELEASED table, after the commit — never inside it.
+    //
+    // `closeSession` releases every table on the session, but this emitted once
+    // for the table the URL named. Closing a merged group therefore left every
+    // other table in it occupied on every device except the one that acted —
+    // stale sessionId, running timer, and a phantom group card — until an
+    // unrelated refetch, because nothing on the grid refetches on its own.
+    for (const releasedTableId of releasedTableIds) {
+      emitTableStatusChanged({
+        tableId: releasedTableId,
+        status: 'open',
+        sessionId: null,
+        openedAt: null,
+        itemCount: 0,
+        // A session change never alters availability; the table is not out of
+        // service on either of these paths.
+        unavailableReason: null,
+        // No session, so no group.
+        groupTableLabels: [],
+      })
+    }
 
     // 200, not 201: this closes a resource, it does not create one.
     return NextResponse.json(

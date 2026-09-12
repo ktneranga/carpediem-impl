@@ -25,6 +25,13 @@ services:
       - PORTAINER_URL=http://portainer:9000
       - RESTAURANT_NAME=${RESTAURANT_NAME:-Carpe Diem}
       - TIMEZONE=${TIMEZONE:-Asia/Colombo}
+      # Node reads TZ, not TIMEZONE. Without this the container runs in UTC, so
+      # logs and stack traces disagree with the restaurant's clock by 5h30m.
+      # Correctness does NOT depend on this — the day boundary is computed from
+      # tenant_config.timezone (src/server/time.ts) precisely so a forgotten env
+      # var cannot silently move it — but a process whose clock matches the
+      # restaurant is far easier to debug at 1am.
+      - TZ=${TIMEZONE:-Asia/Colombo}
     depends_on:
       db:
         condition: service_healthy

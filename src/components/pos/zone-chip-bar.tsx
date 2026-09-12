@@ -1,5 +1,6 @@
 'use client'
 
+import { ConciergeBell } from 'lucide-react'
 import { ALL_ZONES_ICON, zoneIcon } from '@/lib/design'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +17,24 @@ export type ZoneChipBarProps = {
   /** Free tables across every zone, shown on the "All zones" chip. */
   totalOpenCount: number
   onZoneChange: (zoneId: string | null) => void
+  /**
+   * Whether the Counter view is showing (FR64).
+   *
+   * A MODE, not a filter. Counter orders occupy no zone, so they never appear
+   * inside one or under "All zones" — mixing them in would make that chip a lie.
+   */
+  counterActive: boolean
+  onCounterSelect: () => void
+  /**
+   * Whether to show the Counter pill at all.
+   *
+   * Kitchen staff cannot open, read or close counter sales — `/api/sessions` is
+   * owner + waiter. Showing them the pill led somewhere that reads "No counter
+   * sales", indistinguishable from a genuinely empty bar, with a create button
+   * that always 403s. The strip's own rule: offering a control that always fails
+   * is the same defect as the dead "Switch user" button two stories ago.
+   */
+  showCounter: boolean
 }
 
 /**
@@ -34,6 +53,9 @@ export function ZoneChipBar({
   activeZoneId,
   totalOpenCount,
   onZoneChange,
+  counterActive,
+  onCounterSelect,
+  showCounter,
 }: ZoneChipBarProps) {
   const chipBase = cn(
     'flex h-touch-waiter shrink-0 flex-col items-start justify-center gap-sp-1 rounded-control px-sp-4',
@@ -46,7 +68,9 @@ export function ZoneChipBar({
   const inactiveChip = 'border-slate-200 bg-white shadow-el-1'
 
   const AllIcon = ALL_ZONES_ICON
-  const allActive = activeZoneId === null
+  // Counter mode overrides the zone filter entirely, so "All zones" is only
+  // active when we are actually looking at zones.
+  const allActive = activeZoneId === null && !counterActive
 
   return (
     <div
@@ -88,7 +112,7 @@ export function ZoneChipBar({
       </button>
 
       {zones.map((zone) => {
-        const isActive = activeZoneId === zone.id
+        const isActive = activeZoneId === zone.id && !counterActive
         const Icon = zoneIcon(zone.name)
 
         return (
@@ -125,6 +149,46 @@ export function ZoneChipBar({
           </button>
         )
       })}
+
+      {/* Counter — orders belonging to no table at all (FR64).
+
+          DELIBERATELY COUNTLESS. Every chip above shows FREE TABLES: "Tables 3"
+          means three are available. A number here would mean ACTIVE ORDERS —
+          the opposite reading of an identically-styled figure in an identically
+          -styled chip. The cards themselves say how many there are, and they
+          say it unambiguously. */}
+      {showCounter ? (
+      <button
+        type="button"
+        aria-pressed={counterActive}
+        onClick={onCounterSelect}
+        className={cn(chipBase, counterActive ? activeChip : inactiveChip)}
+      >
+        <span className="flex items-center gap-sp-2">
+          <ConciergeBell
+            aria-hidden="true"
+            className={cn('size-5 shrink-0', counterActive ? 'text-white' : 'text-slate-600')}
+            strokeWidth={2}
+          />
+          <span
+            className={cn(
+              'text-fs-16 font-semibold whitespace-nowrap',
+              counterActive ? 'text-white' : 'text-slate-900',
+            )}
+          >
+            Counter
+          </span>
+        </span>
+        <span
+          className={cn(
+            'text-fs-12 whitespace-nowrap',
+            counterActive ? 'text-brand-100' : 'text-slate-600',
+          )}
+        >
+          No table
+        </span>
+      </button>
+      ) : null}
     </div>
   )
 }

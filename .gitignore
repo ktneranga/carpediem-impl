@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Stray agent output — an unexpanded Windows env var caused a third-party agent
+# to write logs into a literal `%LOCALAPPDATA%` directory inside the repo, and
+# they were committed. Untracked 2026-09-08; ignored so they cannot return.
+%LOCALAPPDATA%/

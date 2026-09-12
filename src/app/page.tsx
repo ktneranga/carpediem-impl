@@ -17,8 +17,17 @@ export default async function Home() {
   const headersList = await headers()
   const staffId = headersList.get('x-staff-id')
 
+  // Role comes from the row, not from the x-staff-role header.
+  //
+  // The header is trustworthy — the proxy strips any client-sent value and sets
+  // it from the validated session — but it decides styling, and this decides
+  // which controls exist. One database read makes the authority obvious.
   const [staffRow] = staffId
-    ? await db.select({ name: staff.name }).from(staff).where(eq(staff.id, staffId)).limit(1)
+    ? await db
+        .select({ name: staff.name, role: staff.role })
+        .from(staff)
+        .where(eq(staff.id, staffId))
+        .limit(1)
     : []
 
   const [config] = await db
@@ -30,6 +39,7 @@ export default async function Home() {
     <TableGrid
       restaurantName={config?.restaurantName ?? 'Restaurant'}
       staffName={staffRow?.name ?? 'Unknown'}
+      role={staffRow?.role ?? null}
     />
   )
 }

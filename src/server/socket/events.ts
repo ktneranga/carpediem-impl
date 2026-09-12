@@ -16,6 +16,32 @@ export type TableStatusChangedPayload = {
   sessionId: string | null
   openedAt: string | null
   itemCount: number
+  /**
+   * Why the table is out of service; null otherwise.
+   *
+   * Carried on the event because the client PATCHES its cache rather than
+   * refetching — so a field the payload omits keeps whatever stale value the
+   * row already had. Without this, a device that did not initiate the change
+   * showed "No reason recorded", and after a return-to-service the previous
+   * outage's reason survived to be displayed against the next one.
+   */
+  unavailableReason: string | null
+  /**
+   * Every table on this session, in label order. Empty when there is no session.
+   *
+   * Carried because the client PATCHES its cache rather than refetching, and
+   * `toGridUnits` decides a merged group exists SOLELY by this array's length.
+   * Without it in the payload, a merge collapsed into one card only on the
+   * device that performed it — every other tablet kept `groupTableLabels: []`
+   * on the patched row and rendered the party as two separate occupied cards
+   * with identical timers, which is the exact ambiguity collapsing exists to
+   * remove. Un-merge was the mirror: survivors kept labels naming a table that
+   * was already back on the floor as a free card in the same grid.
+   *
+   * Same reasoning as `unavailableReason` above — a field the payload omits
+   * keeps whatever stale value the cached row already had.
+   */
+  groupTableLabels: string[]
 }
 
 /**
@@ -42,5 +68,63 @@ export function emitTableStatusChanged(payload: TableStatusChangedPayload): void
     // which covers a dropped connection — but an emit swallowed here while the
     // socket stayed up is simply lost. Prefer failing loudly in development.
     console.error('[socket] Failed to emit table:status_changed:', error)
+  }
+}
+
+/**
+ * Broadcasts that the set of open counter sales changed.
+ *
+ * Payload-free by design. `table:status_changed` carries a row patch because the
+ * grid patches rows; the counter list is a QUERY, so the only thing a device
+ * needs to know is "refetch". Reconstructing a sequence-numbered list from
+ * incremental patches would mean recomputing every other row's identity on the
+ * client, which is work the server already does.
+ *
+ * Wrapped like `emitTableStatusChanged`, and for the same reason: this is called
+ * after a committed transaction, so a throwing `getIO()` — server not yet
+ * initialised, a hot reload — would turn a successful write into a 500 on work
+ * that already happened.
+ */
+export function emitCounterSalesChanged(): void {
+  try {
+    getIO().emit('counter:changed')
+  } catch (error) {
+    console.error('[socket] Failed to emit counter:changed:', error)
+  }
+}
+
+/**
+ * One menu item's availability changed — 86'd, restocked, or manually toggled.
+ *
+ * ── The name ─────────────────────────────────────────────────────────────────
+ * `menu:item_updated`, NOT `menu:itemUpdated`. `architecture.md:399` sets the
+ * rule — `domain:action`, snake_case after the colon — and every event here
+ * follows it. epics.md wrote the camelCase spelling in six places; that was
+ * corrected on 2026-09-11, exactly as `table:statusChanged` was corrected on
+ * 2026-08-21.
+ *
+ * The stakes are higher than a convention breach here. Story 4.2 writes the
+ * LISTENER; Epic 8 writes the EMITTER. Two spellings means no error, no log, and
+ * an 86'd item that silently fails to grey out on every other tablet — found, if
+ * ever, by a waiter selling something the kitchen ran out of an hour ago.
+ *
+ * Payload carries what the client patches. Story 3.8's review found a socket
+ * payload missing the one field the client keyed on, so a merge only worked on
+ * the device that made it; the rule since is that the payload carries every
+ * field the receiver writes.
+ */
+export type MenuItemUpdatedPayload = {
+  itemId: string
+  available: boolean
+  /** Null when the item is not portion-tracked. */
+  portionCount: number | null
+}
+
+export function emitMenuItemUpdated(payload: MenuItemUpdatedPayload): void {
+  try {
+    getIO().emit('menu:item_updated', payload)
+  } catch (error) {
+    // Never let a socket failure fail the write that already committed.
+    console.error('[socket] Failed to emit menu:item_updated:', error)
   }
 }

@@ -7,7 +7,26 @@
  * status pill is exactly the failure the tinted-pair rule exists to prevent.
  */
 
-import { Armchair, Flame, LayoutGrid, Umbrella, Utensils, type LucideIcon } from 'lucide-react'
+import {
+  Armchair,
+  Beer,
+  CakeSlice,
+  ChefHat,
+  Coffee,
+  Croissant,
+  Drumstick,
+  Fish,
+  Flame,
+  LayoutGrid,
+  Pizza,
+  Salad,
+  Sandwich,
+  Soup,
+  Umbrella,
+  Utensils,
+  UtensilsCrossed,
+  type LucideIcon,
+} from 'lucide-react'
 
 /**
  * Values match `tableStatusEnum` in the schema EXACTLY:
@@ -86,3 +105,52 @@ export const ROUTES = {
 } as const
 
 export type RouteKey = keyof typeof ROUTES
+
+/**
+ * An icon per menu category, for the order screen's filter chips.
+ *
+ * Same shape as `zoneIcon` above, and for the same reason: more than one place
+ * will want it, and a category showing a different icon on the chip than on a
+ * card's fallback tile is exactly the drift these lookups exist to prevent.
+ *
+ * Keyed on the category NAME, lowercased, because categories are owner-configured
+ * free text — there is no enum to switch on, and there should not be: a
+ * restaurant that invents "Beach Grill" gets the sensible default rather than a
+ * migration. Names here cover the common cases across the menus this product
+ * targets; add rows freely, never a required column.
+ *
+ * The word always accompanies the icon on the chip. An icon alone is a guess.
+ */
+const MENU_CATEGORY_ICONS: Record<string, LucideIcon> = {
+  starters: Salad,
+  appetizers: Salad,
+  appetisers: Salad,
+  salads: Salad,
+  soups: Soup,
+  breakfast: Croissant,
+  mains: UtensilsCrossed,
+  'main course': UtensilsCrossed,
+  'main courses': UtensilsCrossed,
+  pizza: Pizza,
+  pizzas: Pizza,
+  pasta: ChefHat,
+  seafood: Fish,
+  grill: Flame,
+  bbq: Flame,
+  burgers: Sandwich,
+  sandwiches: Sandwich,
+  chicken: Drumstick,
+  sides: Utensils,
+  desserts: CakeSlice,
+  dessert: CakeSlice,
+  drinks: Beer,
+  beverages: Beer,
+  bar: Beer,
+  'hot drinks': Coffee,
+  coffee: Coffee,
+  tea: Coffee,
+}
+
+export function menuCategoryIcon(categoryName: string): LucideIcon {
+  return MENU_CATEGORY_ICONS[categoryName.trim().toLowerCase()] ?? Utensils
+}

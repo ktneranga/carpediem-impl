@@ -1,0 +1,1 @@
+ALTER TABLE "order_events" DROP COLUMN "seat_slot";

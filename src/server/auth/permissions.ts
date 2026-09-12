@@ -81,11 +81,45 @@ export const ROUTE_ROLES: RoutePolicy[] = [
     exemptMethods: ['GET', 'HEAD'],
   },
 
+  // The ordering menu (Story 4.2, FR7).
+  //
+  // Added BEFORE the route existed, for the reason spelled out below: an
+  // unmatched prefix is default-allow. Kitchen staff are excluded because they
+  // read tickets, not the ordering menu — if Epic 5's KDS ever needs item names
+  // it gets its own endpoint under `/api/kitchen`, which is already policed.
+  { prefix: '/api/menu', roles: ['owner', 'waiter'] },
+
+  // Session-addressed order entry (Story 3.9, FR64).
+  //
+  // ADDED BEFORE THE FIRST ROUTE EXISTS UNDER IT, and that ordering is the whole
+  // point. `findRoutePolicy` returns null for an unmatched prefix and
+  // `isRoleAllowed` reads null as "any authenticated role" — default-allow is
+  // deliberate so a new route surfaces as a missing policy rather than a
+  // confusing 403. But `/api/sessions` matched NOTHING, so shipping a route
+  // under it first would have let every kitchen user open, close and read
+  // orders, with nothing erroring and nothing logging.
+  //
+  // No exemptMethods. Unlike /api/tables — whose GET is exempt because every
+  // role's landing screen calls it — nothing here needs reading by kitchen.
+  //
+  // NOTE for Epic 6/7: `GET /api/sessions/:sessionId/history` is specified as
+  // readable by any staff member, and that CANNOT be carved out with a longer
+  // prefix — the session id sits mid-path and a dynamic segment defeats prefix
+  // specialisation, the same limitation documented against /api/tables above.
+  // Give the history and audit views their own namespace (/api/audit/...).
+  { prefix: '/api/sessions', roles: ['owner', 'waiter'] },
+
   // The order entry screen itself. Kitchen staff are excluded from opening
   // sessions, so letting them read the order screen — covers, timing, session
   // detail — by typing a URL would make that exclusion cosmetic. The table grid
   // at `/` stays open to every role; this is only the per-table screen.
+  //
+  // `/orders` is the session-addressed successor to `/tables/[tableId]`. It does
+  // NOT inherit the `/api/orders` policy — a page path does not start with the
+  // API prefix — so without this entry, moving the order screen there would have
+  // silently undone the protection the `/tables` entry exists to provide.
   { prefix: '/tables', roles: ['owner', 'waiter'] },
+  { prefix: '/orders', roles: ['owner', 'waiter'] },
 ]
 
 /**

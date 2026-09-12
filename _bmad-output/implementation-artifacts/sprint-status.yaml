@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-03
-last_updated: 2026-09-06
+last_updated: 2026-09-12
 project: carpe-diem-restaurant
 project_key: NOKEY
 tracking_system: file-system
@@ -69,19 +69,23 @@ development_status:
   3-5-implement-zone-map-toggle: backlog  # DEFERRED post-demo — polish
   # Added 2026-09-06 by sprint-change-proposal-2026-09-06.md — no way to release a
   # table without payment; run BEFORE Epic 4, every session opened until then is stuck
-  3-6-implement-close-table-without-payment: in-progress
+  3-6-implement-close-table-without-payment: review
   # Added 2026-09-06 by sprint-change-proposal-2026-09-06-merge-and-availability.md
   # 3-7 first (small, no schema change), then 3-8 BEFORE Epic 4 — every order,
   # ticket and billing story built on one-table-per-session raises its cost
-  3-7-implement-table-availability: backlog
-  3-8-implement-within-zone-table-merging: backlog
+  3-7-implement-table-availability: review
+  3-8-implement-within-zone-table-merging: done
+  # Added 2026-09-10 by sprint-change-proposal-2026-09-10-counter-sale.md — every
+  # route is addressed by tableId and a counter order has no table id; build it
+  # BEFORE Epic 4 or every order screen needs retrofitting
+  3-9-implement-counter-sale: done
   epic-3-retrospective: optional
 
   # ── Epic 4: Order Entry & Multi-Destination Routing ──────────────────────
-  epic-4: backlog
-  4-1-build-orderactionstrip-component: backlog
-  4-2-implement-menu-browse-and-search: backlog
-  4-3-implement-seat-slot-management: backlog
+  epic-4: in-progress
+  4-1-build-orderactionstrip-component: done
+  4-2-implement-menu-browse-and-search: done
+  4-3-implement-seat-slot-management: review
   4-4-implement-add-item-to-order-with-modifiers-and-seat-assignment: backlog
   4-5-implement-order-submission-and-multi-destination-routing: backlog
   epic-4-retrospective: optional

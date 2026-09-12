@@ -925,8 +925,8 @@ So that I can start taking an order immediately without any setup steps.
 
 **Acceptance Criteria:**
 
-**Given** a waiter taps an "open" table card
-**When** the tap is registered
+**Given** a waiter has selected an "open" table card *(amended 2026-09-07 by Story 3.7: a tap SELECTS the card; it no longer opens a session on its own)*
+**When** they tap "Start order" on the floor action strip
 **Then** `POST /api/tables/:tableId/sessions` is called *(amended 2026-09-06: accepts an optional `additionalTableIds` array for a merged seating — all tables must share a zone, see Story 3.8)*; a new `order_sessions` row is created with `table_id` (the primary table), `opened_by_staff_id` (from `x-staff-id` header), and `opened_at`, **plus one `order_session_tables` row per table in the group**; `closed_at` is left NULL, which is what marks the session open; `tables.status` updates to `occupied` for every table in the group
 
 **Given** the session is created successfully
@@ -1029,6 +1029,8 @@ So that the floor plan stays true and a wrong tap is not permanent.
 **Given** a waiter is on the order screen for an open session with no submitted items
 **When** they tap "Close table" and choose the reason `abandoned`
 **Then** `POST /api/tables/:tableId/sessions/close` is called with `{ reason: "abandoned" }`; the `order_sessions` row has `closed_at` and `closed_by_staff_id` set; **`released_at` is set on every `order_session_tables` row for the session and every table in the group returns to `open`** *(amended 2026-09-06 for merged tables, Story 3.8)*; a `table:status_changed` event is emitted per affected table and every connected device updates within 2 seconds
+
+> **Amended 2026-09-10 for FR64 (Story 3.9).** Closing must also be reachable **by session id**, because a counter sale has no table id to address it through. Story 3.9 adds that route; the underlying close is the same shared service and must produce identical records either way. A close on a session with no attached tables releases nothing and emits no `table:status_changed` — there is no table whose status changed.
 
 **Given** the session being closed has submitted items
 **When** the waiter chooses the reason `abandoned`
@@ -1175,9 +1177,64 @@ So that a group that needs more space is still one order, one ticket and one bil
 ---
 
 
+### Story 3.9: Implement Counter Sale (Orders Without a Table)
+
+**As a** waiter or owner,
+**I want** to take an order that is not tied to any table,
+**So that** a customer buying at the bar can be served and recorded without occupying seating.
+
+> **Added 2026-09-10** — sprint-change-proposal-2026-09-10-counter-sale.md. Sequenced **before Epic 4** for the same reason Stories 3.6-3.8 were: every route and every screen in the system is currently addressed by `tableId`, and a counter order has no table id to put in one. Building Epic 4's order screens table-addressed and retrofitting them later is the expensive path.
+
+**Acceptance Criteria:**
+
+**Given** a waiter is on the floor screen with no table selected
+**When** they tap **Counter sale**
+**Then** a session is created with `kind = 'counter'`, no `order_session_tables` rows and a null `table_id`; **no** table card changes state; the order screen opens for that session
+
+**Given** a counter session exists
+**When** the floor grid renders
+**Then** the counter order appears on **no** table card and affects no zone's open count — it is not a table, and the grid is a view of tables
+
+**Given** a counter session is open
+**When** a waiter opens the order screen for it
+**Then** the screen is reached by **session id**, not table id; item entry, rounds and submission behave exactly as for a table session
+
+**Given** a counter session with no items
+**When** a waiter closes it without payment
+**Then** the close is addressed by session id and produces the same `order_sessions` and audit records as a table close (Story 3.6), differing only in that no table is released
+
+**Given** a counter session exists and the customer is then seated
+**When** a waiter attaches one or more tables to it
+**Then** the session becomes an ordinary table order — the tables show `occupied`, the group appears as a card, and `kind` is updated to `'table'`
+
+**Given** a session of kind `counter` has no attached tables
+**When** any un-merge or last-table guard is evaluated
+**Then** `SESSION_NEEDS_A_TABLE` does **not** apply — that guard exists to stop a *table* session becoming unreachable, and a counter session is reachable without one
+
+**Given** a counter session's order is submitted
+**When** the ticket is generated
+**Then** the destination line reads `COUNTER` rather than a table identifier (FR18 as amended)
+
+**Given** any action on a counter session
+**When** it is recorded
+**Then** attribution and the append-only audit trail are identical to a table session — same events, same staff id, same immutability
+
+**Schema notes for the implementer:**
+
+> `order_sessions.table_id` becomes **nullable**, and a new `order_sessions.kind` enum (`'table' | 'counter'`, default `'table'`) is added.
+>
+> **`kind` must be a column, not inferred from "zero attached tables".** A table session passes through zero attached rows transiently while un-merging, so inferring the type from that state means a race can silently reclassify a table order as a counter order. The owner dashboard (Epic 9) also wants counter revenue separated, which is a `GROUP BY kind` — a query against a column, not against the absence of join rows.
+>
+> `order_session_tables` needs **no change**. It already expresses zero, one, or many tables per session — Story 3.8 made the model order-first, and this story removes the last two constraints that still assumed a table.
+
+---
+
+
 ## Epic 4: Order Entry & Multi-Destination Routing
 
 **Goal:** Implement the complete order entry flow — menu browsing and search, seat slot management, adding items with modifiers, and submitting orders that automatically route to the correct production destination.
+
+> **Amended 2026-09-10 — address the order screen by `session_id`, not `table_id`.** Every route built so far is table-addressed (`/tables/[tableId]`, `POST /api/tables/:tableId/sessions`), and FR64's counter sale has no table id to supply. Build order entry session-addressed from the start, with the table route resolving to it; retrofitting the order screen, submission and ticket routing afterwards is the whole cost of the feature. This applies to Stories 4.1 and 4.5 in particular, both of which currently assume a table context.
 
 ### Story 4.1: Build OrderActionStrip Component
 
@@ -1245,7 +1302,12 @@ So that I can find any item quickly regardless of whether I know where it lives 
 **When** the Route Handler responds
 **Then** it returns all categories and items with `id`, `name`, `price` (integer paisa), `available`, `production_destination`, and `portion_count`; response time is under 300ms on the restaurant LAN
 
-**Given** a Socket.io `menu:itemUpdated` event is received (e.g., item 86'd by a manager)
+**Given** a Socket.io `menu:item_updated` event is received (e.g., item 86'd by a manager)
+
+> **Payload corrected 2026-09-12 (Story 4.2 review).** Two emits in Epic 8 specified `{ itemId, available }` without `portionCount`, while the listener patches all three fields — so an emit matching the epic as written would write `undefined` over every device's cached count. `portionCount` is now part of the payload everywhere. This is Story 3.8's `groupTableLabels` lesson: the event's NAME and its SHAPE both have to be agreed, or the divergence fails silently.
+
+> **Event name corrected 2026-09-11 (Story 4.2).** This epic wrote `menu:itemUpdated` in six places. `architecture.md:399` requires `domain:action` with snake_case after the colon, and every event in the codebase follows it. The camelCase spelling is the same defect corrected for `table:statusChanged` on 2026-08-21: a listener and an emitter that disagree produce no error and no log — real-time simply stops working. Story 4.2 writes the listener; Epic 8 writes the emitter.
+
 **When** TanStack Query processes the event
 **Then** it invalidates and refetches only the affected item's availability state; the menu re-renders without a full page reload
 
@@ -1659,6 +1721,8 @@ So that every payment is captured and the table closes automatically when fully 
 **When** the payment Route Handler checks remaining open bills
 **Then** it calls the shared session-close service introduced in Story 3.6 with reason `settled`, which sets `closed_at` and `closed_by_staff_id` (there is no `status` column — see the schema note on Story 3.3), writes the `SESSION_CLOSED` audit event, and emits `table:status_changed`; `tables.status` returns to `open` on all connected devices within 2 seconds. The close is **not** reimplemented here — a settled close and an unpaid close must produce identical session and audit records, differing only in reason. *(Amended 2026-09-06 by sprint-change-proposal-2026-09-06.md.)*
 
+> **Amended 2026-09-10 for FR64 (Story 3.9).** The auto-close must tolerate a session with **zero** attached tables. A counter sale settles and closes with no table to release and no `table:status_changed` to emit — releasing "the table" cannot be an unconditional step. A counter sale is also the one order type routinely **paid before its items are produced**, so nothing in the settlement path may assume the kitchen is finished with it.
+
 **Given** any payment amount written to the database
 **When** the `payment_record` row is inspected
 **Then** the `amount` column is an integer (paisa); no float or decimal is stored; the row is append-only and cannot be modified or deleted after creation
@@ -1839,7 +1903,7 @@ So that the system knows how many servings are available for each item at the st
 
 **Given** an owner or manager taps "Reset All Portions" at the start of service
 **When** `POST /api/inventory/reset` is called with `{ itemIds: [...], portionCounts: {...} }`
-**Then** all specified items' `portion_count` values are updated in a single transaction; items with a positive new count that were previously unavailable are reset to `available: true`; a `menu:itemUpdated` Socket.io event is emitted for each affected item so all connected devices reflect the reset immediately
+**Then** all specified items' `portion_count` values are updated in a single transaction; items with a positive new count that were previously unavailable are reset to `available: true`; a `menu:item_updated` Socket.io event is emitted for each affected item so all connected devices reflect the reset immediately
 
 **Given** a staff member with role `"staff"` attempts to call `PATCH /api/menu-items/:itemId/portion-count`
 **When** the middleware checks the role
@@ -1869,7 +1933,7 @@ So that concurrent orders from multiple waiters never oversell a depleted item.
 
 **Given** an order is submitted and the decrement causes `portion_count` to reach exactly zero
 **When** the transaction commits
-**Then** the item's `available` flag is set to `false` in the same transaction; a `menu:itemUpdated` Socket.io event is emitted to all connected clients with `{ itemId, available: false, portionCount: 0 }`; all connected menu views reflect the item as unavailable within 2 seconds without a page refresh
+**Then** the item's `available` flag is set to `false` in the same transaction; a `menu:item_updated` Socket.io event is emitted to all connected clients with `{ itemId, available: false, portionCount: 0 }`; all connected menu views reflect the item as unavailable within 2 seconds without a page refresh
 
 **Given** two waiters simultaneously submit orders that together would exhaust the remaining portion count
 **When** both `UPDATE` statements execute concurrently
@@ -1899,11 +1963,11 @@ So that I can immediately 86 an item that has run out, is not ready, or should n
 
 **Given** the availability toggle is set to `false` (item 86'd)
 **When** the update commits
-**Then** a `menu:itemUpdated` Socket.io event is emitted to all connected clients with `{ itemId, available: false }`; all connected waiter menu views reflect the item as unavailable within 2 seconds; the item's add button is disabled on all devices without a page refresh
+**Then** a `menu:item_updated` Socket.io event is emitted to all connected clients with `{ itemId, available: false, portionCount }`; all connected waiter menu views reflect the item as unavailable within 2 seconds; the item's add button is disabled on all devices without a page refresh
 
 **Given** the availability toggle is set to `true` (item restored)
 **When** the update commits
-**Then** a `menu:itemUpdated` Socket.io event is emitted with `{ itemId, available: true }`; all connected waiter menu views reflect the item as available within 2 seconds; if the item has `portion_count > 0` or null, it becomes orderable immediately
+**Then** a `menu:item_updated` Socket.io event is emitted with `{ itemId, available: true, portionCount }`; all connected waiter menu views reflect the item as available within 2 seconds; if the item has `portion_count > 0` or null, it becomes orderable immediately
 
 **Given** an item with `portion_count = 0` is manually toggled to `available: true`
 **When** the update is saved
@@ -2009,7 +2073,7 @@ So that I have a complete operational picture at a glance without navigating to 
 
 **Given** the inventory alert list on the dashboard
 **When** it renders
-**Then** it shows all menu items with `available: false`; each entry distinguishes between "Depleted" (portion_count = 0) and "Manually Unavailable"; the list updates in real time via Socket.io `menu:itemUpdated` events (FR52)
+**Then** it shows all menu items with `available: false`; each entry distinguishes between "Depleted" (portion_count = 0) and "Manually Unavailable"; the list updates in real time via Socket.io `menu:item_updated` events (FR52)
 
 **Given** no inventory alerts exist
 **When** the inventory alert list renders

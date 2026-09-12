@@ -1,6 +1,6 @@
 # Story 3.6: Implement Close Table Without Payment
 
-Status: in-progress
+Status: review
 
 - **Epic:** 3 — Zone & Table Navigation
 - **Story ID:** 3.6
@@ -118,7 +118,7 @@ So that the floor plan stays true and a wrong tap is not permanent.
   - `notes` on the audit row should be machine-readable first: store the bare reason string, not a sentence. Epic 7's audit view and Epic 9's dashboard will filter on it.
   - Owner-facing wording is not this story's job, but do not make it impossible: a bare `'walkout'` is filterable, `'Closed by Nina because the party left'` is not.
 
-- [ ] **Task 7 — Verify** (AC: all)
+- [x] **Task 7 — Verify** (AC: all)
   - Still no test framework. Manual, as every prior story. Be explicit in your completion notes about what you *observed* versus *reasoned* — Story 3.2 shipped unverified real-time claims and the gap between those two is where its real bugs lived.
   - Minimum matrix in Dev Notes below.
 
@@ -333,14 +333,13 @@ ERROR: [immutable-table] UPDATE on order_events is not permitted.
 
 **Invalidate AND navigate.** `TableGrid` already has `refetchOnMount: 'always'`, which would cover AC-8 on its own, but relying on that makes this screen's correctness depend on a setting configured in a different file. The explicit invalidation makes it local.
 
-**NOT VERIFIED — the browser half.**
+**BROWSER PASS DONE — 2026-09-10, by Teran.** Closing a table without payment behaves correctly end to end: the "Close table" button, the navigation back, and a grid that shows the table returned to `open` (AC-1's UI half, AC-8).
 
-Task 7 is deliberately left unchecked. Everything server-side is verified above, but no browser was used, and these live only on the client:
+**Still unverified, and not by omission — unreachable.** These need Epic 4 to exist before they can be exercised at all:
 
-- The "Close table" button and the navigation back to a corrected grid (AC-1's UI half, AC-8 entirely)
 - The walkout confirmation dialog (AC-3) — and note it is **doubly unverifiable**: no item can exist until Epic 4, so `itemCount` is always 0, `isWalkout` is always false, and the confirmation branch cannot be reached at all through the UI today. The `walkout` reason itself was verified over curl.
 - AC-2's `SESSION_HAS_ITEMS` 409 — same cause. The branch is written and unreachable until Epic 4 creates items.
-- The 403 notice on the close screen (the server returns the right 403; what the UI does with it is untested)
+- The 403 notice on the close screen (the server returns the right 403; what the UI does with it is untested — a kitchen user cannot reach the order screen to try)
 
 This was flagged in the story before implementation rather than discovered after, which is the improvement over Story 3.2. The first genuine test of AC-2 and AC-3 is Epic 4.
 
@@ -359,3 +358,4 @@ The dev server was left running on `http://localhost:3000` for that pass: sign i
 ### Change Log
 
 - 2026-09-06: Story implemented. A table can now be released without payment — the gap that made a mis-tap permanent and left walkouts unrepresentable. Open and close writes were extracted into `table-session.service.ts` so Story 6.5's settled close will share one implementation and produce identical records; Story 3.3's open route was refactored onto it and its full matrix re-run to confirm nothing regressed. Closing uses a conditional `WHERE closed_at IS NULL` UPDATE with a row-count check — the partial unique index constrains opens, not closes — verified with 8 concurrent requests producing exactly one winner. Every open and close now writes an append-only audit row, closing a pre-existing gap where `SESSION_OPENED` was defined in the enum but never written by anything. `settled` is rejected at the HTTP surface so no client can close a table as paid without a payment record. Task 7 (browser verification) is NOT done and the story is deliberately left short of `review`; AC-2 and AC-3 additionally cannot be exercised until Epic 4 creates items, which was flagged in the story before implementation.
+- 2026-09-10: Browser pass completed by Teran — close-without-payment works end to end. Task 7 checked and status moved to `review`. AC-2 (`SESSION_HAS_ITEMS`) and AC-3 (the walkout confirmation) remain unexercised because no item can exist until Epic 4; both branches are written and both are unreachable through the UI today. First genuine test of them is Epic 4.

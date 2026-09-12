@@ -29,6 +29,69 @@
       "when": 1788159576469,
       "tag": "0003_rare_joseph",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788880308292,
+      "tag": "0004_cold_lifeguard",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788880408292,
+      "tag": "0005_table_status_events_append_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789052408292,
+      "tag": "0006_availability_reason_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789060000000,
+      "tag": "0007_worthless_bloodstorm",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789070000000,
+      "tag": "0008_faithful_satana",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789134001753,
+      "tag": "0009_milky_rocket_racer",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789143478009,
+      "tag": "0010_gray_crusher_hogan",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789193968012,
+      "tag": "0011_short_fixer",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789193983513,
+      "tag": "0012_curved_lily_hollister",
+      "breakpoints": true
     }
   ]
 }

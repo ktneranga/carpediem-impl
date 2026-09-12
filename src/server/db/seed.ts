@@ -15,7 +15,7 @@
 import bcrypt from 'bcryptjs'
 import { Pool } from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
-import { staff, tables, tenantConfig, tenants, zones } from './schema'
+import { menuCategories, menuItems, staff, tables, tenantConfig, tenants, zones } from './schema'
 
 const BCRYPT_COST = 10 // architecture.md:205 — not 8, not 12
 
@@ -49,7 +49,10 @@ const SEED_ZONES = [
     displayOrder: 2,
     tables: [
       { label: 'S1', capacity: 2, status: 'open' as const },
-      { label: 'S2', capacity: 2, status: 'unavailable' as const }, // AC-6 needs one
+      // A reason is REQUIRED whenever status is unavailable — enforced by
+      // tables_unavailable_reason_matches_status (migration 0006), not just by
+      // the API. Seeding one without a reason fails at insert.
+      { label: 'S2', capacity: 2, status: 'unavailable' as const, reason: 'Sun bed broken' },
       { label: 'S3', capacity: 2, status: 'open' as const },
     ],
   },
@@ -69,7 +72,65 @@ const SEED_ZONES = [
     tables: [
       { label: 'R1', capacity: 4, status: 'open' as const },
       { label: 'R2', capacity: 4, status: 'open' as const },
-      { label: 'R3', capacity: 8, status: 'unavailable' as const },
+      { label: 'R3', capacity: 8, status: 'unavailable' as const, reason: 'Awaiting repair' },
+    ],
+  },
+]
+
+/**
+ * A menu with enough shape to exercise Story 4.2 and the stories after it.
+ *
+ * Deliberately covers all THREE production destinations (FR9), because Story 4.5
+ * routes on them and a seed with only `kitchen` items would let a broken router
+ * pass every test. One item is unavailable so the 86'd rendering has something
+ * to render, and several carry `portionCount` so Epic 8 has stock to decrement.
+ *
+ * Prices are integer PAISA. 185000 is LKR 1,850 — never a float, anywhere.
+ */
+const SEED_MENU: {
+  category: string
+  items: {
+    name: string
+    pricePaisa: number
+    destination: 'kitchen' | 'pizza_kitchen' | 'bar'
+    available?: boolean
+    portionCount?: number
+  }[]
+}[] = [
+  {
+    category: 'Starters',
+    items: [
+      { name: 'Devilled Cashew', pricePaisa: 95000, destination: 'kitchen', portionCount: 20 },
+      { name: 'Fish Cutlets', pricePaisa: 80000, destination: 'kitchen', portionCount: 30 },
+      { name: 'Garlic Bread', pricePaisa: 65000, destination: 'pizza_kitchen' },
+    ],
+  },
+  {
+    category: 'Mains',
+    items: [
+      { name: 'Grilled Fish', pricePaisa: 185000, destination: 'kitchen', portionCount: 12 },
+      { name: 'Butter Prawns', pricePaisa: 245000, destination: 'kitchen', portionCount: 8 },
+      { name: 'Lamprais', pricePaisa: 165000, destination: 'kitchen' },
+      // The 86'd item. Story 4.2 AC-4 needs one to exist from the first run —
+      // an unavailable rendering nobody has seen is an unavailable rendering
+      // nobody has tested.
+      { name: 'Crab Curry', pricePaisa: 320000, destination: 'kitchen', available: false, portionCount: 0 },
+    ],
+  },
+  {
+    category: 'Pizza',
+    items: [
+      { name: 'Margherita', pricePaisa: 145000, destination: 'pizza_kitchen', portionCount: 15 },
+      { name: 'Seafood Pizza', pricePaisa: 210000, destination: 'pizza_kitchen', portionCount: 10 },
+    ],
+  },
+  {
+    category: 'Drinks',
+    items: [
+      { name: 'Lion Lager', pricePaisa: 55000, destination: 'bar', portionCount: 48 },
+      { name: 'Arrack & Soda', pricePaisa: 70000, destination: 'bar' },
+      { name: 'King Coconut', pricePaisa: 35000, destination: 'bar', portionCount: 25 },
+      { name: 'Fresh Lime Soda', pricePaisa: 40000, destination: 'bar' },
     ],
   },
 ]
@@ -106,6 +167,7 @@ async function main() {
     // database. All-or-nothing means a failed seed leaves nothing behind and
     // simply re-running works.
     let tableCount = 0
+    let menuItemCount = 0
 
     await db.transaction(async (tx) => {
       const [tenant] = await tx
@@ -171,15 +233,48 @@ async function main() {
             label: tableSpec.label,
             status: tableSpec.status,
             capacity: tableSpec.capacity,
+            // Only unavailable tables carry one, and they must — the CHECK
+            // constraint added in 0006 rejects either half of the mismatch.
+            unavailableReason: 'reason' in tableSpec ? tableSpec.reason : null,
             displayOrder: index + 1,
           })
           tableCount += 1
         }
       }
+
+      // The menu. Inside the SAME transaction as everything else — a seed that
+      // leaves a tenant with tables and no menu looks seeded and cannot take an
+      // order, which is the half-seeded state the all-or-nothing guard exists
+      // to prevent.
+      for (const [categoryIndex, group] of SEED_MENU.entries()) {
+        const [category] = await tx
+          .insert(menuCategories)
+          .values({
+            tenantId: tenant.id,
+            name: group.category,
+            displayOrder: categoryIndex,
+          })
+          .returning({ id: menuCategories.id })
+
+        for (const [itemIndex, item] of group.items.entries()) {
+          await tx.insert(menuItems).values({
+            tenantId: tenant.id,
+            categoryId: category.id,
+            name: item.name,
+            pricePaisa: item.pricePaisa,
+            productionDestination: item.destination,
+            isAvailable: item.available ?? true,
+            portionCount: item.portionCount ?? null,
+            displayOrder: itemIndex,
+          })
+          menuItemCount += 1
+        }
+      }
     })
 
     console.log(
-      `[seed] Created tenant "Carpe Diem" with config, 3 staff, ${SEED_ZONES.length} zones and ${tableCount} tables.\n`,
+      `[seed] Created tenant "Carpe Diem" with config, 3 staff, ${SEED_ZONES.length} zones, ` +
+        `${tableCount} tables, ${SEED_MENU.length} menu categories and ${menuItemCount} items.\n`,
     )
     console.log('  Name   Role     PIN')
     console.log('  ─────  ───────  ────')

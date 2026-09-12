@@ -1,0 +1,2 @@
+CREATE TYPE "public"."production_destination" AS ENUM('kitchen', 'pizza_kitchen', 'bar');--> statement-breakpoint
+ALTER TABLE "menu_items" ADD COLUMN "production_destination" "production_destination" DEFAULT 'kitchen' NOT NULL;
