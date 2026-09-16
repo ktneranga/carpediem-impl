@@ -2,15 +2,20 @@
 
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { MenuCategoryRow } from '@/app/api/menu/route'
+import type { MenuCategoryRow, MenuItemRow } from '@/app/api/menu/route'
 import type { MenuItemUpdatedPayload } from '@/server/socket/events'
 import { MenuCategoryChips } from '@/components/pos/menu-category-chips'
 import { MenuItemCard } from '@/components/pos/menu-item-card'
 import { useSocketEvent } from '@/hooks/use-socket'
-import { menuCategoryIcon } from '@/lib/design'
 import { cn } from '@/lib/utils'
 
-const MENU_QUERY_KEY = ['menu'] as const
+/**
+ * The menu cache key. Exported because the order screen reads this same cache to
+ * tell whether a staged item has been 86'd — it must never be re-declared there.
+ * Two arrays that have to stay equal but are written in two files is the exact
+ * coupling Story 4.3's review flagged on the seat index name.
+ */
+export const MENU_QUERY_KEY = ['menu'] as const
 
 /** Longer than the empty state can usefully show; the rest is noise. */
 const MAX_ECHOED_SEARCH = 40
@@ -49,7 +54,30 @@ async function fetchMenu(): Promise<MenuCategoryRow[]> {
  * A request per keystroke on a restaurant LAN, on a tablet, while a guest waits,
  * is the kind of thing that teaches staff to write orders on paper instead.
  */
-export function MenuBrowser() {
+export function MenuBrowser({
+  onAdd,
+  onOpenModifiers,
+  stagedCountByItem,
+}: {
+  /**
+   * Stages the tapped item as-is on the active seat (Story 4.4, AC-1).
+   *
+   * Threaded THROUGH this component to the card rather than the order screen
+   * reaching around it — the browser owns the menu query, the filtering and the
+   * socket patching, and a second component resolving item ids would be a
+   * second source of truth for what is on the menu right now.
+   *
+   * Optional, so the browser still renders standalone with no staging context.
+   */
+  onAdd?: (item: MenuItemRow) => void
+  /** Opens the modifier sheet for the tapped item (AC-2). */
+  onOpenModifiers?: (item: MenuItemRow) => void
+  /**
+   * Staged quantity per menu item id, for the card badge and "Add another".
+   * Owned by the order screen, which owns the staged round.
+   */
+  stagedCountByItem?: Map<string, number>
+} = {}) {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null)
@@ -176,7 +204,7 @@ export function MenuBrowser() {
         type="search"
         value={search}
         onChange={(event) => setSearch(event.target.value)}
-        placeholder="Search the menu…"
+        placeholder="Search the menu — two letters is enough"
         aria-label="Search the menu"
         className={cn(
           'h-touch-waiter w-full shrink-0 rounded-control border border-slate-200 bg-white px-sp-4',
@@ -186,7 +214,14 @@ export function MenuBrowser() {
       />
 
       <MenuCategoryChips
-        categories={categories ?? []}
+        // Counts are of what the category OFFERS, not of what the current search
+        // matches — a chip whose number changes with every keystroke reads as
+        // the menu itself changing.
+        categories={(categories ?? []).map((category) => ({
+          id: category.id,
+          name: category.name,
+          itemCount: category.items.length,
+        }))}
         activeCategoryId={effectiveCategoryId}
         onSelect={setActiveCategoryId}
       />
@@ -225,9 +260,6 @@ export function MenuBrowser() {
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="flex flex-col gap-sp-4">
             {visible.map((category) => {
-              // Once per CATEGORY, not once per item.
-              const Icon = menuCategoryIcon(category.name)
-
               return (
                 <div key={category.id} className="flex flex-col gap-sp-2">
                   {/* The heading stays even while searching, so a match is always
@@ -236,11 +268,24 @@ export function MenuBrowser() {
                     {category.name}
                   </h2>
 
-                  {/* The same column steps as the floor grid, so the two screens
-                      read as one product rather than two designs. */}
-                  <div className="grid grid-cols-2 gap-sp-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {/* As many 210px+ cards as the menu column fits — three on
+                      a tablet, more on a wide screen. Fixed breakpoints stopped
+                      making sense once the column's width became a ratio of the
+                      screen rather than the screen itself. */}
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-sp-3">
                     {category.items.map((item) => (
-                      <MenuItemCard key={item.id} item={item} icon={Icon} />
+                      <MenuItemCard
+                        key={item.id}
+                        item={item}
+                        stagedCount={stagedCountByItem?.get(item.id) ?? 0}
+                        // The ITEM, not its id. The card already holds the row
+                        // the browser resolved; handing back an id would make
+                        // the caller look it up again in a list it does not own,
+                        // and the price it found could differ from the one on
+                        // the card the waiter actually tapped.
+                        onAdd={onAdd}
+                        onOpenModifiers={onOpenModifiers}
+                      />
                     ))}
                   </div>
                 </div>

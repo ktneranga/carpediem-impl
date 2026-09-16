@@ -72,6 +72,21 @@
   --color-unavailable-ink:  #8F1414;
   --color-unavailable-band: #B91C1C; /* 6.54:1 with white; --edge was 3.76:1 */
 
+  /* ── Order state — NOT a table status ───────────────────────────────────────
+     "Not sent" is a property of an ORDER LINE: staged on this device, never
+     written, not yet the kitchen's problem. It shares the amber family with
+     --color-occupied-* because both mean "in progress, needs finishing", and
+     the tinted-pair rule means a waiter reads the word either way.
+
+     It is a SEPARATE family on purpose. `occupied` is a table status with a
+     database enum behind it, and pointing an order line at it would be the same
+     conflation this project refused when `order_events.notes` — audit prose for
+     merges and closes — was proposed as the home for an item's modifier text.
+     One token carrying two meanings is a token nobody can safely change. */
+  --color-unsent-edge: #F59E0B;
+  --color-unsent-body: #FFFBEB;
+  --color-unsent-ink:  #7C4A03;
+
   /* ── Route colours — the only non-status accents ──────────────────────────── */
   --color-route-kitchen: #2288B4;
   --color-route-pizza:   #C2410C;
@@ -211,6 +226,10 @@
     --color-unavailable-body: #FEF2F2;
     --color-unavailable-ink:  #8F1414;
     --color-unavailable-band: #B91C1C;
+
+    --color-unsent-edge: #F59E0B;
+    --color-unsent-body: #FFFBEB;
+    --color-unsent-ink:  #7C4A03;
 
     --color-route-kitchen: #2288B4;
     --color-route-pizza:   #C2410C;

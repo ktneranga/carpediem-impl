@@ -1,90 +1,81 @@
 'use client'
 
-import { LayoutGrid } from 'lucide-react'
-import { menuCategoryIcon } from '@/lib/design'
 import { cn } from '@/lib/utils'
 
 /**
- * Category filter chips for the menu (Story 4.2 Task 5).
+ * Category filter chips for the menu (Story 4.2 Task 5, restyled 2026-09-16).
  *
  * A sibling of `ZoneChipBar`, not a reuse of it: that component is typed to
- * `Zone`, carries per-zone open counts and a Counter pill, and none of those
- * mean anything here. The visual idiom is shared deliberately — a waiter has
- * already learned it on the floor screen — but the props are not.
+ * `Zone` and carries a Counter pill, neither of which means anything here.
  *
- * Each chip keeps its TEXT label alongside the icon. An icon alone is a guess,
- * and this design system already refuses to let shape or colour carry meaning
- * without a word (see `STATUS_TONES.label`).
+ * ── Words and counts, no icons ───────────────────────────────────────────────
+ * The 2026-09-16 design dropped the category icons for an uppercase name and an
+ * item count. The count is what makes a chip worth reading before tapping it:
+ * "PIZZA 2" tells a waiter not to bother scrolling, and "MAINS 4" sets the
+ * expectation for what the grid is about to show.
  */
 export function MenuCategoryChips({
   categories,
   activeCategoryId,
   onSelect,
 }: {
-  categories: { id: string; name: string }[]
+  /**
+   * Each category and how many items it currently offers. Supplied by the
+   * caller, which already has the list — recounting here would be a second
+   * answer to one question.
+   */
+  categories: { id: string; name: string; itemCount: number }[]
   /** Null is the "All items" chip. */
   activeCategoryId: string | null
   onSelect: (categoryId: string | null) => void
 }) {
-  const chipClass = cn(
-    'flex h-touch-waiter shrink-0 items-center gap-sp-2 rounded-control border px-sp-4',
-    'text-fs-16 font-semibold whitespace-nowrap',
-    'transition-[transform,box-shadow] duration-120 ease-standard',
-    'active:scale-[0.97] active:shadow-pressed',
-    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-  )
+  const totalItemCount = categories.reduce((total, category) => total + category.itemCount, 0)
 
-  // `brand-700`, not `brand-500`. White on 500 is 3.9:1 at this size and fails
-  // AA — the same correction made to `primaryButtonClass` on 2026-09-12, and the
-  // same reason: selection must never be carried by an unreadable pair.
-  const activeChip = 'border-brand-700 bg-brand-700 text-white shadow-el-2 inset-shadow-top'
-  const inactiveChip = 'border-slate-200 bg-white text-slate-900 shadow-el-1'
+  const chips = [
+    { id: null, name: 'All items', itemCount: totalItemCount },
+    ...categories,
+  ]
 
   return (
     <div
       role="group"
       aria-label="Filter the menu by category"
-      className="no-scrollbar flex shrink-0 gap-sp-3 overflow-x-auto py-sp-1"
+      className="no-scrollbar flex shrink-0 gap-sp-2 overflow-x-auto py-sp-1"
     >
-      <button
-        type="button"
-        aria-pressed={activeCategoryId === null}
-        onClick={() => onSelect(null)}
-        className={cn(chipClass, activeCategoryId === null ? activeChip : inactiveChip)}
-      >
-        <LayoutGrid
-          aria-hidden="true"
-          strokeWidth={2}
-          className={cn(
-            'size-5 shrink-0',
-            activeCategoryId === null ? 'text-white' : 'text-slate-600',
-          )}
-        />
-        All items
-      </button>
-
-      {categories.map((category) => {
-        const isActive = category.id === activeCategoryId
-        // Resolved once per CATEGORY. It used to be called once per item, from
-        // inside the card map — the same lookup repeated for every dish.
-        const Icon = menuCategoryIcon(category.name)
+      {chips.map((chip) => {
+        const isActive = chip.id === activeCategoryId
 
         return (
           <button
-            key={category.id}
+            key={chip.id ?? 'all'}
             type="button"
             aria-pressed={isActive}
             // Tap to filter, tap again to clear — "dismiss to return to full
-            // list" (ux:417). No navigation happens either way.
-            onClick={() => onSelect(isActive ? null : category.id)}
-            className={cn(chipClass, isActive ? activeChip : inactiveChip)}
+            // list" (ux:417). "All items" is never a toggle.
+            onClick={() => onSelect(isActive && chip.id !== null ? null : chip.id)}
+            className={cn(
+              'flex h-12 shrink-0 items-center gap-sp-2 rounded-full border px-sp-5',
+              'text-fs-14 font-bold tracking-micro whitespace-nowrap uppercase',
+              'transition-[transform,box-shadow] duration-120 ease-standard',
+              'active:scale-[0.97] active:shadow-pressed',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+              // `brand-700`, not `brand-500`: white on 500 is 3.9:1 and fails AA.
+              isActive
+                ? 'border-brand-700 bg-brand-700 text-white shadow-el-2'
+                : 'border-slate-200 bg-white text-slate-600 shadow-el-1',
+            )}
           >
-            <Icon
-              aria-hidden="true"
-              strokeWidth={2}
-              className={cn('size-5 shrink-0', isActive ? 'text-white' : 'text-slate-600')}
-            />
-            {category.name}
+            {chip.name}
+            {/* Visible, and part of the accessible name — "Mains 4" is the
+                useful announcement, so it is not hidden from screen readers. */}
+            <span
+              className={cn(
+                'tabular-nums font-semibold',
+                isActive ? 'text-white/70' : 'text-slate-400',
+              )}
+            >
+              {chip.itemCount}
+            </span>
           </button>
         )
       })}

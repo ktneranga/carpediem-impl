@@ -46,6 +46,12 @@ export type OrderActionStripProps = {
   state: OrderActionStripState
   /** Items staged in the CURRENT round — not the session total. */
   stagedCount?: number
+  /**
+   * Where the staged items will go — "Kitchen", "Kitchen & Bar". Shown beside
+   * the count so the waiter knows which tickets a send will print before they
+   * send it (FR9). Assembled by the caller, which owns the staged lines.
+   */
+  destinationSummary?: string
   busy?: boolean
   onSubmitOrder?: () => void
   onClear?: () => void
@@ -56,6 +62,7 @@ export type OrderActionStripProps = {
 export function OrderActionStrip({
   state,
   stagedCount = 0,
+  destinationSummary,
   busy = false,
   onSubmitOrder,
   onClear,
@@ -113,17 +120,25 @@ export function OrderActionStrip({
             same rule that keeps Clear reachable in `items-added`, which was
             written after the floor strip's review found a Cancel that stopped
             working mid-request. */}
-        <button type="button" onClick={onAddMoreItems} className={secondaryButtonClass}>
-          Add More Items
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onGenerateBill}
-          className={primaryButtonClass}
-        >
-          Generate Bill
-        </button>
+        {onAddMoreItems ? (
+          <button type="button" onClick={onAddMoreItems} className={secondaryButtonClass}>
+            Add More Items
+          </button>
+        ) : null}
+        {/* Only with a handler. This rendered unconditionally, so the order
+            screen — which has no billing until Epic 6 — showed an enabled
+            "Generate Bill" that did nothing: the same dead control the commit
+            button below had, found while fixing that one's twin. */}
+        {onGenerateBill ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onGenerateBill}
+            className={primaryButtonClass}
+          >
+            Generate Bill
+          </button>
+        ) : null}
       </ActionStripShell>
     )
   }
@@ -143,35 +158,54 @@ export function OrderActionStrip({
     return (
       <ActionStripShell
         regionLabel="Order actions"
-        eyebrow="Order"
+        // "Not sent" is the eyebrow because it is the one fact that must never
+        // be misread on this screen: the kitchen does not have these yet.
+        eyebrow="Not sent"
         label={
           stagedCount === 0
             ? 'Nothing staged yet'
-            : `${stagedCount} item${stagedCount === 1 ? '' : 's'} staged`
+            : `${stagedCount} item${stagedCount === 1 ? '' : 's'}`
         }
-        detail="Nothing has gone to the kitchen yet."
+        detail={destinationSummary ? `→ ${destinationSummary}` : 'Nothing has gone to the kitchen yet.'}
         // The SLOT, not a `w-full` child of the button row. See ActionStripShell.
+        //
+        // No handler, no button. This used to render the commit unconditionally
+        // with `onClick={onSubmitOrder}`, so a caller that had not wired
+        // submission yet got a fully enabled "Submit Order" that silently did
+        // nothing on tap. That is the dead-control defect this file's own header
+        // argues against ("NO buttons at all, never disabled ones: a disabled
+        // control invites a tap and teaches nothing") — and an undefined handler
+        // produced the same thing a no-op would have.
+        //
+        // Story 4.4 stages items without wiring submission; 4.5 passes the
+        // handler and the commit appears.
         commit={
-          <button
-            type="button"
-            disabled={busy || stagedCount === 0}
-            onClick={onSubmitOrder}
-            className={commitButtonClass}
-          >
-            {busy ? 'Sending…' : 'Submit Order'}
-          </button>
+          onSubmitOrder ? (
+            <button
+              type="button"
+              disabled={busy || stagedCount === 0}
+              onClick={onSubmitOrder}
+              className={commitButtonClass}
+            >
+              {busy
+                ? 'Sending…'
+                : `Send ${stagedCount} to ${destinationSummary ?? 'the kitchen'}`}
+            </button>
+          ) : undefined
         }
       >
-        <button
-          type="button"
-          // Never disabled by `busy`. Backing out has to work even while a
-          // request is in flight — the rule the floor strip's Cancel controls
-          // established after its review found one that stopped working.
-          onClick={onClear}
-          className={secondaryButtonClass}
-        >
-          Clear
-        </button>
+        {onClear ? (
+          <button
+            type="button"
+            // Never disabled by `busy`. Backing out has to work even while a
+            // request is in flight — the rule the floor strip's Cancel controls
+            // established after its review found one that stopped working.
+            onClick={onClear}
+            className={secondaryButtonClass}
+          >
+            Clear
+          </button>
+        ) : null}
       </ActionStripShell>
     )
   }

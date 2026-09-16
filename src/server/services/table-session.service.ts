@@ -57,6 +57,17 @@ export class TableNotAttachedError extends Error {}
  */
 export class SessionNeedsASeatError extends Error {}
 
+/**
+ * Raised when a seat id is not on the session it was addressed under.
+ *
+ * Added by the 4.3 review. `deleteSeat` used to end with a DELETE scoped by both
+ * ids and never look at the row count, so a foreign or already-removed seat id
+ * removed nothing and the route reported **200 success** — while `PATCH` on the
+ * identical input returned 404. The client's `onSuccess` then filtered that id
+ * out of its cache, so the screen reported a removal that had not happened.
+ */
+export class SeatNotFoundError extends Error {}
+
 /** Raised when deleting a seat that order items still point at. */
 export class SeatHasItemsError extends Error {
   constructor(readonly itemCount: number) {
@@ -181,6 +192,30 @@ export async function openCounterSession(
 }
 
 /**
+ * Locks a session row and asserts it is still open.
+ *
+ * `FOR UPDATE` on a row that does not match locks nothing and raises nothing —
+ * it simply returns no rows. So a lock without the `closed_at` predicate is a
+ * lock that cannot tell "open" from "closed" from "never existed", and every
+ * guard built on it inherits that blindness. `deleteSeat` had exactly that hole
+ * until the 4.3 review: a missing session read zero seats, tripped the
+ * last-seat guard, and told the waiter "This is the only seat on the order."
+ *
+ * `attachTables` and `releaseTable` have carried the predicate all along. This
+ * extracts the shape so a fourth caller cannot forget it.
+ */
+export async function lockOpenSession(tx: Tx, sessionId: string): Promise<void> {
+  const [session] = await tx
+    .select({ id: orderSessions.id })
+    .from(orderSessions)
+    .where(and(eq(orderSessions.id, sessionId), isNull(orderSessions.closedAt)))
+    .for('update')
+    .limit(1)
+
+  if (!session) throw new SessionAlreadyClosedError()
+}
+
+/**
  * The next free seat label for a session — "Seat 1", "Seat 2", …
  *
  * Derived from the COUNT of existing seats, then made safe by the unique index
@@ -235,27 +270,30 @@ export async function createSeat(
 }
 
 /**
- * Deletes a seat, refusing the two cases that would break the session.
+ * Deletes a seat, refusing the three cases that would break the session.
  *
- * Both guards hold the SAME lock as the write. See `SessionNeedsASeatError`.
+ * Every guard holds the SAME lock as the write, and they run in the order that
+ * makes each refusal the TRUE one. Existence is checked before the last-seat
+ * count: a seat id from another session is "no such seat" whether this session
+ * has one seat or six, and answering it with "this is the only seat" — which is
+ * what the pre-review ordering did — sends the waiter to fix the wrong thing.
  */
 export async function deleteSeat(
   tx: Tx,
   { sessionId, seatId }: { sessionId: string; seatId: string },
 ): Promise<void> {
-  // Lock the session first, so two concurrent deletes serialise and the second
-  // one sees the count the first one left behind.
-  await tx
-    .select({ id: orderSessions.id })
-    .from(orderSessions)
-    .where(eq(orderSessions.id, sessionId))
-    .for('update')
-    .limit(1)
+  // Locks the session AND asserts it is open, so two concurrent deletes
+  // serialise and the second sees the count the first left behind.
+  await lockOpenSession(tx, sessionId)
 
   const remaining = await tx
     .select({ id: seatSlots.id })
     .from(seatSlots)
     .where(eq(seatSlots.sessionId, sessionId))
+
+  // One query answers both questions. Scoped to the session, so a seat id that
+  // belongs to a different order simply is not in the list.
+  if (!remaining.some((seat) => seat.id === seatId)) throw new SeatNotFoundError()
 
   if (remaining.length <= 1) throw new SessionNeedsASeatError()
 
@@ -264,6 +302,11 @@ export async function deleteSeat(
   // trigger refuses updates — and restoring the seat is impossible because it
   // would be a new row with a new id. The FK would refuse too, but a 500 tells
   // the waiter nothing; this tells them how many items are in the way.
+  //
+  // Counts EVERY event referencing the seat, not just ITEM_ADDED. That is
+  // deliberate — a voided item's row still points here and would still be
+  // orphaned — but it means the message will overstate the live item count once
+  // Story 4.5 writes voids. Logged in deferred-work.md against 4.5.
   const [items] = await tx
     .select({ total: count() })
     .from(orderEvents)
@@ -272,7 +315,15 @@ export async function deleteSeat(
   const itemCount = Number(items?.total ?? 0)
   if (itemCount > 0) throw new SeatHasItemsError(itemCount)
 
-  await tx.delete(seatSlots).where(and(eq(seatSlots.id, seatId), eq(seatSlots.sessionId, sessionId)))
+  const removed = await tx
+    .delete(seatSlots)
+    .where(and(eq(seatSlots.id, seatId), eq(seatSlots.sessionId, sessionId)))
+    .returning({ id: seatSlots.id })
+
+  // Belt and braces: the existence check above already ran under the lock, so
+  // this cannot fire. It exists so that no future edit can reintroduce a delete
+  // that silently removes nothing and reports success.
+  if (removed.length === 0) throw new SeatNotFoundError()
 }
 
 /**

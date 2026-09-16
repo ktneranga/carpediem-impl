@@ -6,10 +6,14 @@ import { orderSessions, seatSlots } from '@/server/db/schema'
 import {
   deleteSeat,
   SeatHasItemsError,
+  SeatNotFoundError,
+  SessionAlreadyClosedError,
   SessionNeedsASeatError,
 } from '@/server/services/table-session.service'
 
 const uuidSchema = z.string().uuid()
+
+/** Third of three copies — see the note on `MAX_SEAT_NOTE` in `../route.ts`. */
 const MAX_SEAT_NOTE = 40
 
 const patchSchema = z.object({
@@ -62,6 +66,21 @@ export async function PATCH(
   }
 
   try {
+    // POST and DELETE both refuse a closed session; PATCH did not, so a seat on
+    // a settled order could still be renamed. Same shape, same answer. Found
+    // alongside the DELETE ordering bug in the 4.3 review.
+    const [openSession] = await db
+      .select({ id: orderSessions.id })
+      .from(orderSessions)
+      .where(
+        and(eq(orderSessions.id, parsedSessionId.data), isNull(orderSessions.closedAt)),
+      )
+      .limit(1)
+
+    if (!openSession) {
+      return fail('SESSION_ALREADY_CLOSED', 'This order is not open', 409)
+    }
+
     const trimmed = parsedBody.data.seatNote.trim()
 
     const [updated] = await db
@@ -92,12 +111,13 @@ export async function PATCH(
 /**
  * Removes a seat.
  *
- * ── Two refusals, both held under the session row lock ───────────────────────
- * The last seat cannot go: an active session always has somewhere to put an
- * item. And a seat with items cannot go: `order_events` is append-only, so rows
- * pointing at a deleted seat could never be repaired — the trigger refuses
- * updates, and restoring the seat is impossible because it would be a new row
- * with a new id.
+ * ── Four refusals, all held under the session row lock ───────────────────────
+ * The session must still be open. The seat must actually be on it — a foreign
+ * seat id is a 404, exactly as it is for PATCH. The last seat cannot go: an
+ * active session always has somewhere to put an item. And a seat with items
+ * cannot go: `order_events` is append-only, so rows pointing at a deleted seat
+ * could never be repaired — the trigger refuses updates, and restoring the seat
+ * is impossible because it would be a new row with a new id.
  *
  * Both checks run INSIDE `deleteSeat`'s transaction, after a `FOR UPDATE` on the
  * session. Story 3.9's review found the last-TABLE guard counting in a
@@ -122,23 +142,23 @@ export async function DELETE(
   }
 
   try {
-    const [session] = await db
-      .select({ id: orderSessions.id })
-      .from(orderSessions)
-      .where(
-        and(eq(orderSessions.id, parsedSessionId.data), isNull(orderSessions.closedAt)),
-      )
-      .limit(1)
-
-    if (!session) {
-      return fail('SESSION_ALREADY_CLOSED', 'This order is not open', 409)
-    }
-
     try {
+      // Every guard now lives inside `deleteSeat`, under one `FOR UPDATE` that
+      // also asserts the session is open. The pre-check that used to sit here
+      // ran in a transaction that closed before the delete began — which is the
+      // defect Story 3.9's review found in the last-TABLE guard, reintroduced.
       await db.transaction((tx) =>
         deleteSeat(tx, { sessionId: parsedSessionId.data, seatId: parsedSeatId.data }),
       )
     } catch (error) {
+      if (error instanceof SessionAlreadyClosedError) {
+        return fail('SESSION_ALREADY_CLOSED', 'This order is not open', 409)
+      }
+      // Matches PATCH. Before the 4.3 review this path returned 200 and the
+      // client removed a chip for a seat that was never deleted.
+      if (error instanceof SeatNotFoundError) {
+        return fail('SEAT_NOT_FOUND', 'No such seat on this order', 404)
+      }
       if (error instanceof SessionNeedsASeatError) {
         return fail(
           'SESSION_NEEDS_A_SEAT',
@@ -149,7 +169,11 @@ export async function DELETE(
       if (error instanceof SeatHasItemsError) {
         return fail(
           'SEAT_HAS_ITEMS',
-          `This seat has ${error.itemCount} item${error.itemCount === 1 ? '' : 's'} on it. Move or void them first.`,
+          // Names the obstacle, not a remedy. It used to say "Move or void them
+          // first" — neither control exists yet (Story 4.4 adds the first, 4.5
+          // the second), so mid-service it sent a waiter hunting for a button
+          // that is not there. Restore the instruction when the buttons land.
+          `This seat has ${error.itemCount} item${error.itemCount === 1 ? '' : 's'} on it, so it cannot be removed.`,
           409,
         )
       }

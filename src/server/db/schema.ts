@@ -373,13 +373,64 @@ export const orderEvents = pgTable('order_events', {
   // `unit_price_paisa`; only the key was misspelled, nothing reads it, and
   // Story 4.5 is about to write to it. Same fix Story 4.2 made on menu_items.
   unitPricePaisa: integer('unit_price_paisa'),
+  /**
+   * Audit PROSE for session-level events — not item data.
+   *
+   * `"B1 + B3"` on TABLE_MERGED, `"walkout"` on SESSION_CLOSED, the table label
+   * on TABLE_UNMERGED. Story 4.3's notes floated reusing this for an item's
+   * modifier text; it cannot be, because Epic 7's dispute timeline reads both
+   * kinds of row in one query and renders them side by side to a customer. One
+   * column carrying two meanings discriminated only by `event_type` is a query
+   * nobody can read correctly. `modifierText` below is the item's field.
+   */
   notes:          text('notes'),
+  /**
+   * The waiter's free-text modifier — "no ice", "extra spicy" (FR8).
+   *
+   * Free TEXT, deliberately. `ux:427` describes structured modifier groups
+   * ("Spice: Mild / Medium / Hot") and `ux:59` per-waiter pinned shortcuts, but
+   * FR8 asks only for "modifiers or special instructions", the epic's own
+   * examples are free text, and no modifier model exists anywhere in this
+   * schema. The structured version is logged against Epic 10 (menu management)
+   * in deferred-work.md rather than invented here.
+   */
+  modifierText:   text('modifier_text'),
+  /**
+   * Which round of this session's ordering an ITEM belongs to.
+   *
+   * 1 for the first submission, 2 after "Add More Items", and so on.
+   *
+   * ── Nullable on purpose, and never defaulted ────────────────────────────────
+   * Session-level audit rows — SESSION_OPENED, TABLE_MERGED, SESSION_CLOSED —
+   * belong to no round and leave this null. `notNull().default(1)` would stamp
+   * every one of them as part of round 1, and Epic 7 shows these rows TO A
+   * CUSTOMER during a bill dispute. A merge event claiming to belong to a round
+   * nobody ordered in is a fabricated fact, and this table is append-only: the
+   * trigger from migration 0001 refuses UPDATE, so it could never be corrected.
+   *
+   * ── How the next round number is derived (Story 4.5 writes it) ─────────────
+   * `max(round_number) + 1` for the session, derived INSIDE the submit
+   * transaction, under a `FOR UPDATE` on the session row — `lockOpenSession` in
+   * table-session.service.ts already does exactly that lock and is exported.
+   *
+   * This is the same race the seat labels had: two waiters submitting to one
+   * session at the same moment both read "the last round was 1" and both write
+   * round 2. Story 4.5 AC-4 requires that neither set of items is lost or
+   * duplicated. Holding the session lock serialises them — which is what made
+   * concurrent Add Seat calls stop colliding entirely once 4.3's review moved
+   * that lock inside the transaction. Do not pre-check and hope.
+   */
+  roundNumber:    integer('round_number'),
   createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_order_events_session_id').on(t.sessionId),
   index('idx_order_events_staff_id').on(t.staffId),
   index('idx_order_events_created_at').on(t.createdAt),
   index('idx_order_events_seat_slot_id').on(t.seatSlotId),
+  // The history view groups by exactly this pair, and so do Story 4.5's
+  // round derivation, Epic 5's `Table 7 · Round 2` ticket header and Epic 7's
+  // per-round dispute timeline.
+  index('idx_order_events_session_round').on(t.sessionId, t.roundNumber),
 ])
 
 export const paymentRecords = pgTable('payment_records', {

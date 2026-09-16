@@ -97,14 +97,49 @@ export function zoneIcon(zoneName: string): LucideIcon {
 /**
  * Route colours are the only non-status accents in the system. Routing is
  * derived from the item — a waiter never picks it.
+ *
+ * `band` and `chip` fill shapes; `ink` colours TEXT, and is not always the route
+ * colour. Kitchen blue (#2288B4) is 4.00:1 on white, which fails WCAG AA for the
+ * 12px eyebrow it would label, so kitchen text uses brand-700 (6.03:1) — the
+ * same hue, darker. Pizza (5.18:1) and Bar (5.70:1) pass as they are.
  */
 export const ROUTES = {
-  kitchen: { label: 'Kitchen', chip: 'bg-route-kitchen' },
-  pizza: { label: 'Pizza Kitchen', chip: 'bg-route-pizza' },
-  bar: { label: 'Bar', chip: 'bg-route-bar' },
+  kitchen: {
+    label: 'Kitchen',
+    short: 'Kitchen',
+    chip: 'bg-route-kitchen',
+    band: 'bg-route-kitchen',
+    ink: 'text-brand-700',
+  },
+  pizza: {
+    label: 'Pizza Kitchen',
+    short: 'Pizza',
+    chip: 'bg-route-pizza',
+    band: 'bg-route-pizza',
+    ink: 'text-route-pizza',
+  },
+  bar: {
+    label: 'Bar',
+    short: 'Bar',
+    chip: 'bg-route-bar',
+    band: 'bg-route-bar',
+    ink: 'text-route-bar',
+  },
 } as const
 
 export type RouteKey = keyof typeof ROUTES
+
+/**
+ * `menu_items.production_destination` → its route.
+ *
+ * The database says `pizza_kitchen`; the design system says `pizza`. One map,
+ * here, rather than a string translation in every component that colours a dish.
+ */
+export function routeForDestination(
+  destination: 'kitchen' | 'pizza_kitchen' | 'bar',
+): (typeof ROUTES)[RouteKey] {
+  return ROUTES[destination === 'pizza_kitchen' ? 'pizza' : destination]
+}
 
 /**
  * An icon per menu category, for the order screen's filter chips.

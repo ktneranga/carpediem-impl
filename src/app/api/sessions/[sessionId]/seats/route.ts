@@ -1,17 +1,36 @@
 import { NextResponse } from 'next/server'
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/server/db'
-import { orderSessions, seatSlots } from '@/server/db/schema'
+import { seatSlots } from '@/server/db/schema'
 import { isUniqueViolation } from '@/server/db/errors'
-import { createSeat, nextSeatLabel } from '@/server/services/table-session.service'
+import {
+  createSeat,
+  lockOpenSession,
+  nextSeatLabel,
+  SessionAlreadyClosedError,
+} from '@/server/services/table-session.service'
 
 const sessionIdSchema = z.string().uuid()
 
-/** The index that decides the Add Seat race. Named, so an unrelated 23505 is a 500. */
+/**
+ * The index that decides the Add Seat race. Named, so an unrelated 23505 is a 500.
+ *
+ * ⚠️ This string is coupled to `idx_seat_slots_session_label` in `schema.ts` and
+ * nothing checks the pair. Renaming it there without updating it here turns
+ * every concurrent tap into a 409 that never resolves — the same warning the
+ * tables index carries, which this constant was missing until the 4.3 review.
+ */
 const SEAT_LABEL_INDEX = 'idx_seat_slots_session_label'
 
-/** A memory aid, not a description. Long enough for "curly hair, blue dress". */
+/**
+ * A memory aid, not a description. Long enough for "curly hair, blue dress".
+ *
+ * Declared here, in the `[seatId]` route and in `order-screen.tsx`. Three copies
+ * of one number, and nothing checks that they agree — the database deliberately
+ * has no CHECK, because a waiter's typo must never be a 500. Keep them in step
+ * by hand until there is a shared constants module worth adding.
+ */
 const MAX_SEAT_NOTE = 40
 
 /**
@@ -24,12 +43,21 @@ const MAX_SEAT_NOTE = 40
  */
 const MAX_SEAT_ATTEMPTS = 2
 
-const bodySchema = z
-  .object({ seatNote: z.string().max(MAX_SEAT_NOTE).optional() })
-  // An absent body is the common case — Add Seat is one tap. Only the FIELD is
-  // optional-with-catch; a body that is present and malformed still fails,
-  // which is the distinction Story 4.2's review had to restore on the open route.
-  .catch({ seatNote: undefined })
+/**
+ * An absent body is the common case — Add Seat is one tap — but a body that is
+ * PRESENT and malformed must fail.
+ *
+ * This schema used to carry `.catch({ seatNote: undefined })`, and `.catch()`
+ * chained to an object swallows every parse failure of the whole object, not
+ * just a missing field. A 60-character note and `{"seatNote": 12345}` both
+ * returned **201 with the note silently dropped**, while `PATCH` returned 400
+ * for the identical input. The comment sitting here claimed the opposite. Found
+ * in the 4.3 review and reproduced against the running server.
+ *
+ * The "absent body" case is now handled where the body is read, not by making
+ * the schema permissive.
+ */
+const bodySchema = z.object({ seatNote: z.string().max(MAX_SEAT_NOTE).optional() })
 
 function fail(code: string, message: string, status: number) {
   return NextResponse.json({ success: false, error: { code, message } }, { status })
@@ -66,28 +94,38 @@ export async function POST(
     return fail('UNAUTHENTICATED', 'Sign in required', 401)
   }
 
-  const body = bodySchema.parse(await request.json().catch(() => ({})))
+  // No body at all is Add Seat's one-tap path, so an unparseable request becomes
+  // an empty object. A body that IS present still has to satisfy the schema.
+  const raw = await request.json().catch(() => ({}))
+  const parsedBody = bodySchema.safeParse(raw ?? {})
+
+  if (!parsedBody.success) {
+    return fail(
+      'INVALID_BODY',
+      `seatNote must be text of at most ${MAX_SEAT_NOTE} characters`,
+      400,
+    )
+  }
 
   try {
-    const [session] = await db
-      .select({ id: orderSessions.id })
-      .from(orderSessions)
-      .where(and(eq(orderSessions.id, sessionId), isNull(orderSessions.closedAt)))
-      .limit(1)
-
-    if (!session) {
-      return fail('SESSION_ALREADY_CLOSED', 'This order is not open', 409)
-    }
-
     for (let attempt = 1; attempt <= MAX_SEAT_ATTEMPTS; attempt += 1) {
       try {
         const seat = await db.transaction(async (tx) => {
+          // INSIDE the transaction, under the row lock. The open-check used to
+          // run in its own statement that closed before this transaction began,
+          // so a session closed in the gap still gained a seat — the exact
+          // read-then-write shape Trap 2 forbids and `deleteSeat` avoids.
+          await lockOpenSession(tx, sessionId)
+
           const seatLabel = await nextSeatLabel(tx, sessionId)
-          return createSeat(tx, { sessionId, seatLabel, seatNote: body.seatNote })
+          return createSeat(tx, { sessionId, seatLabel, seatNote: parsedBody.data.seatNote })
         })
 
         return NextResponse.json({ success: true, data: seat }, { status: 201 })
       } catch (error) {
+        if (error instanceof SessionAlreadyClosedError) {
+          return fail('SESSION_ALREADY_CLOSED', 'This order is not open', 409)
+        }
         if (!isUniqueViolation(error, SEAT_LABEL_INDEX)) throw error
 
         // Losing the last attempt is a CONFLICT, not a server fault. The first
@@ -119,7 +157,7 @@ export async function POST(
  * client that needs to refresh them without a page load, which Story 4.4 will.
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
   const { sessionId: rawSessionId } = await params
@@ -127,6 +165,16 @@ export async function GET(
   const parsedSessionId = sessionIdSchema.safeParse(rawSessionId)
   if (!parsedSessionId.success) {
     return fail('INVALID_SESSION_ID', 'Session id must be a UUID', 400)
+  }
+
+  // The proxy already refuses an unauthenticated request before this handler
+  // runs — verified — so this is defence in depth, not the gate. It is here
+  // because the other three handlers in this namespace have it, and one
+  // handler quietly missing the check reads as either a bug or proof that the
+  // check is decorative. Prefix RBAC in this codebase defaults to ALLOW on an
+  // unmatched prefix, so neither reading is one to leave lying around.
+  if (!request.headers.get('x-staff-id')) {
+    return fail('UNAUTHENTICATED', 'Sign in required', 401)
   }
 
   try {
@@ -138,7 +186,11 @@ export async function GET(
       })
       .from(seatSlots)
       .where(eq(seatSlots.sessionId, parsedSessionId.data))
-      // Creation order, so a seat never moves in the row under a waiter's finger.
+      // STABLE order, so a seat never moves in the row under a waiter's finger.
+      // Not strictly creation order: `created_at` defaults to `now()`, which is
+      // transaction time, so seats written in one transaction all tie and fall
+      // back to uuid order. Stable is the property that matters here; if 4.4
+      // ever batch-creates seats, give them an explicit sequence instead.
       .orderBy(asc(seatSlots.createdAt), asc(seatSlots.id))
 
     return NextResponse.json({ success: true, data: seats })
