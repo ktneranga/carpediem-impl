@@ -1,7 +1,7 @@
 'use client'
 
 import { Minus, Plus, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { MenuItemRow } from '@/app/api/menu/route'
 import { commitButtonClass } from '@/components/pos/action-strip-chrome'
 import { lkrFromPaisa } from '@/lib/format'
@@ -15,21 +15,24 @@ const MAX_MODIFIER_TEXT = 120
  *
  * ── A sheet, not a page ──────────────────────────────────────────────────────
  * `ux:309` and `ux:427`: "Item modifiers appear in a bottom sheet — no full-page
- * navigation, no context break." The waiter is mid-sentence with a guest; losing
- * the menu behind a route change is the moment the verbal bypass wins.
+ * navigation, no context break."
+ *
+ * ── A native modal `<dialog>` ────────────────────────────────────────────────
+ * Task 3 asked for "a `<dialog>` or a focus-trapped overlay". The first version
+ * was neither: a `div` with `aria-modal="true"` and nothing behind the claim —
+ * Tab walked into the menu underneath, Escape stopped working once focus left
+ * the panel, and focus was not returned to the Opts button that opened it.
+ * `showModal()` gives all of that from the browser: the rest of the page is
+ * inert, focus stays inside, Escape fires `cancel`, and focus goes back to the
+ * opener on close.
  *
  * ── Two taps, and the second one is the commit ───────────────────────────────
- * Tap 1 opened this from the card. Tap 2 is **Add to Order**. That is NFR-P6's
- * budget exactly, which is why nothing in here is required: the text may stay
- * empty, the quantity defaults to 1, and neither blocks the commit.
+ * Tap 1 opened this from the card. Tap 2 is **Add to Order**. Nothing in here
+ * is required: the note may stay empty and the quantity defaults to 1.
  *
  * ── Free text, not chip groups ───────────────────────────────────────────────
- * `ux:427` draws modifier GROUPS ("Spice: Mild / Medium / Hot") with required
- * options above optional ones. That needs a modifier model — groups, options,
- * per-item associations, an owner surface to configure them — and none of it has
- * an FR or an epic AC. FR8 asks for "modifiers or special instructions" and the
- * epic's own examples are "no ice" and "extra spicy". The structured version is
- * logged against Epic 10 in deferred-work.md.
+ * `ux:427` draws modifier GROUPS ("Spice: Mild / Medium / Hot"), which need a
+ * modifier model that has no FR or epic AC. Logged against Epic 10.
  */
 export function ModifierSheet({
   item,
@@ -38,48 +41,83 @@ export function ModifierSheet({
   onAdd,
 }: {
   item: MenuItemRow
-  /** The seat this will land on. Named, because the sheet hides the chip row. */
-  seatLabel: string
+  /**
+   * The seat this will land on — named, because the sheet covers the seat
+   * cards. Null where seats are not used (outside the Tables zone).
+   */
+  seatLabel: string | null
   onCancel: () => void
   onAdd: (input: { quantity: number; modifierText: string }) => void
 }) {
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const noteRef = useRef<HTMLInputElement>(null)
+  /** Where the current pointer press began — see the backdrop click below. */
+  const pressStartedOnBackdrop = useRef(false)
+
   const [quantity, setQuantity] = useState(1)
   const [modifierText, setModifierText] = useState('')
+
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog) return
+    dialog.showModal()
+    // Focus the note AFTER showModal: opening a modal dialog runs the browser's
+    // own focusing steps, which would otherwise land on the Close button. The
+    // waiter opened this sheet for the note, so the keyboard should be up.
+    noteRef.current?.focus()
+    return () => {
+      if (dialog.open) dialog.close()
+    }
+  }, [])
 
   const lineTotal = lkrFromPaisa(item.pricePaisa * quantity)
 
   return (
-    // The scrim. Tapping it cancels — the sheet must be dismissible WITHOUT
-    // adding, or a waiter who opened it by mistake has no way out but to order
-    // something.
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50"
-      onClick={onCancel}
+    <dialog
+      ref={dialogRef}
+      aria-label={`Add ${item.name}`}
+      // Escape. `preventDefault` keeps the browser from closing the element on
+      // its own; the parent unmounts it instead, so state stays in one place.
+      onCancel={(event) => {
+        event.preventDefault()
+        onCancel()
+      }}
+      onPointerDown={(event) => {
+        pressStartedOnBackdrop.current = event.target === event.currentTarget
+      }}
+      onClick={(event) => {
+        // A click on the dialog element itself is a click on its backdrop — the
+        // panel's content is a child. Both ends of the press must be there: the
+        // first version cancelled when a press began in the note field and was
+        // released past the edge, which threw away a half-typed note.
+        if (event.target === event.currentTarget && pressStartedOnBackdrop.current) onCancel()
+        pressStartedOnBackdrop.current = false
+      }}
+      className={cn(
+        // Pinned to the bottom edge as a sheet, not centred as a dialog.
+        'fixed inset-x-0 top-auto bottom-0 m-0 mx-auto w-full max-w-2xl p-0',
+        'max-h-[85dvh] overflow-y-auto rounded-t-card bg-white shadow-el-4',
+        'backdrop:bg-slate-900/50',
+      )}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Add ${item.name}`}
-        // Stops a tap inside the sheet reaching the scrim's cancel.
-        onClick={(event) => event.stopPropagation()}
-        onKeyDown={(event) => {
-          // Escape cancels and must NOT stage anything.
-          if (event.key === 'Escape') onCancel()
+      <form
+        method="dialog"
+        onSubmit={(event) => {
+          // Enter in the note field adds, like the button. `method="dialog"`
+          // would close the element; the parent owns closing, so prevent it.
+          event.preventDefault()
+          onAdd({ quantity, modifierText })
         }}
-        className={cn(
-          'flex w-full max-w-2xl flex-col gap-sp-4 rounded-t-card bg-white p-sp-4 shadow-el-2',
-          'max-h-[85vh] overflow-y-auto',
-        )}
+        className="flex flex-col gap-sp-4 p-sp-4"
       >
         <div className="flex items-start justify-between gap-sp-3">
           <div className="flex flex-col gap-sp-1">
-            <h2 className="text-fs-24 font-extrabold tracking-title text-slate-900">
-              {item.name}
-            </h2>
-            {/* Which person this lands on. The chip row is behind the scrim, so
-                without this the waiter is committing blind on a table of six. */}
+            <h2 className="text-fs-24 font-extrabold tracking-title text-slate-900">{item.name}</h2>
+            {/* Which person this lands on — the seat cards are behind the
+                backdrop, so without this the waiter would commit blind. */}
             <p className="text-fs-14 font-semibold text-slate-600">
-              For {seatLabel} · {lkrFromPaisa(item.pricePaisa)} each
+              {seatLabel ? `For ${seatLabel} · ` : ''}
+              {lkrFromPaisa(item.pricePaisa)} each
             </p>
           </div>
 
@@ -107,8 +145,7 @@ export function ModifierSheet({
           <div className="flex items-center gap-sp-3">
             <button
               type="button"
-              // Never below 1. Zero is what Cancel is for, and a zero-quantity
-              // line would submit an order_event for nothing.
+              // Never below 1. Zero is what Close is for.
               disabled={quantity <= 1}
               onClick={() => setQuantity((current) => Math.max(1, current - 1))}
               aria-label="One fewer"
@@ -153,14 +190,11 @@ export function ModifierSheet({
             Note for the kitchen
           </span>
           <input
+            ref={noteRef}
             type="text"
             value={modifierText}
             maxLength={MAX_MODIFIER_TEXT}
             placeholder="no ice, extra spicy, well done…"
-            // Focused on open: the waiter opened this sheet FOR the note, so the
-            // keyboard should already be up. The one-tap path never comes here.
-            // eslint-disable-next-line jsx-a11y/no-autofocus
-            autoFocus
             onChange={(event) => setModifierText(event.target.value)}
             className={cn(
               'h-touch-waiter rounded-control border border-slate-200 bg-white px-sp-3',
@@ -170,16 +204,11 @@ export function ModifierSheet({
           />
         </label>
 
-        {/* Full-width commit — the one thing kept verbatim from the UX spec's
-            action-strip table, and the same rule the strips follow. */}
-        <button
-          type="button"
-          onClick={() => onAdd({ quantity, modifierText })}
-          className={cn(commitButtonClass, 'w-full')}
-        >
+        {/* Full-width commit, the same rule the action strips follow. */}
+        <button type="submit" className={cn(commitButtonClass, 'w-full')}>
           Add to Order · {lineTotal}
         </button>
-      </div>
-    </div>
+      </form>
+    </dialog>
   )
 }

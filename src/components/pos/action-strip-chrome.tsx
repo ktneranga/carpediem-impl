@@ -82,7 +82,9 @@ export function ActionStripShell({
       )}
     >
       <div aria-live="polite" className="flex min-w-0 flex-col gap-sp-1">
-        <span className="text-fs-12 font-semibold tracking-micro text-slate-400 uppercase">
+        {/* slate-600, not slate-400 (2.56:1): on the order screen this eyebrow says
+            "NOT SENT", the one fact that must never be misread. */}
+        <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase">
           {eyebrow}
         </span>
         <span

@@ -111,7 +111,9 @@ export function SeatSelector({
                   <span
                     className={cn(
                       'text-fs-12 font-semibold',
-                      isActive ? 'text-brand-700' : 'text-slate-400',
+                      // slate-600, not slate-400 (2.56:1): "empty" is the
+                      // answer to "who haven't I served yet".
+                      isActive ? 'text-brand-700' : 'text-slate-600',
                     )}
                   >
                     {count === 0 ? 'empty' : `${count} item${count === 1 ? '' : 's'}`}

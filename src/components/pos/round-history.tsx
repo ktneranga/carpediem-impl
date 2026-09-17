@@ -1,6 +1,6 @@
 'use client'
 
-import type { SubmittedRoundRow } from '@/app/api/sessions/[sessionId]/orders/route'
+import type { SubmittedRoundRow } from '@/server/orders/submitted-rounds'
 import { clockTime, lkrFromPaisa, quantity as formatQuantity } from '@/lib/format'
 
 /**
@@ -19,7 +19,14 @@ import { clockTime, lkrFromPaisa, quantity as formatQuantity } from '@/lib/forma
  * word has to mean the same thing here, which is why `round_number` is a column
  * rather than a count of submissions inferred at render time.
  */
-export function RoundHistory({ rounds }: { rounds: SubmittedRoundRow[] }) {
+export function RoundHistory({
+  rounds,
+  showSeats = true,
+}: {
+  rounds: SubmittedRoundRow[]
+  /** False outside the Tables zone, where every item is on Seat 1. */
+  showSeats?: boolean
+}) {
   if (rounds.length === 0) return null
 
   return (
@@ -27,10 +34,9 @@ export function RoundHistory({ rounds }: { rounds: SubmittedRoundRow[] }) {
       {rounds.map((round) => {
         // A null `unit_price_paisa` means the row predates Story 4.5 writing
         // it. Such a line contributes nothing to the sum, which makes the total
-        // a LOWER BOUND rather than the round's real value — so it is marked as
-        // one rather than presented as a figure a waiter could read out to a
-        // guest. (The first version of this comment said counting nulls as zero
-        // would understate the total, and then counted them as zero.)
+        // a LOWER BOUND — so it is marked as one, in words a screen reader and a
+        // touch screen can both reach, rather than presented as a figure a
+        // waiter could read out to a guest.
         const total = round.items.reduce(
           (sum, item) => sum + (item.unitPricePaisa ?? 0) * item.quantity,
           0,
@@ -47,21 +53,28 @@ export function RoundHistory({ rounds }: { rounds: SubmittedRoundRow[] }) {
               <h2 className="text-fs-14 font-bold text-slate-600">
                 Round {round.roundNumber}
                 {sentAt ? (
-                  <span className="font-semibold text-slate-600"> · sent {clockTime(sentAt)}</span>
+                  // The time is formatted in the RENDERING environment's
+                  // timezone, and the server's need not be the tablet's. The
+                  // client's value is the right one; the warning is suppressed
+                  // for this text only, rather than letting a mismatch discard
+                  // the server tree.
+                  <span className="font-semibold text-slate-600" suppressHydrationWarning>
+                    {' '}
+                    · sent {clockTime(sentAt)}
+                  </span>
                 ) : null}
               </h2>
               <span className="text-fs-14 font-bold tabular-nums text-slate-600">
+                {hasUnpricedLine ? 'at least ' : ''}
                 {lkrFromPaisa(total)}
-                {hasUnpricedLine ? (
-                  <span
-                    title="One or more items on this round have no recorded price"
-                    className="font-semibold text-unavailable-ink"
-                  >
-                    {' '}+
-                  </span>
-                ) : null}
               </span>
             </div>
+
+            {hasUnpricedLine ? (
+              <p className="text-fs-12 font-semibold text-unavailable-ink">
+                Some items in this round have no recorded price.
+              </p>
+            ) : null}
 
             <ul className="flex flex-col gap-sp-1">
               {round.items.map((item) => (
@@ -69,14 +82,14 @@ export function RoundHistory({ rounds }: { rounds: SubmittedRoundRow[] }) {
                   <span className="min-w-0 text-fs-14 text-slate-600">
                     {item.quantity > 1 ? `${formatQuantity(item.quantity)} ` : ''}
                     {item.name}
-                    {item.seatLabel ? ` · ${item.seatLabel}` : ''}
-                    {item.modifierText ? (
-                      <span className="text-slate-400"> · {item.modifierText}</span>
-                    ) : null}
+                    {showSeats && item.seatLabel ? ` · ${item.seatLabel}` : ''}
+                    {/* `slate-600`, not `slate-400`: the note is what the kitchen
+                        acted on, and 400 is 2.34:1 on this panel's slate-100. */}
+                    {item.modifierText ? ` · ${item.modifierText}` : ''}
                   </span>
                   <span className="shrink-0 text-fs-14 tabular-nums text-slate-600">
                     {item.unitPricePaisa === null
-                      ? '—'
+                      ? 'no price'
                       : lkrFromPaisa(item.unitPricePaisa * item.quantity)}
                   </span>
                 </li>

@@ -54,7 +54,9 @@ export function MenuCategoryChips({
             // list" (ux:417). "All items" is never a toggle.
             onClick={() => onSelect(isActive && chip.id !== null ? null : chip.id)}
             className={cn(
-              'flex h-12 shrink-0 items-center gap-sp-2 rounded-full border px-sp-5',
+              // The 56px touch token — the floor for waiter controls — and the system's
+              // pill radius, not Tailwind's `rounded-full`.
+              'flex h-touch-kitchen shrink-0 items-center gap-sp-2 rounded-pill border px-sp-5',
               'text-fs-14 font-bold tracking-micro whitespace-nowrap uppercase',
               'transition-[transform,box-shadow] duration-120 ease-standard',
               'active:scale-[0.97] active:shadow-pressed',
@@ -71,7 +73,10 @@ export function MenuCategoryChips({
             <span
               className={cn(
                 'tabular-nums font-semibold',
-                isActive ? 'text-white/70' : 'text-slate-400',
+                // Full white on brand-700 (6.03:1) and slate-600 on white
+                // (7.57:1). `white/70` was 3.85:1 and `slate-400` 2.56:1 — both
+                // below AA for the number the chip exists to show.
+                isActive ? 'text-white' : 'text-slate-600',
               )}
             >
               {chip.itemCount}

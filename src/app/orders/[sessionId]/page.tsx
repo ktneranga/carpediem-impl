@@ -3,9 +3,8 @@ import { redirect } from 'next/navigation'
 import { and, asc, count, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/server/db'
-import type { SubmittedRoundRow } from '@/app/api/sessions/[sessionId]/orders/route'
+import { loadSubmittedRounds } from '@/server/orders/submitted-rounds'
 import {
-  menuItems,
   orderEvents,
   orderSessions,
   orderSessionTables,
@@ -114,10 +113,7 @@ export default async function OrderPage({
     : []
 
   const [config] = await db
-    .select({
-      restaurantName: tenantConfig.restaurantName,
-      taxRatePercent: tenantConfig.taxRatePercent,
-    })
+    .select({ taxRatePercent: tenantConfig.taxRatePercent })
     .from(tenantConfig)
     .limit(1)
 
@@ -152,64 +148,18 @@ export default async function OrderPage({
     .orderBy(asc(seatSlots.createdAt), asc(seatSlots.id))
 
   // Already-submitted items, grouped by round, so AC-6's read-only history is
-  // present in the FIRST paint rather than appearing a moment later underneath
-  // the staging area the waiter is already reading. Same seeding as the seats.
-  //
-  // Duplicates the shaping in `GET /api/sessions/:id/orders` deliberately: this
-  // is a server component with direct database access and going through HTTP to
-  // reach its own process would add a round trip to every page load. The two
-  // must return the same shape — `SubmittedRoundRow` is imported from the route
-  // so the compiler says so if they drift.
-  const submittedRows = await db
-    .select({
-      id: orderEvents.id,
-      roundNumber: orderEvents.roundNumber,
-      quantity: orderEvents.quantity,
-      unitPricePaisa: orderEvents.unitPricePaisa,
-      modifierText: orderEvents.modifierText,
-      createdAt: orderEvents.createdAt,
-      itemName: menuItems.name,
-      seatLabel: seatSlots.seatLabel,
-    })
-    .from(orderEvents)
-    // LEFT joins: an item removed from the menu, or a seat removed after its
-    // round was sent, must not make history rows vanish. They are the record.
-    .leftJoin(menuItems, eq(menuItems.id, orderEvents.menuItemId))
-    .leftJoin(seatSlots, eq(seatSlots.id, orderEvents.seatSlotId))
-    .where(
-      and(
-        eq(orderEvents.sessionId, session.sessionId),
-        eq(orderEvents.eventType, 'ITEM_ADDED'),
-      ),
-    )
-    .orderBy(asc(orderEvents.roundNumber), asc(orderEvents.createdAt), asc(orderEvents.id))
-
-  const submittedRounds: SubmittedRoundRow[] = []
-  for (const row of submittedRows) {
-    // Rows written before migration 0014 have no round. Bucketed as 1 rather
-    // than dropped — a guest may be about to be billed for them.
-    const roundNumber = row.roundNumber ?? 1
-    let round = submittedRounds.find((candidate) => candidate.roundNumber === roundNumber)
-    if (!round) {
-      round = { roundNumber, items: [] }
-      submittedRounds.push(round)
-    }
-    round.items.push({
-      id: row.id,
-      name: row.itemName ?? 'Item no longer on the menu',
-      quantity: row.quantity,
-      unitPricePaisa: row.unitPricePaisa,
-      modifierText: row.modifierText,
-      seatLabel: row.seatLabel,
-      submittedAt: row.createdAt.toISOString(),
-    })
-  }
-  submittedRounds.sort((a, b) => a.roundNumber - b.roundNumber)
+  // in the FIRST paint. The same function backs `GET .../orders`, so this render
+  // and a later refetch cannot disagree about order or grouping.
+  const submittedRounds = await loadSubmittedRounds(session.sessionId)
 
   return (
     <OrderScreen
+      // Keyed by session. Every piece of screen state — the selected seat, an
+      // open note editor, the modifier sheet — belongs to ONE order, and
+      // without a key a route change from one session to another would reuse
+      // the component and carry that state onto the wrong table.
+      key={session.sessionId}
       sessionId={session.sessionId}
-      restaurantName={config?.restaurantName ?? 'Restaurant'}
       staffName={staffRow?.name ?? 'Unknown'}
       zoneName={primary?.zoneName ?? null}
       tableLabel={tableLabel}

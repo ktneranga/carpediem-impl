@@ -17,13 +17,13 @@ import {
   StagedRoundList,
   type StagedLineProblem,
 } from '@/components/pos/staged-round-list'
-import { useStagedRound } from '@/components/pos/use-staged-round'
+import { clearStagedRound, useStagedRound } from '@/components/pos/use-staged-round'
 import type { MenuItemRow } from '@/app/api/menu/route'
-import type { MenuCategoryRow } from '@/app/api/menu/route'
-import type { SubmittedRoundRow } from '@/app/api/sessions/[sessionId]/orders/route'
-import { MENU_QUERY_KEY } from '@/components/pos/menu-browser'
+import type { SubmittedRoundRow } from '@/server/orders/submitted-rounds'
+import { menuQueryOptions } from '@/components/pos/menu-browser'
 import { elapsedMinutesFrom, useMinuteTick } from '@/hooks/use-minute-tick'
 import { signOut } from '@/lib/auth-client'
+import { zoneUsesSeats } from '@/lib/design'
 import { clockTime, elapsed } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -35,7 +35,6 @@ export type OrderScreenProps = {
    * construction: FR64's order has no table to put in the URL.
    */
   sessionId: string
-  restaurantName: string
   staffName: string
   /**
    * Null for a counter sale (FR64) — it sits in no zone and at no table.
@@ -43,7 +42,9 @@ export type OrderScreenProps = {
    */
   zoneName: string | null
   tableLabel: string | null
+  /** Seats at the table(s), summed across a merged group. Null for a counter sale. */
   capacity: number | null
+  /** Guests the party was opened with. Shown in the header line. */
   coverCount: number
   /** ISO timestamp from PostgreSQL. Elapsed time is derived client-side. */
   openedAt: string
@@ -146,6 +147,9 @@ async function seatRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const body = await response.json().catch(() => null)
 
   if (response.status === 404) {
+    // The orders route answers 404 SESSION_NOT_FOUND for an order that does not
+    // exist. That is the terminal case, not a missing seat.
+    if (body?.error?.code === 'SESSION_NOT_FOUND') throw new SessionGoneError('No such order')
     throw new SeatGoneError(body?.error?.message ?? 'That seat is no longer on this order.')
   }
   if (response.status === 409) {
@@ -202,7 +206,6 @@ async function closeTable(input: { sessionId: string; reason: 'abandoned' | 'wal
  */
 export function OrderScreen({
   sessionId,
-  restaurantName,
   staffName,
   zoneName,
   taxRatePercent,
@@ -218,6 +221,9 @@ export function OrderScreen({
   // on this screen — rounds, items, closing — is identical either way, which is
   // the point of keying the screen on the session rather than on a table.
   const displayLabel = tableLabel ?? 'Counter'
+  // Seats only in the Tables zone (Teran, 2026-09-16). Elsewhere every dish
+  // goes to the order's automatic Seat 1 and the seat section is hidden.
+  const usesSeats = zoneUsesSeats(zoneName)
   const router = useRouter()
   const queryClient = useQueryClient()
   const minuteTick = useMinuteTick()
@@ -238,11 +244,12 @@ export function OrderScreen({
     queryFn: () => seatRequest<SeatSlot[]>(`/api/sessions/${sessionId}/seats`),
     initialData: initialSeats,
     staleTime: 30_000,
-    // Seats have no socket event yet — deferred to Story 4.4, which has to put
-    // staged items on the wire anyway and will carry seats with them. This is
-    // the cheap half of that: picking up the other tablet refetches, which
-    // covers the realistic second-device case without inventing a payload
-    // before anything consumes it. The provider disables this globally.
+    // Seats have no socket event. Story 4.3's review deferred one to 4.4, and
+    // 4.4 did not add one either: staged items never leave the device, so there
+    // was nothing to carry seats alongside. It belongs with Story 4.5, which is
+    // the first story to put an order on the wire. Until then, picking up the
+    // other tablet refetches — the realistic second-device case. The provider
+    // disables this globally.
     refetchOnWindowFocus: true,
   })
 
@@ -393,10 +400,19 @@ export function OrderScreen({
   const { lines, addLine, removeLine, setQuantity, reassignLine, clear } =
     useStagedRound(sessionId)
 
-  // The item whose modifier sheet is open, or null. Holding the ROW rather than
-  // an id means the sheet renders the price the waiter tapped even if the menu
-  // refetches underneath it.
-  const [sheetItem, setSheetItem] = useState<MenuItemRow | null>(null)
+  /**
+   * The modifier sheet: the dish, and the seat it was opened FOR.
+   *
+   * The seat is captured when the sheet opens. The sheet used to read the live
+   * selection, so a focus refetch that removed the selected seat silently
+   * retitled the open sheet to another guest — and "Add to Order" staged the
+   * dish onto them. If the captured seat disappears now, the sheet closes,
+   * because `sheetSeat` below is derived and becomes null.
+   */
+  const [sheet, setSheet] = useState<{ item: MenuItemRow; seatId: string } | null>(null)
+
+  /** Clear asks first when there is more than one line to lose. */
+  const [confirmingClear, setConfirmingClear] = useState(false)
 
   /**
    * The waiter tapped "Add More Items" on a session whose rounds are all sent.
@@ -408,7 +424,7 @@ export function OrderScreen({
    */
   const [addingMore, setAddingMore] = useState(false)
 
-  const { data: submittedRounds } = useQuery({
+  const { data: submittedRounds, error: ordersError } = useQuery({
     queryKey: ['orders', sessionId],
     queryFn: () => seatRequest<SubmittedRoundRow[]>(`/api/sessions/${sessionId}/orders`),
     initialData: initialRounds,
@@ -416,10 +432,21 @@ export function OrderScreen({
     refetchOnWindowFocus: true,
   })
 
-  // Read, never fetched here: the menu is MenuBrowser's query and this only
-  // needs to know what is still available. A second fetch would be a second
-  // source of truth for what is on the menu right now.
-  const menu = queryClient.getQueryData<MenuCategoryRow[]>(MENU_QUERY_KEY)
+  // The SAME query as MenuBrowser — same key, same fetcher — so this is a second
+  // observer of one cache entry, not a second fetch. It used to be
+  // `queryClient.getQueryData(...)`, which is a one-off read with no
+  // subscription: when a socket event 86'd a dish, MenuBrowser re-rendered and
+  // this screen did not, so the staged line never showed its warning.
+  const { data: menu } = useQuery(menuQueryOptions)
+
+  // Terminal states reached through a QUERY. The mutation handler below already
+  // treats a closed session as terminal; the queries use the same transport and
+  // refetch on focus, so the same fact can arrive here — and used to render as
+  // "Could not refresh the seats" on a screen still showing a dead order.
+  const sessionClosed =
+    seatsError instanceof SessionGoneError || ordersError instanceof SessionGoneError
+  const signedOut =
+    seatsError instanceof SessionExpiredError || ordersError instanceof SessionExpiredError
 
   /**
    * Why each staged line cannot be submitted, or nothing for the healthy ones.
@@ -430,9 +457,13 @@ export function OrderScreen({
    * added seat deletion and its review turned on `refetchOnWindowFocus`, so the
    * other tablet's removals arrive when this one is picked back up.
    *
-   * Left unchecked, a stale `seat_slot_id` reaches Story 4.5's insert and the
-   * foreign key rejects the whole round with a 500.
+   * Left unchecked, a stale `seat_slot_id` — or a stale `menu_item_id`, which
+   * has the same kind of foreign key — reaches Story 4.5's insert and the whole
+   * round is rejected with a 500.
    */
+  const menuItemsById = new Map(
+    (menu ?? []).flatMap((category) => category.items).map((item) => [item.id, item]),
+  )
   const stagedProblems = new Map<string, StagedLineProblem>()
   for (const line of lines) {
     if (!seats.some((seat) => seat.id === line.seatSlotId)) {
@@ -440,31 +471,57 @@ export function OrderScreen({
       continue
     }
     // `menu === undefined` means the menu has not loaded yet, which is not the
-    // same as "the item is gone" — do not flag on absence of knowledge.
-    if (menu) {
-      const known = menu
-        .flatMap((category) => category.items)
-        .find((item) => item.id === line.menuItemId)
-      if (known && !known.available) {
-        stagedProblems.set(line.lineId, { kind: 'item-unavailable' })
-      }
-    }
+    // same as "the item is gone" — nothing is flagged on absence of knowledge.
+    // Once it HAS loaded, an item that is not in it was deleted or its category
+    // was switched off, and either way it cannot be ordered.
+    if (!menu) continue
+    const known = menuItemsById.get(line.menuItemId)
+    if (!known) stagedProblems.set(line.lineId, { kind: 'item-gone' })
+    else if (!known.available) stagedProblems.set(line.lineId, { kind: 'item-unavailable' })
   }
 
-  function stageItem(item: MenuItemRow, options?: { quantity?: number; modifierText?: string }) {
-    // Cannot happen through the UI — every session has a seat and the chip row
-    // always has one active — but staging against a null seat would produce a
-    // line Story 4.5 could not write, so it is refused here rather than there.
-    if (!activeSeatId) {
+  function seatName(seat: SeatSlot): string {
+    return seat.seatNote ?? seat.seatLabel
+  }
+
+  function stageItem(
+    item: MenuItemRow,
+    seat: SeatSlot | null,
+    options?: { quantity?: number; modifierText?: string },
+  ) {
+    // Staging against no seat would produce a line Story 4.5 could not write.
+    if (!seat) {
       setSeatNotice('Add a seat before ordering.')
       return
     }
-    addLine(item, { seatSlotId: activeSeatId, ...options })
+    addLine(item, { seatSlotId: seat.id, seatLabel: seatName(seat), ...options })
+    // A round is being built again, so "Add More Items" has done its job.
+    setAddingMore(false)
   }
 
-  // Three facts, not one. Something staged beats everything; nothing staged with
-  // history is a sent order awaiting its next round; nothing at all is empty —
-  // and so is a round the waiter has deliberately opened but not filled.
+  function openModifiers(item: MenuItemRow) {
+    // Same rule as Add. Without it, Opts silently did nothing on a session with
+    // no seat while Add explained why.
+    if (!activeSeat) {
+      setSeatNotice('Add a seat before ordering.')
+      return
+    }
+    setSheet({ item, seatId: activeSeat.id })
+  }
+
+  const sheetSeat = sheet ? (seats.find((seat) => seat.id === sheet.seatId) ?? null) : null
+
+  function clearRound() {
+    clear()
+    setConfirmingClear(false)
+    setAddingMore(false)
+  }
+
+  // Four facts, in priority order. Something staged → `items-added`. Nothing
+  // staged but rounds already sent → `submitted`, UNLESS the waiter tapped Add
+  // More Items, which asks for an empty round → `empty`. Nothing at all →
+  // `empty`. `addingMore` is cleared again by the next stage or by Clear, so
+  // the strip can return to `submitted`; it used to be a one-way latch.
   const stripState: OrderActionStripState =
     lines.length > 0
       ? 'items-added'
@@ -480,6 +537,9 @@ export function OrderScreen({
   const closeMutation = useMutation({
     mutationFn: closeTable,
     onSuccess: () => {
+      // The table is gone, so its unsent round is too. Without this every
+      // closed sitting left its mirror in storage on a shared tablet.
+      clearStagedRound(sessionId)
       setIsNavigating(true)
       // Invalidate AND navigate. TableGrid also refetches on mount, but doing it
       // explicitly means a correct grid does not depend on that setting staying
@@ -513,8 +573,7 @@ export function OrderScreen({
   const busy = closeMutation.isPending || isNavigating
 
   // ── Derived for the new layout ────────────────────────────────────────────
-  // All counted from the staged LINES, by quantity — "Devilled Cashew × 2" is
-  // two dishes on the badge and two on the seat card, not one line.
+  // Counted by QUANTITY — "Devilled Cashew × 2" is two dishes, not one line.
   const stagedCountBySeat = new Map<string, number>()
   const stagedCountByItem = new Map<string, number>()
   for (const line of lines) {
@@ -522,10 +581,17 @@ export function OrderScreen({
       line.seatSlotId,
       (stagedCountBySeat.get(line.seatSlotId) ?? 0) + line.quantity,
     )
-    stagedCountByItem.set(
-      line.menuItemId,
-      (stagedCountByItem.get(line.menuItemId) ?? 0) + line.quantity,
-    )
+    // The card badge counts the SELECTED seat only (Teran, 2026-09-16). It
+    // used to count the whole round, so with Seat 4 selected the fish read
+    // "3 · Add another" because Seats 1–3 had it — which a waiter reads as
+    // "this guest already has it", while the header says SEAT 4 SELECTED.
+    // On a table ordering separately that is exactly the wrong signal.
+    if (line.seatSlotId === activeSeatId) {
+      stagedCountByItem.set(
+        line.menuItemId,
+        (stagedCountByItem.get(line.menuItemId) ?? 0) + line.quantity,
+      )
+    }
   }
   const stagedItemCount = lines.reduce((total, line) => total + line.quantity, 0)
   const subtotalPaisa = lines.reduce((total, line) => total + line.pricePaisa * line.quantity, 0)
@@ -542,9 +608,15 @@ export function OrderScreen({
         ? destinations[0]
         : `${destinations.slice(0, -1).join(', ')} & ${destinations[destinations.length - 1]}`
 
+  // Covers came back here: they were on the facts card the redesign removed,
+  // and nothing else on the screen says how many guests the party is.
+  const coverText =
+    capacity != null
+      ? `${coverCount} of ${capacity} covers`
+      : `${coverCount} cover${coverCount === 1 ? '' : 's'}`
   const contextLine = [
     zoneName ?? 'Counter sale',
-    `${seats.length} seat${seats.length === 1 ? '' : 's'}`,
+    coverText,
     elapsedMinutes !== undefined ? `open ${elapsed(elapsedMinutes)}` : null,
   ]
     .filter(Boolean)
@@ -553,6 +625,40 @@ export function OrderScreen({
   // `minuteTick` is 0 during SSR, so the clock renders empty on the server and
   // fills in on hydration rather than mismatching.
   const clock = minuteTick === 0 ? '' : clockTime(new Date(minuteTick).toISOString())
+
+  if (sessionClosed || signedOut) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-sp-4 bg-slate-100 p-sp-5 text-center">
+        <p className="text-fs-24 font-extrabold tracking-title text-slate-900">
+          {sessionClosed ? `${displayLabel} was closed on another device` : 'You were signed out'}
+        </p>
+        <p className="text-fs-16 text-slate-600">
+          {sessionClosed
+            ? 'Nothing on this screen can be sent. Anything not yet sent from this tablet was not saved to the order.'
+            : 'Sign in again to carry on. Anything not yet sent is still on this tablet.'}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            if (sessionClosed) {
+              clearStagedRound(sessionId)
+              void queryClient.invalidateQueries({ queryKey: ['tables'] })
+              router.push('/')
+            } else {
+              window.location.assign('/login')
+            }
+          }}
+          className={cn(
+            'h-touch-waiter rounded-waiter bg-brand-700 px-sp-6 text-fs-18 font-bold text-white shadow-el-2',
+            'transition-transform duration-80 ease-standard active:scale-[0.97]',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+          )}
+        >
+          {sessionClosed ? 'Back to the floor plan' : 'Sign in'}
+        </button>
+      </div>
+    )
+  }
 
   // Flex column pinned to the viewport on tablet and up, so the header and the
   // bar stay put and each column scrolls inside itself. `sticky bottom-0` alone
@@ -564,7 +670,11 @@ export function OrderScreen({
       <OrderHeader
         tableLabel={displayLabel}
         contextLine={contextLine}
-        activeSeatLabel={activeSeat ? (activeSeat.seatNote ?? activeSeat.seatLabel) : null}
+        // "SEAT 1 SELECTED — TAPS LAND HERE" only means something where the
+        // waiter chooses the seat.
+        activeSeatLabel={
+          usesSeats && activeSeat ? (activeSeat.seatNote ?? activeSeat.seatLabel) : null
+        }
         // The screen only renders for an OPEN session — the page redirects
         // otherwise — so it is occupied by construction, counter sales included.
         statusLabel="Occupied"
@@ -583,8 +693,8 @@ export function OrderScreen({
             being squeezed below what four seat buttons need on a small tablet. */}
         <main className="flex min-h-0 flex-1 flex-col p-sp-4 md:min-w-0 md:flex-[3_3_0%]">
           <MenuBrowser
-            onAdd={(item) => stageItem(item)}
-            onOpenModifiers={(item) => setSheetItem(item)}
+            onAdd={(item) => stageItem(item, activeSeat)}
+            onOpenModifiers={openModifiers}
             stagedCountByItem={stagedCountByItem}
           />
         </main>
@@ -596,7 +706,23 @@ export function OrderScreen({
         >
           {/* Seats, pinned at the top of the column: "who is this for?" is the
               question before every tap, so it must not scroll away. */}
-          <section className="flex shrink-0 flex-col gap-sp-3 border-b border-slate-200 p-sp-4">
+          {/* Capped at 45% of the column and scrollable. With eight seats, the
+              note editor and a removal confirmation open, an uncapped section
+              squeezed the round to zero height and pushed the total off-screen. */}
+          {/* Hidden outside the Tables zone — but shown anyway when the order
+              has no seat at all, which only a session from before migration
+              0013 could have. Without it nothing could be staged and there
+              would be no way to add the seat that fixes it. */}
+          {usesSeats || seats.length === 0 ? (
+          <>
+          {/* Only the seat GRID lives in the height-capped, scrollable section.
+              The note editor used to live in it too: opening the editor made
+              the section scroll, the scrollbar (~15px on Windows) narrowed the
+              auto-fill grid, it dropped a column, and every seat button jumped
+              wider. Reserving the scrollbar space made them permanently wider
+              instead. With the editor outside, a tap on the pencil never adds a
+              scrollbar and the buttons keep their size. */}
+          <section className="flex shrink-0 flex-col gap-sp-3 border-b border-slate-200 p-sp-4 md:max-h-[45%] md:overflow-y-auto">
             <SeatSelector
               seats={seats}
               activeSeatId={activeSeatId}
@@ -615,7 +741,11 @@ export function OrderScreen({
               }}
               onAddSeat={() => addSeatMutation.mutate()}
             />
+          </section>
 
+          {/* The note editor and seat notices, uncapped. `empty:hidden` drops
+              the wrapper — and its border — when neither is showing. */}
+          <div className="flex shrink-0 flex-col gap-sp-3 border-b border-slate-200 p-sp-4 empty:hidden">
             {isEditingSeat && activeSeat ? (
               // A real form, so the tablet keyboard's Enter saves the note.
               <form
@@ -637,7 +767,7 @@ export function OrderScreen({
                     placeholder="red shirt, curly hair…"
                     onChange={(event) => setNoteDraft(event.target.value)}
                     className={cn(
-                      'h-12 rounded-control border border-slate-200 bg-white px-sp-3',
+                      'h-touch-kitchen rounded-control border border-slate-200 bg-white px-sp-3',
                       'text-fs-16 text-slate-900 placeholder:text-slate-400',
                       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                     )}
@@ -666,7 +796,7 @@ export function OrderScreen({
                         disabled={seatBusy}
                         onClick={() => removeSeatMutation.mutate(activeSeat.id)}
                         className={cn(
-                          'h-12 flex-1 rounded-control bg-unavailable-band text-fs-14 font-bold text-white',
+                          'h-touch-kitchen flex-1 rounded-control bg-unavailable-band text-fs-14 font-bold text-white',
                           'transition-transform duration-80 ease-standard active:scale-[0.97]',
                           'disabled:opacity-40 disabled:active:scale-100',
                           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
@@ -678,7 +808,7 @@ export function OrderScreen({
                         type="button"
                         onClick={() => setConfirmingSeatRemoval(false)}
                         className={cn(
-                          'h-12 flex-1 rounded-control border border-slate-200 bg-white text-fs-14 font-semibold text-slate-600',
+                          'h-touch-kitchen flex-1 rounded-control border border-slate-200 bg-white text-fs-14 font-semibold text-slate-600',
                           'transition-transform duration-80 ease-standard active:scale-[0.97]',
                           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                         )}
@@ -693,7 +823,7 @@ export function OrderScreen({
                       type="submit"
                       disabled={seatBusy}
                       className={cn(
-                        'h-12 flex-1 rounded-control bg-brand-700 text-fs-14 font-bold text-white',
+                        'h-touch-kitchen flex-1 rounded-control bg-brand-700 text-fs-14 font-bold text-white',
                         'transition-transform duration-80 ease-standard active:scale-[0.97]',
                         'disabled:opacity-40 disabled:active:scale-100',
                         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
@@ -705,7 +835,7 @@ export function OrderScreen({
                       type="button"
                       onClick={closeSeatEditor}
                       className={cn(
-                        'h-12 flex-1 rounded-control border border-slate-200 bg-white text-fs-14 font-semibold text-slate-600',
+                        'h-touch-kitchen flex-1 rounded-control border border-slate-200 bg-white text-fs-14 font-semibold text-slate-600',
                         'transition-transform duration-80 ease-standard active:scale-[0.97]',
                         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                       )}
@@ -720,7 +850,7 @@ export function OrderScreen({
                         disabled={seatBusy}
                         onClick={() => setConfirmingSeatRemoval(true)}
                         className={cn(
-                          'h-12 shrink-0 rounded-control border border-unavailable-edge bg-white px-sp-3',
+                          'h-touch-kitchen shrink-0 rounded-control border border-unavailable-edge bg-white px-sp-3',
                           'text-fs-14 font-semibold text-unavailable-ink',
                           'transition-transform duration-80 ease-standard active:scale-[0.97]',
                           'disabled:opacity-40 disabled:active:scale-100',
@@ -737,28 +867,42 @@ export function OrderScreen({
 
             {/* A failing background refetch is surfaced, derived from the query
                 rather than pushed into state by an effect. */}
-            {seatNotice || seatsError ? (
+            {seatNotice || seatsError || ordersError ? (
               <p
                 role="status"
                 className="rounded-control bg-occupied-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-occupied-ink"
               >
-                {seatNotice ?? 'Could not refresh the seats. Reopen the order to retry.'}
+                {seatNotice ??
+                  (seatsError
+                    ? 'Could not refresh the seats. Reopen the order to retry.'
+                    : 'Could not refresh what has been sent. Reopen the order to retry.')}
               </p>
             ) : null}
-          </section>
+          </div>
+          </>
+          ) : seatNotice ? (
+            // With the seat section hidden, its notice still needs somewhere to go.
+            <p
+              role="status"
+              className="m-sp-4 mb-0 rounded-control bg-occupied-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-occupied-ink"
+            >
+              {seatNotice}
+            </p>
+          ) : null}
 
           {/* The round. Scrolls on its own; the seats above and the total below
               stay put. History sits ABOVE the unsent lines (AC-6). */}
           <div className="flex min-h-0 flex-1 flex-col gap-sp-3 overflow-y-auto p-sp-4">
-            <RoundHistory rounds={submittedRounds} />
+            <RoundHistory rounds={submittedRounds} showSeats={usesSeats} />
 
             <StagedRoundList
+              showSeats={usesSeats}
               lines={lines}
               seats={seats}
               problems={stagedProblems}
               onRemove={removeLine}
               onSetQuantity={setQuantity}
-              onReassign={reassignLine}
+              onReassign={(lineId, seat) => reassignLine(lineId, seat.id, seatName(seat))}
             />
 
             {notice ? (
@@ -798,7 +942,7 @@ export function OrderScreen({
                       disabled={busy}
                       onClick={() => closeMutation.mutate({ sessionId, reason: 'walkout' })}
                       className={cn(
-                        'h-12 flex-1 rounded-control bg-unavailable-band text-fs-14 font-bold text-white',
+                        'h-touch-kitchen flex-1 rounded-control bg-unavailable-band text-fs-14 font-bold text-white',
                         'transition-transform duration-80 ease-standard active:scale-[0.97]',
                         'disabled:opacity-40 disabled:active:scale-100',
                         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
@@ -811,7 +955,7 @@ export function OrderScreen({
                       disabled={busy}
                       onClick={() => setConfirmingWalkout(false)}
                       className={cn(
-                        'h-12 flex-1 rounded-control border border-slate-200 bg-white text-fs-14 font-semibold text-slate-600',
+                        'h-touch-kitchen flex-1 rounded-control border border-slate-200 bg-white text-fs-14 font-semibold text-slate-600',
                         'transition-transform duration-80 ease-standard active:scale-[0.97]',
                         'disabled:opacity-40 disabled:active:scale-100',
                         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
@@ -832,7 +976,7 @@ export function OrderScreen({
                     else closeMutation.mutate({ sessionId, reason: 'abandoned' })
                   }}
                   className={cn(
-                    'h-12 w-full rounded-control border border-slate-200 bg-white',
+                    'h-touch-kitchen w-full rounded-control border border-slate-200 bg-white',
                     'text-fs-14 font-semibold text-slate-600',
                     'transition-transform duration-80 ease-standard active:scale-[0.98]',
                     'disabled:opacity-40 disabled:active:scale-100',
@@ -849,6 +993,44 @@ export function OrderScreen({
             </div>
           </div>
 
+          {confirmingClear ? (
+            <div
+              role="alertdialog"
+              aria-label="Confirm clearing the round"
+              className="flex shrink-0 flex-col gap-sp-2 border-t-2 border-unavailable-edge bg-unavailable-body p-sp-4"
+            >
+              {/* Nothing staged is in the database, so nothing can bring these
+                  back. One tap used to discard the whole round. */}
+              <p className="text-fs-14 font-bold text-unavailable-ink">
+                Clear all {stagedItemCount} unsent items? This cannot be undone.
+              </p>
+              <div className="flex gap-sp-2">
+                <button
+                  type="button"
+                  onClick={clearRound}
+                  className={cn(
+                    'h-touch-kitchen flex-1 rounded-control bg-unavailable-band text-fs-14 font-bold text-white',
+                    'transition-transform duration-80 ease-standard active:scale-[0.97]',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                  )}
+                >
+                  Yes, clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingClear(false)}
+                  className={cn(
+                    'h-touch-kitchen flex-1 rounded-control border border-slate-200 bg-white text-fs-14 font-semibold text-slate-600',
+                    'transition-transform duration-80 ease-standard active:scale-[0.97]',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                  )}
+                >
+                  Keep them
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <OrderSummary
             lineCount={lines.length}
             subtotalPaisa={subtotalPaisa}
@@ -857,21 +1039,24 @@ export function OrderScreen({
         </aside>
       </div>
 
-      {sheetItem && activeSeat ? (
+      {sheet && sheetSeat ? (
         <ModifierSheet
-          item={sheetItem}
-          seatLabel={activeSeat.seatNote ?? activeSeat.seatLabel}
-          onCancel={() => setSheetItem(null)}
+          // Keyed so a different dish or seat is a fresh sheet, never a reused
+          // one with the previous quantity and note still in it.
+          key={`${sheet.item.id}:${sheetSeat.id}`}
+          item={sheet.item}
+          // Where the waiter never chose a seat, naming one is noise.
+          seatLabel={usesSeats ? seatName(sheetSeat) : null}
+          onCancel={() => setSheet(null)}
           onAdd={({ quantity: lineQuantity, modifierText }) => {
-            stageItem(sheetItem, { quantity: lineQuantity, modifierText })
-            setSheetItem(null)
+            stageItem(sheet.item, sheetSeat, { quantity: lineQuantity, modifierText })
+            setSheet(null)
           }}
         />
       ) : null}
 
-      {/* The bar. State is derived from three facts: something staged is
-          `items-added`; nothing staged with rounds sent is `submitted`; nothing
-          at all is `empty`.
+      {/* The bar. Its state is `stripState` above — four facts, including the
+          Add More Items override.
 
           Hold, Bill & split and Send are in the design and NOT here yet —
           Teran's call on 2026-09-16. Send is Story 4.5, billing is Epic 6, and
@@ -882,7 +1067,13 @@ export function OrderScreen({
         state={stripState}
         stagedCount={stagedItemCount}
         destinationSummary={destinationSummary}
-        onClear={lines.length > 0 ? clear : undefined}
+        onClear={
+          lines.length === 0
+            ? undefined
+            : lines.length === 1
+              ? clearRound
+              : () => setConfirmingClear(true)
+        }
         onAddMoreItems={
           // Opening a round writes nothing: the round NUMBER is decided inside
           // Story 4.5's submit transaction.

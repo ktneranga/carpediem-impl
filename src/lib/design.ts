@@ -90,6 +90,28 @@ const ZONE_ICONS: Record<string, LucideIcon> = {
 
 export const ALL_ZONES_ICON: LucideIcon = LayoutGrid
 
+/**
+ * Zones where orders are taken per seat. Everywhere else, one order is one
+ * party and the seat section is hidden.
+ *
+ * Teran, 2026-09-16: seats earn their place at the Tables zone, where several
+ * guests at one table order separately and may pay separately. On bean bags,
+ * sun beds and the rooftop — and at the counter — they were an extra decision
+ * with no payoff. Orders there still HAVE a seat (every session is created with
+ * Seat 1), so items are attributed exactly as before; only the choice is gone.
+ * The cost is that those orders cannot be split by seat at billing time.
+ *
+ * ⚠️ Keyed on the zone NAME, like `ZONE_ICONS` above, because zones are
+ * owner-configured and there is no column for it. Renaming "Tables" switches
+ * seats off there. If that ever bites, this becomes a per-zone setting.
+ */
+const SEATED_ZONES = new Set(['tables'])
+
+export function zoneUsesSeats(zoneName: string | null): boolean {
+  // A counter sale has no zone, and no seats.
+  return zoneName !== null && SEATED_ZONES.has(zoneName.trim().toLowerCase())
+}
+
 export function zoneIcon(zoneName: string): LucideIcon {
   return ZONE_ICONS[zoneName.trim().toLowerCase()] ?? LayoutGrid
 }

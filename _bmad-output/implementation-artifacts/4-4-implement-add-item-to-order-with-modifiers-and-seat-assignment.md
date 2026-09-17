@@ -1,6 +1,6 @@
 # Story 4.4: Implement Add Item to Order with Modifiers & Seat Assignment
 
-Status: review
+Status: done
 
 - **Epic:** 4 — Order Entry & Multi-Destination Routing
 - **Story ID:** 4.4
@@ -132,6 +132,58 @@ Status: review
 - [x] **Task 6 — Verify** (AC: all)
   - No test framework; manual, as every prior story. Matrix in Dev Notes.
   - **The stale-seat test is not optional** (AC-7) — it is now reachable in normal use, and it is the only guard standing between a staged item and a foreign-key violation at submission.
+
+
+### Review Findings (code review, 2026-09-16)
+
+Three layers: Blind Hunter (diff only), Edge Case Hunter (diff + project), Acceptance Auditor (diff + spec + tokens). Scope: Story 4.4 plus both redesign passes, 19 files.
+
+**Decisions needed**
+
+- [x] [Review][Decision] **RESOLVED — count the selected seat only (Teran, 2026-09-16), applied.** Teran's reason: when one table orders separately, a whole-round count is confusing. Original finding: **The card badge and "Add another" count the whole round, not the selected seat** — `stagedCountByItem` sums every seat. At a table of six with Seat 4 selected, the fish shows "3 · Add another" because seats 1–3 ordered it, and the waiter reasonably reads that as "already down for this person" — while the header says SEAT 4 SELECTED. Options: (a) count for the selected seat only, which makes the duplicate-tap guard true for the person being served; (b) keep the round total, which matches the mockup's intent of "this dish is in the round". [`order-screen.tsx` `stagedCountByItem`, `menu-item-card.tsx`]
+
+**Patches**
+
+- [x] [Review][Patch] **The staged-round restore causes a hydration mismatch** — `useState(() => readStaged(sessionId))` returns `[]` on the server (no `window`) and the stored lines on the client's first render, so the staged list, seat counts, card badges, totals and bar all differ between server HTML and hydration. The hook's comment presents the lazy initialiser as the fix for "one frame of wrong UI"; it produces a hydration error instead. [`use-staged-round.ts`]
+- [x] [Review][Patch] **The 86'd-while-staged flag never fires on the live event** — `queryClient.getQueryData(MENU_QUERY_KEY)` is an unsubscribed read. The socket handler updates the menu cache and re-renders `MenuBrowser`, not `OrderScreen`, so the staged line stays healthy-looking. On first paint the cache is usually empty, so the check is inert exactly when the screen opens. The comment above the loop claims the opposite. (AC-10) [`order-screen.tsx`]
+- [x] [Review][Patch] **A staged dish that was deleted from the menu is never flagged** — only `known && !known.available` sets a problem; a missing item is treated as "no knowledge", yet it hits the same foreign key at submission that the seat check exists to prevent. [`order-screen.tsx` `stagedProblems`]
+- [x] [Review][Patch] **Every staged-round mutator reads `lines` from the render closure** — `commit([...lines, …])` instead of a functional update, so two handlers in one batch lose one of the writes, and the mirror persists the loss. [`use-staged-round.ts`]
+- [x] [Review][Patch] **`crypto.randomUUID()` does not exist outside a secure context** — a tablet on `http://192.168.x.x` throws on every Add tap and stages nothing. [`use-staged-round.ts:148`]
+- [x] [Review][Patch] **The staged round follows the component, not the session** — `OrderScreen` has no `key`, so a direct route change between two sessions keeps table A's lines on table B, and the next commit writes them under B's key; the seat-gone repair then offers to move A's items onto B's seats. [`orders/[sessionId]/page.tsx`]
+- [x] [Review][Patch] **A session closed elsewhere reaches the QUERY path and shows as "Could not refresh the seats"** — `seatRequest` is also the seats and orders `queryFn`, and focus refetch is on. The terminal `SessionGoneError` handling exists only on the mutation path, which is the exact defect its own comment says was fixed. The orders query's errors are not surfaced at all. [`order-screen.tsx`]
+- [x] [Review][Patch] **AC-7's inline error cannot name the seat** — the line carries only `seatSlotId`, so a vanished seat renders as "Seat removed" with an unnamed error. Trap 2's own scenario ("Seat 3 (red shirt)") is the one it fails. Capture the seat's label on the line at stage time, as the price is. [`use-staged-round.ts`, `staged-round-list.tsx`]
+- [x] [Review][Patch] **The modifier sheet's seat can change under it** — it reads `activeSeat` live, so a focus refetch that removes the selected seat renames the open sheet to another guest and stages the dish onto them. Capture the seat when the sheet opens; close it if that seat disappears. [`order-screen.tsx`]
+- [x] [Review][Patch] **"Opts" is a dead control when there is no active seat** — `setSheetItem` runs but the sheet renders only with `activeSeat`; `Add` shows a notice in the same state, `Opts` does nothing. [`order-screen.tsx`]
+- [x] [Review][Patch] **`addingMore` is a one-way latch** — set by Add More Items and never cleared, so the strip can never return to `submitted` (and so never offer Add More Items again) without a reload. The strip comment also describes three facts where the code uses four. [`order-screen.tsx`]
+- [x] [Review][Patch] **The modifier sheet is not a `<dialog>` and not focus-trapped** — `aria-modal` with nothing behind it made inert, Tab walks into the menu, Escape stops working once focus leaves, focus is not restored, and a drag that starts in the note field and ends on the scrim cancels the sheet. Task 3 required one or the other. [`modifier-sheet.tsx`]
+- [x] [Review][Patch] **The redesign dropped controls below the system's 56px touch floor** — `globals.css` calls the touch tokens non-negotiable and the strip chrome names 56px as the floor for every waiter control. Now: chips 48px, header back 48px, stepper 44px, and nine note/close/walkout/reassign buttons at 48px — while the sheet kept the tokens. Use the tokens. [`menu-category-chips.tsx`, `order-header.tsx`, `staged-round-list.tsx`, `order-screen.tsx`, `menu-item-card.tsx`]
+- [x] [Review][Patch] **`text-slate-400` fails AA for load-bearing text** — 2.56:1 on white, 2.34:1 on `slate-100`. Used for an unavailable dish's name and price, the "Unavailable" footer word (which replaced a 6.54:1 red band and is the ONLY text carrying the state), the chip counts, the seat counts and the history's modifier text. `text-white/70` on `brand-700` is 3.85:1. [`menu-item-card.tsx`, `menu-category-chips.tsx`, `seat-selector.tsx`, `round-history.tsx`]
+- [x] [Review][Patch] **Four more comments describe what the code does not do** — (a) the seats query defers a socket event "to Story 4.4", which is this story; (b) the strip comment lists three facts, the code uses four; (c) the card header says the eyebrow is "Kitchen blue" when kitchen ink is `brand-700`; (d) `pr-sp-6` (32px) is said to keep the name clear of a badge that occupies 44px. [`order-screen.tsx`, `menu-item-card.tsx`]
+- [x] [Review][Patch] **The File List omits 7 of 19 files** — `globals.css`, `design.ts`, `order-header.tsx`, `order-summary.tsx`, `seat-selector.tsx`, `menu-category-chips.tsx`, and the deleted `seat-chip-row.tsx`. The verification table's "eslint clean" was `--quiet`, which hides warnings. [this file]
+- [x] [Review][Patch] **`readStaged`'s type guard asserts a shape it does not check** — `productionDestination` is never validated, and `quantity`/`pricePaisa` accept `NaN`, `0`, negatives and fractions, so corrupt storage renders "LKR NaN" or a bar that names the wrong kitchens. [`use-staged-round.ts`]
+- [x] [Review][Patch] **A failed mirror write leaves a stale round to be restored** — when `setItem` throws, the previous value stays in storage and a reload restores it as if it were the whole round. Remove the key when a write fails. [`use-staged-round.ts`]
+- [x] [Review][Patch] **A closed session's mirror is never removed** — `clear()` is the only remover and the close flow never calls it, so every closed table leaves a `cdrms:staged:<uuid>` behind on a shared tablet. [`order-screen.tsx`]
+- [x] [Review][Patch] **Clear destroys a whole round with one tap** — nothing is in the database, so nothing can bring it back. Confirm first. [`order-screen.tsx`]
+- [x] [Review][Patch] **A tall seat section can squeeze the round to nothing** — it is `shrink-0`; eight seats plus the note editor and removal confirmation push the staged list to zero height and the total off-screen. Cap it and let it scroll. [`order-screen.tsx`]
+- [x] [Review][Patch] **Pre-0014 rows sort after round 1** — `ORDER BY round_number` puts NULLs last while the code buckets them into round 1, so older items appear at the end of the round. Order by `coalesce(round_number, 1)`. [`orders/route.ts`, `page.tsx`]
+- [x] [Review][Patch] **"The compiler says so if they drift" is false** — sharing the row TYPE does not share the grouping, the NULL bucketing or the fallback name, which are duplicated in the page and the route. Extract one function. [`page.tsx`, `orders/route.ts`]
+- [x] [Review][Patch] **`GET .../orders` answers 200 `[]` for a session that does not exist** — indistinguishable from "no items". Return 404. [`orders/route.ts`]
+- [x] [Review][Patch] **Two hydration hazards in rendered times and three dead props** — `clockTime(sentAt)` formats in the server's timezone during SSR; `restaurantName`, `capacity` and `coverCount` are unused since the facts card went, which also dropped covers from the screen entirely. Put covers back in the header line. [`round-history.tsx`, `order-screen.tsx`, `page.tsx`]
+- [x] [Review][Patch] **Small accessibility gaps** — the count badge is an `aria-label` on a bare `<span>`, which is not reliably exposed; the lower-bound `+` is explained only by a `title` tooltip, invisible on touch and to screen readers. [`menu-item-card.tsx`, `round-history.tsx`]
+- [x] [Review][Patch] **Chip counts include 86'd dishes** — "PIZZA 2" when both pizzas are off gives the opposite signal the count exists for. Count what is orderable. [`menu-browser.tsx`]
+- [x] [Review][Patch] **Standalone `MenuItemCard` labels available dishes "Unavailable"** — the footer branch is `canOrder` (available AND handler), not `item.available`. [`menu-item-card.tsx`]
+- [x] [Review][Patch] **Token and lint tidy-ups** — `rounded-full` where the token is `rounded-pill`; an unnecessary `jsx-a11y/no-autofocus` disable. [`menu-category-chips.tsx`, `modifier-sheet.tsx`]
+
+**Deferred** (real, not for this story — also logged in `deferred-work.md`)
+
+- [x] [Review][Defer] **Two tabs on one device overwrite each other's staged round** [`use-staged-round.ts`] — deferred, needs a `storage` listener and a merge rule
+- [x] [Review][Defer] **Below `md` the columns do not scroll independently** [`order-screen.tsx`] — deferred, tablets are the target; phone layout is its own design question
+- [x] [Review][Defer] **`display: contents` on the seat group may drop its role in some screen readers** [`seat-selector.tsx`] — deferred, pre-existing from 4.3
+- [x] [Review][Defer] **No per-session authorisation on the orders GET** [`orders/route.ts`] — deferred, pre-existing across every `/api/sessions` route
+- [x] [Review][Defer] **Old `cdrms:staged:*` keys are never pruned beyond close** [`use-staged-round.ts`] — deferred, close now clears its own key
+- [x] [Review][Defer] **`menuCategoryIcon` is exported with no callers** [`src/lib/design.ts`] — deferred, kept deliberately for restoring the card photos
+
+Dismissed (5): the tax rate arriving as a string (the column is `integer`); the deleted menu wrapper (MenuBrowser's own root still carries `min-h-0 flex-1`); the staged list being a flat list rather than grouped under seat headings (superseded by Teran's 2026-09-16 mockup, which shows a flat list with a seat label per line); the modifier rendering below rather than beside the name (same); `h-1.5`/`size-8`/`w-20` being "off-system" (Tailwind's default spacing is used for non-touch geometry throughout this codebase).
 
 ---
 
@@ -342,20 +394,38 @@ This is the fourth story in Epic 4 whose UI has never been seen. A browser pass 
 
 - `src/server/db/schema.ts` — MODIFIED: `orderEvents.modifierText`, `orderEvents.roundNumber`, `idx_order_events_session_round`; `notes` documented as audit-only
 - `src/server/db/migrations/0014_bent_viper.sql` — NEW
-- `src/server/db/migrations/meta/_journal.json`, `meta/0014_snapshot.json` — NEW/MODIFIED
-- `src/app/api/sessions/[sessionId]/orders/route.ts` — NEW: `GET` (POST is 4.5)
-- `src/app/orders/[sessionId]/page.tsx` — MODIFIED: loads submitted rounds
-- `src/components/pos/use-staged-round.ts` — NEW
-- `src/components/pos/modifier-sheet.tsx` — NEW
+- `src/server/db/migrations/meta/_journal.json`, `meta/0014_snapshot.json` — MODIFIED / NEW
+- `src/server/orders/submitted-rounds.ts` — NEW (review): the one history query and grouping, shared by the page and the route
+- `src/app/api/sessions/[sessionId]/orders/route.ts` — NEW: `GET` (POST is 4.5); 404 for an unknown session
+- `src/app/orders/[sessionId]/page.tsx` — MODIFIED: loads submitted rounds and the tax rate; keys the screen by session
+- `src/app/globals.css` — MODIFIED: `--color-unsent-*` tokens
+- `src/lib/design.ts` — MODIFIED: `ROUTES` gains `band`/`ink`/`short`; `routeForDestination()`; `zoneUsesSeats()`
+- `src/components/pos/use-staged-round.ts` — NEW: external store over `localStorage`
+- `src/components/pos/modifier-sheet.tsx` — NEW: native modal `<dialog>`
 - `src/components/pos/staged-round-list.tsx` — NEW
 - `src/components/pos/round-history.tsx` — NEW
-- `src/components/pos/menu-item-card.tsx` — MODIFIED: one-tap add plus modifier affordance
-- `src/components/pos/menu-browser.tsx` — MODIFIED: threads `onAdd`/`onOpenModifiers`; exports `MENU_QUERY_KEY`
-- `src/components/pos/order-action-strip.tsx` — MODIFIED: no commit button without a handler
-- `src/components/pos/order-screen.tsx` — MODIFIED: staged round, history, sheet, real strip state
+- `src/components/pos/order-header.tsx` — NEW (redesign)
+- `src/components/pos/order-summary.tsx` — NEW (redesign)
+- `src/components/pos/seat-selector.tsx` — NEW (redesign), replaces `seat-chip-row.tsx`
+- `src/components/pos/seat-chip-row.tsx` — DELETED (redesign)
+- `src/components/pos/menu-item-card.tsx` — MODIFIED
+- `src/components/pos/menu-browser.tsx` — MODIFIED: callbacks, staged counts, `menuQueryOptions`, orderable-only chip counts
+- `src/components/pos/menu-category-chips.tsx` — MODIFIED: counts, tokens
+- `src/components/pos/order-action-strip.tsx` — MODIFIED: no button without a handler; bar copy
+- `src/components/pos/action-strip-chrome.tsx` — MODIFIED (review): eyebrow contrast (also affects the floor strip)
+- `src/components/pos/order-screen.tsx` — MODIFIED
 - `_bmad-output/implementation-artifacts/deferred-work.md` — MODIFIED
 
 ### Change Log
+
+- 2026-09-16: **Compact unsent lines (Teran's request).** Each staged line went from about 110px to about 60px: the dish name on one line, then seat · note · line total on a small second line, with the stepper beside them. "NOT SENT" became one heading over the list ("NOT SENT · 3 items") instead of an eyebrow on every card; each row keeps the amber unsent tint. The stepper now uses the system's `touch-standard` token (44px, the WCAG target size) instead of the 56px floor the review set, a density trade Teran asked for. The seat-reassign buttons on a problem line keep 56px, because they are the only way out of a blocked round.
+
+- 2026-09-16: **Fixed: seat buttons grew when the pencil was tapped (found by Teran, twice).** Opening the note editor made the height-capped seat section scroll; the scrollbar (about 15px on Windows) narrowed the auto-fill seat grid enough to drop a column, so every seat button widened. The first fix reserved the scrollbar's space permanently, which Teran caught made the buttons permanently wide instead. Reverted; the note editor now sits in its own uncapped block below the seat section, so tapping the pencil never adds a scrollbar and the grid keeps its columns. The seat section can still scroll with enough seats to fill it, which is a change made by adding a seat, not by editing one.
+- 2026-09-16: **Seats only in the Tables zone (Teran's decision).** The seat section, the "SEAT 1 SELECTED" header line, the per-line seat labels, the seat names in the history and "For Seat 1" in the modifier sheet now appear only when the order's zone is named "Tables". Bean Bags, Sun Beds, Rooftop and counter sales hide them, and every dish goes to the order's automatic Seat 1, so attribution in `order_events` is unchanged. The seat section still appears if an order has no seat at all, so it can always be repaired. The rule is `zoneUsesSeats()` in `src/lib/design.ts`, keyed on the zone name like the zone icons. This reverses Story 4.3's Decision 2 for counter sales. Verified on the running server with one order of each kind.
+
+- 2026-09-16: **Code review (3 layers) and remediation.** 36 findings: 1 decision (taken: badge counts the selected seat), 29 patches (all applied), 6 deferred, 5 dismissed. The staged round was rebuilt as an external store read through `useSyncExternalStore`, which closes four findings with one root cause: the lazy `useState` restore caused a hydration mismatch, mutators lost updates through stale closures, a session change kept the previous table's round, and two tabs silently overwrote each other (the `storage` event now keeps them in step). Other fixes: line ids no longer need a secure context (`crypto.randomUUID` threw on every Add over plain `http://`); the menu is now OBSERVED rather than read once, so a dish 86'd mid-round is flagged, and a deleted dish is flagged too; a session closed on another tablet is terminal on the query path as well as the mutation path; AC-7's error names the vanished seat from a label captured at stage time; the modifier sheet is a native modal `<dialog>` and captures its seat when opened; every waiter control meets the 56px touch token; `slate-400` is gone from meaningful text on this screen, including the bar's "NOT SENT" eyebrow (a shared chrome file, so the floor strip's eyebrow darkened too); the history query is one shared function, sorts pre-0014 rows correctly, and the route answers 404 for an unknown order; Clear asks before discarding more than one line; closing a table clears its mirror; covers are back in the header. Re-verified against the running server: history order with a NULL-round row, the 404, and the page render. `tsc` clean; `eslint` clean without `--quiet` apart from one pre-existing warning in `server/socket/index.ts`. **Still not exercised in a browser:** every tap on this screen, the dialog, the stepper, the store's reload and two-tab behaviour.
+
+- 2026-09-16: **Same dish, same seat now merges (Teran's request, found in use).** Tapping a dish the selected seat already has raises that line's quantity instead of adding a second identical line. Only lines with the same dish, the same seat AND the same note merge. A different note, including a note versus no note, stays a separate line so the kitchen never loses an instruction. This reverses Task 2's "adding never merges lines"; the line's own minus button now undoes a mis-tap. With it, the review's one decision was taken: the card badge and "Add another" count the selected seat only.
 
 - 2026-09-16: **Second pass, to the design system.** Item cards: `rounded-waiter` (the system's radius for menu cards, not the table card's `rounded-card`), destination eyebrow and staged top band in the `ROUTES` colours — Kitchen blue, Pizza orange, Bar violet — with Kitchen's *text* on `brand-700` because route blue is 4.00:1 on white and fails AA at 12px. `ROUTES` gained `band`/`ink`/`short` and a `routeForDestination()` map for the database's `pizza_kitchen`. Seats: an equal-width auto-fill grid of `rounded-waiter` buttons with a dashed grey "+ Seat"; the pencil badge is gone and editing is now a second tap on the already-selected seat. Layout: menu and order column in a 3 : 1 ratio (`flex-[3_3_0%]` / `flex-[1_1_0%]`, order column min 320px). **Found and fixed a token bug from the first pass:** `bg-brand-50` is not a token (the system's is `brand-050`), so the Add button and the active seat had rendered with no fill. Also replaced three off-system `slate-50`s with the system's `slate-100`. Every new utility confirmed present in the compiled CSS.
 

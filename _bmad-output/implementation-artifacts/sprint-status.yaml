@@ -86,8 +86,8 @@ development_status:
   4-1-build-orderactionstrip-component: done
   4-2-implement-menu-browse-and-search: done
   4-3-implement-seat-slot-management: done
-  4-4-implement-add-item-to-order-with-modifiers-and-seat-assignment: review
-  4-5-implement-order-submission-and-multi-destination-routing: backlog
+  4-4-implement-add-item-to-order-with-modifiers-and-seat-assignment: done
+  4-5-implement-order-submission-and-multi-destination-routing: ready-for-dev
   epic-4-retrospective: optional
 
   # ── Epic 5: Ticket Output — ESC/POS Printing & KDS Display ───────────────

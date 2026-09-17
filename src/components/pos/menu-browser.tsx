@@ -40,6 +40,19 @@ async function fetchMenu(): Promise<MenuCategoryRow[]> {
 }
 
 /**
+ * The menu query, exactly as this component runs it.
+ *
+ * Exported so the order screen can OBSERVE the same cache entry — one fetch,
+ * two subscribers — and re-render when a socket event 86's a dish it has
+ * staged. A plain `getQueryData` read does not subscribe, which is why the
+ * staged line's warning used to never appear.
+ */
+export const menuQueryOptions = {
+  queryKey: MENU_QUERY_KEY,
+  queryFn: fetchMenu,
+}
+
+/**
  * Menu browse and search for the order screen (FR7).
  *
  * ── Search leads; browse is the fallback ─────────────────────────────────────
@@ -82,10 +95,7 @@ export function MenuBrowser({
   const [search, setSearch] = useState('')
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null)
 
-  const { data: categories, isPending, isError, error } = useQuery({
-    queryKey: MENU_QUERY_KEY,
-    queryFn: fetchMenu,
-  })
+  const { data: categories, isPending, isError, error } = useQuery(menuQueryOptions)
 
   /**
    * An item was 86'd, restocked or toggled by a manager.
@@ -214,13 +224,14 @@ export function MenuBrowser({
       />
 
       <MenuCategoryChips
-        // Counts are of what the category OFFERS, not of what the current search
-        // matches — a chip whose number changes with every keystroke reads as
-        // the menu itself changing.
+        // Counts are of what the category can be ORDERED from right now — not
+        // of what the search matches (a number that changes per keystroke reads
+        // as the menu changing), and not of 86'd dishes ("PIZZA 2" when both
+        // pizzas are off is the opposite of the signal the count exists for).
         categories={(categories ?? []).map((category) => ({
           id: category.id,
           name: category.name,
-          itemCount: category.items.length,
+          itemCount: category.items.filter((item) => item.available).length,
         }))}
         activeCategoryId={effectiveCategoryId}
         onSelect={setActiveCategoryId}
@@ -264,7 +275,7 @@ export function MenuBrowser({
                 <div key={category.id} className="flex flex-col gap-sp-2">
                   {/* The heading stays even while searching, so a match is always
                       attributable to a category — AC-3's last clause. */}
-                  <h2 className="text-fs-12 font-semibold tracking-micro text-slate-400 uppercase">
+                  <h2 className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase">
                     {category.name}
                   </h2>
 

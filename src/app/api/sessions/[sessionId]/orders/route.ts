@@ -1,28 +1,13 @@
 import { NextResponse } from 'next/server'
-import { and, asc, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/server/db'
-import { menuItems, orderEvents, seatSlots } from '@/server/db/schema'
+import { orderSessions } from '@/server/db/schema'
+import { loadSubmittedRounds } from '@/server/orders/submitted-rounds'
+
+export type { SubmittedItemRow, SubmittedRoundRow } from '@/server/orders/submitted-rounds'
 
 const sessionIdSchema = z.string().uuid()
-
-/** One submitted item, as the history renders it. */
-export type SubmittedItemRow = {
-  id: string
-  name: string
-  quantity: number
-  /** Integer paisa, AS QUOTED — read from the event row, never from the menu. */
-  unitPricePaisa: number | null
-  modifierText: string | null
-  seatLabel: string | null
-  submittedAt: string
-}
-
-/** One round of this session's ordering, oldest first. */
-export type SubmittedRoundRow = {
-  roundNumber: number
-  items: SubmittedItemRow[]
-}
 
 function fail(code: string, message: string, status: number) {
   return NextResponse.json({ success: false, error: { code, message } }, { status })
@@ -32,24 +17,18 @@ function fail(code: string, message: string, status: number) {
  * The session's already-submitted items, grouped by round (Story 4.4, AC-6).
  *
  * ── Read-only, and that is the whole point ───────────────────────────────────
- * These rows are in `order_events`, which is APPEND-ONLY — migration 0001's
- * trigger refuses UPDATE and DELETE. There is no PATCH and no DELETE on this
- * path and there never will be: correcting a submitted item is a new event, and
- * Epic 7 owns that flow.
- *
- * ── Prices come from the EVENT, not from the menu ────────────────────────────
- * `unit_price_paisa` is what the guest was quoted when the item was ordered.
- * Joining to `menu_items` for the price would make a mid-service re-price
- * rewrite history — the bill would show today's price for last hour's order,
- * and the audit row would agree with it. The join to `menu_items` here is for
- * the NAME only, and even that is a fallback the item row can outlive.
+ * These rows are in `order_events`, which is APPEND-ONLY by database trigger.
+ * There is no PATCH and no DELETE on this path: correcting a submitted item is a
+ * new event, and Epic 7 owns that flow.
  *
  * ── POST is Story 4.5 ────────────────────────────────────────────────────────
- * `epics.md:1395` puts submission on this exact path. It is deliberately absent
- * here: Story 4.4 stages on the client and writes nothing.
+ * `epics.md:1395` puts submission on this exact path. Story 4.4 stages on the
+ * client and writes nothing.
  *
- * RBAC is inherited from `{ prefix: '/api/sessions', roles: ['owner','waiter'] }`
- * (Story 3.9). Verified as Kumar (4321, kitchen), not assumed.
+ * The query and the grouping live in `loadSubmittedRounds`, shared with the
+ * order page's first paint. RBAC is inherited from
+ * `{ prefix: '/api/sessions', roles: ['owner','waiter'] }` — verified as Kumar
+ * (4321, kitchen), not assumed.
  */
 export async function GET(
   request: Request,
@@ -62,72 +41,28 @@ export async function GET(
     return fail('INVALID_SESSION_ID', 'Session id must be a UUID', 400)
   }
 
-  // Every other handler in this namespace checks this. The proxy refuses an
-  // unauthenticated request first, so it is defence in depth — but one handler
-  // quietly missing the check reads as either a bug or proof it is decorative,
-  // and prefix RBAC here defaults to ALLOW on an unmatched prefix.
+  // Defence in depth — the proxy refuses an unauthenticated request first — but
+  // every handler in this namespace checks it, and one quietly missing it reads
+  // as a bug.
   if (!request.headers.get('x-staff-id')) {
     return fail('UNAUTHENTICATED', 'Sign in required', 401)
   }
 
   try {
-    const rows = await db
-      .select({
-        id: orderEvents.id,
-        roundNumber: orderEvents.roundNumber,
-        quantity: orderEvents.quantity,
-        unitPricePaisa: orderEvents.unitPricePaisa,
-        modifierText: orderEvents.modifierText,
-        createdAt: orderEvents.createdAt,
-        itemName: menuItems.name,
-        seatLabel: seatSlots.seatLabel,
-      })
-      .from(orderEvents)
-      // LEFT, both of them. A menu item deleted after it was ordered, or a seat
-      // removed after the round was submitted, must not make the history vanish
-      // — these rows are the audit record and an INNER join would hide them.
-      .leftJoin(menuItems, eq(menuItems.id, orderEvents.menuItemId))
-      .leftJoin(seatSlots, eq(seatSlots.id, orderEvents.seatSlotId))
-      .where(
-        and(
-          eq(orderEvents.sessionId, parsedSessionId.data),
-          // Items only. Session-level audit rows — SESSION_OPENED, TABLE_MERGED
-          // — share this table and belong to no round.
-          eq(orderEvents.eventType, 'ITEM_ADDED'),
-        ),
-      )
-      .orderBy(asc(orderEvents.roundNumber), asc(orderEvents.createdAt), asc(orderEvents.id))
+    // A session that does not exist is a 404, not `200 []`. The empty list
+    // meant both "no items yet" and "no such order", and the client could not
+    // tell them apart. A CLOSED session still answers — its history is real.
+    const [session] = await db
+      .select({ id: orderSessions.id })
+      .from(orderSessions)
+      .where(eq(orderSessions.id, parsedSessionId.data))
+      .limit(1)
 
-    // Grouped in code rather than by SQL: the shape the client wants is nested,
-    // and the row count here is one sitting's items — tens, not thousands.
-    const rounds: SubmittedRoundRow[] = []
-
-    for (const row of rows) {
-      // Defensive. Nothing writes ITEM_ADDED without a round after Story 4.5,
-      // but the 14 rows that predate migration 0014 have none, and one of them
-      // was hand-inserted during 4.3's verification. Bucket them as round 1
-      // rather than dropping items a guest may be about to be billed for.
-      const roundNumber = row.roundNumber ?? 1
-
-      let round = rounds.find((candidate) => candidate.roundNumber === roundNumber)
-      if (!round) {
-        round = { roundNumber, items: [] }
-        rounds.push(round)
-      }
-
-      round.items.push({
-        id: row.id,
-        name: row.itemName ?? 'Item no longer on the menu',
-        quantity: row.quantity,
-        unitPricePaisa: row.unitPricePaisa,
-        modifierText: row.modifierText,
-        seatLabel: row.seatLabel,
-        submittedAt: row.createdAt.toISOString(),
-      })
+    if (!session) {
+      return fail('SESSION_NOT_FOUND', 'No such order', 404)
     }
 
-    rounds.sort((a, b) => a.roundNumber - b.roundNumber)
-
+    const rounds = await loadSubmittedRounds(parsedSessionId.data)
     return NextResponse.json({ success: true, data: rounds })
   } catch (error) {
     console.error('[api/sessions/:sessionId/orders] Failed to load rounds:', error)

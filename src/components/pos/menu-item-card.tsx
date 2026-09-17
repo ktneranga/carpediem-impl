@@ -9,13 +9,16 @@ import { cn } from '@/lib/utils'
  * One dish on the order screen's menu grid.
  *
  * ── Built on the design system, not beside it ────────────────────────────────
- * - Corner: `rounded-waiter` (14px). `globals.css` assigns that radius to
- *   "waiter buttons and menu cards"; `rounded-card` (20px) is the TABLE card's.
- * - Colour: the eyebrow and the staged band come from `ROUTES`, the system's
- *   only non-status accents — Kitchen blue, Pizza orange, Bar violet — so a
- *   dish's colour says where it is made, and says it the same way the kitchen
- *   ticket will.
- * - Greys: only the five the system defines.
+ * - Corner: `rounded-waiter` (14px), the system's radius for "waiter buttons
+ *   and menu cards"; `rounded-card` (20px) is the TABLE card's.
+ * - Colour: the staged band is the dish's route colour from `ROUTES` — Kitchen
+ *   blue, Pizza orange, Bar violet. The eyebrow uses the route's INK, which is
+ *   the route colour for Pizza and Bar but `brand-700` for Kitchen, because
+ *   Kitchen blue is 4.00:1 on white and fails AA at 12px.
+ * - Greys: only the system's five, and never `slate-400` for text that
+ *   carries meaning — it is 2.56:1 on white.
+ * - Touch: the footer is the 56px `touch-kitchen` token, the floor for every
+ *   waiter control.
  *
  * ── Text-first, no photograph ────────────────────────────────────────────────
  * Teran's 2026-09-16 design is text-only for density. `menu_items.image_url`
@@ -35,23 +38,26 @@ export function MenuItemCard({
 }: {
   item: MenuItemRow
   /**
-   * How many of this dish are already in the staged round.
+   * How many of this dish the SELECTED SEAT already has in the staged round.
    *
-   * Shown as a badge, and it turns `Add` into `Add another`. Without it a
-   * waiter interrupted mid-round has to read the whole staged list to find out
-   * whether they already tapped this — which they will not do, so they tap
-   * again and the table gets two.
+   * Shown as a badge, and it turns `Add` into `Add another` — which is what the
+   * tap does: the same dish for the same seat raises that line's quantity.
+   * Scoped to the selected seat so the badge answers "does THIS guest have it".
    */
   stagedCount?: number
-  /** Stages the item as-is on the active seat. One tap. */
+  /** Stages the item as-is on the selected seat. One tap. */
   onAdd?: (item: MenuItemRow) => void
   /** Opens the modifier sheet. Tap 1 of the 2 NFR-P6 allows. */
   onOpenModifiers?: (item: MenuItemRow) => void
 }) {
   const route = routeForDestination(item.productionDestination)
   const isStaged = stagedCount > 0
-  const canOrder = item.available && Boolean(onAdd)
   const price = lkrFromPaisa(item.pricePaisa)
+  // The footer exists when there is something to say: an action to offer, or
+  // the fact that the dish is off. A card with no staging context and an
+  // available dish shows no footer — it used to say "Unavailable", because the
+  // branch tested "orderable here" instead of "available".
+  const showFooter = !item.available || Boolean(onAdd) || Boolean(onOpenModifiers)
 
   return (
     <article
@@ -61,26 +67,37 @@ export function MenuItemCard({
       )}
     >
       {/* The staged band, in the dish's route colour. `overflow-hidden` on the
-          card is what lets it meet the 14px corner cleanly — the same technique
-          as the table card's status band. */}
-      {isStaged ? <span aria-hidden="true" className={cn('h-1.5 w-full shrink-0', route.band)} /> : null}
+          card lets it meet the 14px corner cleanly — the table card's band uses
+          the same technique. */}
+      {isStaged ? (
+        <span aria-hidden="true" className={cn('h-1.5 w-full shrink-0', route.band)} />
+      ) : null}
 
       {isStaged ? (
+        // The digit is decoration; the words are for assistive tech. An
+        // `aria-label` on a bare span is not reliably exposed.
         <span
-          aria-label={`${stagedCount} in this round`}
           className={cn(
-            'absolute right-sp-3 flex size-8 items-center justify-center rounded-pill',
+            'absolute top-sp-4 right-sp-3 flex size-8 items-center justify-center rounded-pill',
             'bg-brand-700 text-fs-14 font-bold tabular-nums text-white',
-            'top-sp-4',
           )}
         >
-          {stagedCount}
+          <span aria-hidden="true">{stagedCount}</span>
+          <span className="sr-only">{stagedCount} for the selected seat</span>
         </span>
       ) : null}
 
-      <div className="flex flex-1 flex-col gap-sp-1 px-sp-4 pt-sp-4 pb-sp-3">
-        {/* Where it is made, in that route's colour — or, for an 86'd dish, the
-            unavailable ink and words, so the state never rests on colour. */}
+      {/* When staged, the body reserves 48px on the right. The badge is 32px
+          wide and sits 12px in, so it covers the rightmost 44px — neither the
+          eyebrow nor a long name may run under it. */}
+      <div
+        className={cn(
+          'flex flex-1 flex-col gap-sp-1 pt-sp-4 pb-sp-3 pl-sp-4',
+          isStaged ? 'pr-sp-7' : 'pr-sp-4',
+        )}
+      >
+        {/* Where it is made — or, for an 86'd dish, the unavailable ink and
+            words, so the state never rests on colour. */}
         <p
           className={cn(
             'text-fs-12 font-bold tracking-micro uppercase',
@@ -92,9 +109,10 @@ export function MenuItemCard({
 
         <h3
           className={cn(
-            // Room for the badge, so a long name never runs under it.
-            'pr-sp-6 text-fs-18 font-bold',
-            item.available ? 'text-slate-900' : 'text-slate-400',
+            'text-fs-18 font-bold',
+            // An 86'd dish stays READABLE — slate-600 is 7.57:1 — and is struck
+            // through, which says "not today" without making the name a guess.
+            item.available ? 'text-slate-900' : 'text-slate-600 line-through',
           )}
         >
           {item.name}
@@ -102,61 +120,61 @@ export function MenuItemCard({
 
         {/* `lkrFromPaisa`, not `lkr(paisa / 100)` — `lkr` rounds, and a menu
             price is already exact. */}
-        <p
-          className={cn(
-            'mt-auto pt-sp-1 text-fs-16 font-semibold tabular-nums',
-            item.available ? 'text-slate-600' : 'text-slate-400',
-          )}
-        >
+        <p className="mt-auto pt-sp-1 text-fs-16 font-semibold tabular-nums text-slate-600">
           {price}
         </p>
       </div>
 
-      {/* One footer row, split unequally. Rendered even for an unavailable dish
-          so the grid keeps one rhythm — but its left half is then a static word,
-          never a disabled button: a disabled control invites a tap and teaches
-          nothing. */}
-      <div className="flex h-14 shrink-0 border-t border-slate-200">
-        {canOrder ? (
-          <button
-            type="button"
-            onClick={() => onAdd?.(item)}
-            aria-label={isStaged ? `Add another ${item.name}, ${price}` : `Add ${item.name}, ${price}`}
-            className={cn(
-              'flex-1 text-fs-16 font-bold',
-              'transition-[transform,background-color] duration-80 ease-standard',
-              'active:scale-[0.98]',
-              'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',
-              // `brand-050` — the system's tint. (`brand-50` is not a token; an
-              // earlier version of this card used it and rendered no fill.)
-              isStaged ? 'bg-brand-700 text-white' : 'bg-brand-050 text-brand-700',
-            )}
-          >
-            {isStaged ? 'Add another' : 'Add'}
-          </button>
-        ) : (
-          <span className="flex flex-1 items-center justify-center bg-slate-100 text-fs-16 font-semibold text-slate-400">
-            Unavailable
-          </span>
-        )}
+      {/* One footer row, split unequally. For an unavailable dish the left half
+          is a static word in the system's unavailable tones — never a disabled
+          button, which invites a tap and teaches nothing. */}
+      {showFooter ? (
+        <div className="flex h-touch-kitchen shrink-0 border-t border-slate-200">
+          {!item.available ? (
+            <span className="flex flex-1 items-center justify-center bg-unavailable-chip text-fs-16 font-bold text-unavailable-ink">
+              Unavailable
+            </span>
+          ) : onAdd ? (
+            <button
+              type="button"
+              onClick={() => onAdd(item)}
+              aria-label={
+                isStaged ? `Add another ${item.name}, ${price}` : `Add ${item.name}, ${price}`
+              }
+              className={cn(
+                'flex-1 text-fs-16 font-bold',
+                'transition-[transform,background-color] duration-80 ease-standard',
+                'active:scale-[0.98]',
+                'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',
+                // `brand-050` is the system's tint. (`brand-50` is not a token;
+                // an earlier version of this card used it and rendered no fill.)
+                isStaged ? 'bg-brand-700 text-white' : 'bg-brand-050 text-brand-700',
+              )}
+            >
+              {isStaged ? 'Add another' : 'Add'}
+            </button>
+          ) : (
+            <span className="flex-1" />
+          )}
 
-        {onOpenModifiers && item.available ? (
-          <button
-            type="button"
-            onClick={() => onOpenModifiers(item)}
-            aria-label={`Add ${item.name} with a note or a quantity`}
-            className={cn(
-              'w-20 shrink-0 border-l border-slate-200 bg-white',
-              'text-fs-14 font-semibold text-slate-600',
-              'transition-[transform,background-color] duration-80 ease-standard',
-              'active:scale-[0.98] active:bg-slate-100',
-              'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',
-            )}
-          >
-            Opts
-          </button>
-        ) : null}
-      </div>
+          {onOpenModifiers && item.available ? (
+            <button
+              type="button"
+              onClick={() => onOpenModifiers(item)}
+              aria-label={`Add ${item.name} with a note or a quantity`}
+              className={cn(
+                'w-20 shrink-0 border-l border-slate-200 bg-white',
+                'text-fs-14 font-semibold text-slate-600',
+                'transition-[transform,background-color] duration-80 ease-standard',
+                'active:scale-[0.98] active:bg-slate-100',
+                'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',
+              )}
+            >
+              Opts
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   )
 }

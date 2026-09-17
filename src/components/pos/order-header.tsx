@@ -37,7 +37,7 @@ export function OrderHeader({
 }: {
   /** "B1", "B1 + B3" for a merged group, or "Counter" for a counter sale. */
   tableLabel: string
-  /** "Bean Bags · 1 of 2 seats · open 12 min" — already assembled by the caller. */
+  /** "Bean Bags · 2 of 4 covers · open 12 min" — already assembled by the caller. */
   contextLine: string
   /** Null only if a session somehow has no seats; the line is then hidden. */
   activeSeatLabel: string | null
@@ -56,7 +56,8 @@ export function OrderHeader({
           onClick={onBack}
           aria-label="Back to the floor plan"
           className={cn(
-            'flex size-12 shrink-0 items-center justify-center rounded-control',
+            // The 56px touch token: the floor for every waiter control.
+            'flex size-touch-kitchen shrink-0 items-center justify-center rounded-control',
             'border border-slate-200 bg-white text-slate-900',
             'transition-[transform,box-shadow] duration-80 ease-standard',
             'active:scale-[0.97] active:shadow-pressed',
@@ -91,7 +92,7 @@ export function OrderHeader({
             'bg-occupied-chip text-fs-14 font-bold text-occupied-ink',
           )}
         >
-          <span aria-hidden="true" className="size-2 rounded-full bg-occupied-band" />
+          <span aria-hidden="true" className="size-2 rounded-pill bg-occupied-band" />
           {statusLabel}
         </span>
 
@@ -100,7 +101,8 @@ export function OrderHeader({
           onClick={onStaffTap}
           aria-label={`Signed in as ${staffName}. Switch user.`}
           className={cn(
-            'flex items-center gap-sp-2 rounded-control px-sp-2 py-sp-2 text-fs-14',
+            // A control, so it gets the 56px floor like every other one.
+            'flex min-h-touch-kitchen items-center gap-sp-2 rounded-control px-sp-3 text-fs-14',
             'font-semibold text-slate-900',
             'transition-[transform,box-shadow] duration-80 ease-standard',
             'active:scale-[0.97]',
