@@ -1,4 +1,5 @@
 import 'server-only'
+import type { OrderConfirmedPayload, OrderSubmittedPayload, ProductionDestination } from '@/types/orders'
 import { getIO } from './index'
 
 /**
@@ -128,3 +129,49 @@ export function emitMenuItemUpdated(payload: MenuItemUpdatedPayload): void {
     console.error('[socket] Failed to emit menu:item_updated:', error)
   }
 }
+
+// ── Rooms ────────────────────────────────────────────────────────────────────
+//
+// Everything ABOVE is a broadcast to every connected (and, since Story 4.5,
+// authenticated) socket, because every device shows the floor and the menu.
+// Order events are not: a kitchen ticket carries guests' seat notes and belongs
+// on the kitchen's screen only. Joining is policed in `server.ts` — only the
+// kitchen role may join a production room; only a waiter or owner may join a
+// session's room.
+
+/** The production room for a destination. One per FR9 destination. */
+export function productionRoom(destination: ProductionDestination): string {
+  return destination
+}
+
+/** The room for everyone looking at one order. */
+export function sessionRoom(sessionId: string): string {
+  return `session:${sessionId}`
+}
+
+/**
+ * A round reached one production destination: its lines only.
+ *
+ * Emitted AFTER the transaction commits and never for a replay (Story 4.5
+ * Trap 3). Nothing listens yet — the kitchen display (5.3) and the print queue
+ * (5.0) are later — and a socket event is not durable, so the committed
+ * `order_rounds` / `order_events` rows are the record, not this.
+ */
+export function emitOrderSubmitted(payload: OrderSubmittedPayload): void {
+  try {
+    getIO().to(productionRoom(payload.destination)).emit('order:submitted', payload)
+  } catch (error) {
+    // The round is already committed. A socket failure must not undo that.
+    console.error('[socket] Failed to emit order:submitted:', error)
+  }
+}
+
+/** A round was sent on this order — for the other tablets that have it open. */
+export function emitOrderConfirmed(payload: OrderConfirmedPayload): void {
+  try {
+    getIO().to(sessionRoom(payload.sessionId)).emit('order:confirmed', payload)
+  } catch (error) {
+    console.error('[socket] Failed to emit order:confirmed:', error)
+  }
+}
+

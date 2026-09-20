@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { and, asc, count, eq, gte, inArray, isNull, or } from 'drizzle-orm'
+import { and, asc, eq, gte, inArray, isNull, or } from 'drizzle-orm'
+import { dishCount } from '@/server/orders/item-count'
 import { db } from '@/server/db'
 import {
   orderEvents,
@@ -179,7 +180,7 @@ export async function GET() {
 
     // Item counts in one grouped pass rather than a query per session.
     //
-    // Counts ITEM_ADDED without subtracting ITEM_REMOVED, matching /api/tables,
+    // Sums ITEM_ADDED quantities (dishes, not rows) without subtracting ITEM_REMOVED, matching /api/tables,
     // the close routes and the order page. All of them change together when
     // Epic 4 adds removal.
     const counts = new Map<string, number>()
@@ -192,7 +193,7 @@ export async function GET() {
       // and documents why: order_events is append-only and only grows, and
       // `idx_order_events_session_id` is unusable without the predicate.
       const grouped = await db
-        .select({ sessionId: orderEvents.sessionId, total: count() })
+        .select({ sessionId: orderEvents.sessionId, total: dishCount })
         .from(orderEvents)
         .where(
           and(

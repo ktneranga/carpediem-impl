@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { and, count, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
+import { dishCount } from '@/server/orders/item-count'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { orderEvents, orderSessions } from '@/server/db/schema'
@@ -80,7 +81,7 @@ export async function POST(
     // Same rule as the table-addressed route: "abandoned" must always mean
     // nothing was ever ordered, or the audit trail stops meaning anything.
     const [items] = await db
-      .select({ total: count() })
+      .select({ total: dishCount })
       .from(orderEvents)
       .where(and(eq(orderEvents.sessionId, session.id), eq(orderEvents.eventType, 'ITEM_ADDED')))
 

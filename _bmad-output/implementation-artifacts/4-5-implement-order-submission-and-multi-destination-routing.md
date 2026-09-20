@@ -1,6 +1,6 @@
 # Story 4.5: Implement Order Submission & Multi-Destination Routing
 
-Status: ready-for-dev
+Status: review
 
 - **Epic:** 4 — Order Entry & Multi-Destination Routing (last story)
 - **Story ID:** 4.5
@@ -89,7 +89,7 @@ Status: ready-for-dev
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Schema: `order_rounds`** (AC: 4, 8) — **first**
+- [x] **Task 1 — Schema: `order_rounds`** (AC: 4, 8) — **first**
   - New table, append-only like `order_events`:
     ```ts
     export const orderRounds = pgTable('order_rounds', {
@@ -112,11 +112,11 @@ Status: ready-for-dev
   - **⚠️ MIGRATION JOURNAL.** Confirm the new `when` exceeds 0014's (`…652460`). This check has caught a silently skipped migration three times.
   - **Why not the proposal's schema:** Change A5 proposed `ALTER TABLE order_sessions ADD COLUMN client_order_uuid UUID UNIQUE`. A session has MANY rounds; one unique key per session would make round 2 collide with round 1. The key belongs on the round.
 
-- [ ] **Task 2 — Move the shared order types out of `src/server`** (Trap 6)
+- [x] **Task 2 — Move the shared order types out of `src/server`** (Trap 6)
   - `round-history.tsx` and `order-screen.tsx` import `SubmittedRoundRow` from `@/server/orders/submitted-rounds` (Story 4.4's review). `architecture.md` states "Components never import from `src/server/`". It is type-only and erased at build, but the boundary is a rule, not a runtime accident.
   - Create `src/types/orders.ts` with `SubmittedRoundRow`, `SubmittedItemRow`, and this story's request and response types. The server module and the components both import from there.
 
-- [ ] **Task 3 — `order.service.ts`: `submitRound`** (AC: 1, 4, 6, 7, 8, 9, 10)
+- [x] **Task 3 — `order.service.ts`: `submitRound`** (AC: 1, 4, 6, 7, 8, 9, 10)
   - `src/server/services/order.service.ts` — the name `architecture.md` already reserves. One exported function taking a `Tx`, so Epic 12's relay consumer can call the same code ("never writes directly; hands requests to `order.service.submit()`").
   - Inside ONE transaction, in this order:
     1. **Replay check first.** `select` the round by `submissionId`. If it exists **and belongs to this session**, return it with `replayed: true` and write nothing. If it exists on ANOTHER session, that is a client bug — 409 `SUBMISSION_ID_REUSED`, never a silent success.
@@ -129,7 +129,7 @@ Status: ready-for-dev
   - **Epic 8's hook:** leave one clearly marked place, after Step 4 and inside the transaction, where `inventory.service.decrementBatch()` will go. Do not implement it.
   - Throw typed errors (`ItemUnavailableError(itemId)`, `PriceChangedError(itemId, currentPricePaisa)`, `SeatNotOnSessionError(seatId)`, `SubmissionIdReusedError`) — the pattern `table-session.service.ts` uses.
 
-- [ ] **Task 4 — `POST /api/sessions/:sessionId/orders`** (AC: 1, 3, 6, 7, 8, 9, 10)
+- [x] **Task 4 — `POST /api/sessions/:sessionId/orders`** (AC: 1, 3, 6, 7, 8, 9, 10)
   - Same file as 4.4's `GET`. Body, validated with zod:
     ```ts
     {
@@ -149,7 +149,7 @@ Status: ready-for-dev
   - Emit `table:status_changed` for every table on the session, with the new dish count (AC-12). Reuse whatever the session routes already assemble for the payload — every field the client patches, including `groupTableLabels` and `unavailableReason` (Story 3.8's rule).
   - RBAC is inherited from `/api/sessions` (owner, waiter). **Verify as Kumar (kitchen): 403.** Do not add a policy.
 
-- [ ] **Task 5 — Socket authentication and rooms** (AC: 3, 11) — see Decision 1
+- [x] **Task 5 — Socket authentication and rooms** (AC: 3, 11) — see Decision 1
   - `src/server/socket/authenticate.ts` — a STANDALONE module, following `src/server/db/sweep-sessions.ts`. It must not import `@/server/db` or the session service: both reach `server-only`, which throws in `server.ts` (Trap 2). Parse the `__cdrms_session` cookie from `socket.handshake.headers.cookie`, verify its HMAC (copy `verifySessionCookie`'s logic, or extract it into a dependency-free module both use), look up `staff_sessions` joined to `staff` with its own small pool, and refuse expired sessions.
   - `server.ts`: `io.use(authenticate)` — no staff, no connection. Store `{ staffId, role }` on `socket.data`.
   - Subscribe handlers, with names from `architecture.md:414`:
@@ -161,7 +161,7 @@ Status: ready-for-dev
   - Payloads follow `architecture.md:526`: `eventId`, `timestamp`, `staffId`, plus `sessionId`, `roundNumber`, `tableLabels`, `usesSeats` (Epic 5 prints seat sub-headers only where seats are used), and the destination's lines with seat labels **and seat notes** (4.3 AC-11 — the note IS on the kitchen ticket).
   - `useSocketEvent` stays as it is; add a small `useSocketRoom(event, args)` that emits the subscribe on connect AND on every reconnect. A room join is lost when the socket drops.
 
-- [ ] **Task 6 — The Send button** (AC: 5, 6, 7, 8, 9, 10, 13)
+- [x] **Task 6 — The Send button** (AC: 5, 6, 7, 8, 9, 10, 13)
   - `order-screen.tsx` passes `onSubmitOrder` to the strip. The strip already renders "Send N to Kitchen & Bar" once a handler exists (4.4).
   - **Block the send client-side** while any staged line has a problem (4.4's `stagedProblems`). Say why in the bar's detail line rather than disabling silently.
   - **Persist the pending `submissionId` with the staged round** (Trap 5): generate it on the first tap of Send, store it in the 4.4 store beside the lines, reuse it on every retry, and drop it whenever the lines change. Clear both on 201/200.
@@ -170,11 +170,11 @@ Status: ready-for-dev
   - On 500 or network failure: keep everything, show "Not sent — tap Send to try again".
   - Join `session:{sessionId}` and invalidate the orders query on `order:confirmed`, so the second tablet sees the round without a focus refetch.
 
-- [ ] **Task 7 — Dishes, not rows** (AC: 12) — see Trap 4
+- [x] **Task 7 — Dishes, not rows** (AC: 12) — see Trap 4
   - `/api/tables` counts `ITEM_ADDED` ROWS. Since 4.4, one row can carry quantity 3. Change it to `sum(quantity)`.
   - The same count drives the walkout/abandon decision in `/api/sessions/:id/close`, the table-addressed close route, and the order page's `itemCount`. Change them together — they are documented as changing together.
 
-- [ ] **Task 8 — Verify** (AC: all)
+- [x] **Task 8 — Verify** (AC: all)
   - No test framework; manual, as every prior story. Matrix below.
   - **The concurrent-send test and the replay test are not optional.** AC-4 and AC-8 are the reasons this story adds a table.
 
@@ -316,12 +316,111 @@ Seed accounts: **Nina 1234 `waiter`**, **Aruna 5678 `owner`**, **Kumar 4321 `kit
 
 ### Agent Model Used
 
+claude-opus-5 (Claude Code)
+
 ### Debug Log References
+
+- Migration **0015** generated cleanly; the append-only trigger was added by hand in Migration 0001's exact form. Journal: `0014 …652460 → 0015 …185161`, monotonic.
+- **Testing the trigger left a stray round on a real session.** A hand-inserted `order_rounds` row (round 99) could not be deleted, which proved the trigger works — and would have made that session's next send round 100. Removed by disabling the trigger for one transaction on the dev database and re-enabling it (`tgenabled = O` confirmed). Nothing else was written that way.
+- **A background `pnpm dev` of mine never actually served anything.** A dev server was already running (PID 34780, later 36788 after it reloaded on the `server.ts` change), and mine exited with "Another next dev server is already running". Every test below ran against that existing server, which had reloaded with the new socket authentication. My redundant watcher was stopped.
+- Wiring the send, I first invalidated `['counter-sales']`; the counter list's real key is `['counter-sessions']`. The refresh would have silently done nothing. `COUNTER_QUERY_KEY` is now exported from `table-grid.tsx` and imported, the same fix `MENU_QUERY_KEY` got in 4.4.
+- Two stale comments corrected on the way: `nextSeatLabel` said it derived the label from the seat COUNT (it uses the highest number), and five routes said "Counts ITEM_ADDED" after they began summing quantities.
 
 ### Completion Notes List
 
+**What shipped**
+
+- **`order_rounds`** — one append-only row per sent round, keyed by the client's submission id, with `(session_id, round_number)` unique.
+- **`order.service.ts` `submitRound`** — replay check, `lockOpenSession`, a second replay check under the lock, seat ownership, dish availability and price read `FOR SHARE`, round number derived under the lock from BOTH `order_rounds` and older `order_events`, then the round row and the event rows. Epic 8's decrement has a marked place.
+- **`POST /api/sessions/:sessionId/orders`** — the status codes in the story, with every refusal naming what to fix. Announcements are sent only for a new round, after the commit and before the response.
+- **Socket authentication and rooms** — `io.use` refuses any connection without a live staff session (same HMAC and idle-window rules as HTTP). The join rules: kitchen role → `kitchen` / `pizza_kitchen` / `bar`; waiter or owner → one `session:<id>` room; owner → `owner`. Every join re-checks the session.
+- **`useSocketRoom`** — joins, and re-joins on every reconnect.
+- **The Send button** — "Send 3 to Kitchen & Bar"; blocked with a stated reason while any line has a problem; a send id kept per round content, so retries are safe across a reload; each refusal refreshes the query that makes the right line light up; success refreshes the history before clearing the round, so the bar never flickers.
+- **Price changes** — a staged line whose menu price has moved shows "now costs LKR X each (was LKR Y)" with an **Accept** button; the server refuses the send until it is accepted.
+- **Dishes, not rows** — every "items" figure (floor card, counter list, both close routes, merge, unmerge, the order page) now uses one shared `dishCount` expression.
+- **Boundaries** — shared order types moved to `src/types/orders.ts`; the session cookie's signing and checking moved to a dependency-free `src/server/auth/session-cookie.ts`, used by both the proxy's session service and the socket authenticator.
+
+**Verification** — two scripts against the running server and database. No browser automation exists, so neither exercises the order screen's taps.
+
+*API — 20/20:*
+
+| Case | Result |
+|---|---|
+| New round, kitchen + bar | ✅ 201, round 1, 4 dishes; rows carry quantity, **server** price, trimmed note, round, staff |
+| Same submission id again | ✅ 200 `replayed`, still one round and two rows |
+| Second round | ✅ round 2 |
+| **6 simultaneous sends** | ✅ six 201s, rounds 3–8, all distinct |
+| **5 simultaneous identical sends** (double tap) | ✅ one 201 and four 200s; exactly one new row |
+| Quoted price wrong | ✅ 409 `PRICE_CHANGED` with the current price; nothing written |
+| 86'd dish in the round | ✅ 422 `ITEM_UNAVAILABLE` naming it; nothing written |
+| Seat from another order | ✅ 422 `SEAT_NOT_FOUND` |
+| No lines / quantity 0 / bad id / note of 121 chars | ✅ 400 each |
+| Kumar (kitchen) | ✅ 403 |
+| Floor card | ✅ 13 dishes from 10 rows |
+| History | ✅ rounds 1–9 |
+| Submission id reused on another order | ✅ 409 `SUBMISSION_ID_REUSED` |
+| Counter sale | ✅ 201 |
+| Closed order | ✅ 409 `SESSION_ALREADY_CLOSED` |
+| `UPDATE order_rounds` | ✅ refused by the trigger |
+
+*Sockets — 20/20:*
+
+| Case | Result |
+|---|---|
+| No cookie / forged cookie | ✅ refused at the handshake |
+| Kitchen joins `kitchen` | ✅ allowed |
+| Kitchen joins a session room | ✅ refused |
+| Waiter joins `kitchen` / `bar` / `owner` | ✅ refused |
+| Malformed session id | ✅ refused |
+| Waiter joins its order's room | ✅ allowed |
+| Send with kitchen + bar dishes | ✅ the kitchen room gets **exactly one** `order:submitted`, with **only** the kitchen line, its seat label **and seat note**, the round, the table, `usesSeats` and ids |
+| Waiter in the order's room | ✅ gets `order:confirmed` (round 1, 4 dishes) and no ticket |
+| Waiter NOT in the room | ✅ gets nothing |
+| Replay | ✅ 200, and no second ticket or confirmation |
+| First send on a session with a pre-0014 NULL-round item | ✅ round 2, not a second round 1 |
+
+*Render:* an order with nine sent rounds renders all nine, with the bar in the sent state and no error page. `tsc` clean; `eslint` (warnings shown) clean apart from the pre-existing warning in `src/server/socket/index.ts`.
+
+**Not verified, and why**
+
+- **The order screen's Send flow has not run in a browser**: the tap, the disabled-with-reason state, "Sending…", the price Accept button, the not-sent messages, a retry after a reload, the second tablet's history updating live. Everything underneath it is verified; the wiring above it compiles and has not been clicked.
+- **AC-6's "force a DB error mid-transaction"** was not induced. Rollback is by construction (one `db.transaction`; announcements run only after it returns), and every refused case above confirmed zero rows written.
+- **A retry after a genuinely lost response** was not staged end to end; its two halves were — the id persists with the round in the store, and a repeated id is answered as a replay (including five at once).
+
+**Deliberate divergences**
+
+- **Kitchen-role users serve every production room.** There is no bar or pizza role; logged for Epic 10.
+- **`registerRoomHandlers` lives beside the authenticator** rather than in `socket/index.ts`, because it must be importable from `server.ts`, where anything touching `server-only` throws.
+- **A session room is left automatically** when the same tablet joins another order's room, so a long shift does not collect every table's confirmations.
+- **The price check is derived on the client as well as enforced on the server**, so a changed price shows before the tap, not only as a refusal after it.
+
 ### File List
+
+- `src/server/db/schema.ts` — MODIFIED: `orderRounds`
+- `src/server/db/migrations/0015_superb_joseph.sql` — NEW (with the append-only trigger)
+- `src/server/db/migrations/meta/_journal.json`, `meta/0015_snapshot.json` — MODIFIED / NEW
+- `src/types/orders.ts` — NEW: shared order types, request/response and event payloads
+- `src/server/services/order.service.ts` — NEW: `submitRound` and its errors
+- `src/server/orders/item-count.ts` — NEW: `dishCount`
+- `src/server/orders/submitted-rounds.ts` — MODIFIED: types from `src/types/orders`
+- `src/app/api/sessions/[sessionId]/orders/route.ts` — MODIFIED: `POST`
+- `src/server/auth/session-cookie.ts` — NEW: dependency-free cookie signing and checking
+- `src/server/services/session.service.ts` — MODIFIED: uses and re-exports the cookie module
+- `src/server/services/table-session.service.ts` — MODIFIED: `nextSeatLabel` comment corrected
+- `src/server/socket/authenticate.ts` — NEW: handshake authentication and room policy
+- `src/server/socket/events.ts` — MODIFIED: `emitOrderSubmitted`, `emitOrderConfirmed`, room names
+- `server.ts` — MODIFIED: `io.use(authenticateSocket)`, `registerRoomHandlers(io)`
+- `src/hooks/use-socket.ts` — MODIFIED: `useSocketRoom`
+- `src/components/pos/use-staged-round.ts` — MODIFIED: per-round send id, `acceptPrice`, UUID fallback
+- `src/components/pos/order-screen.tsx` — MODIFIED: Send, error states, session room, live history
+- `src/components/pos/order-action-strip.tsx` — MODIFIED: `note`, `sendBlocked`
+- `src/components/pos/staged-round-list.tsx` — MODIFIED: price-changed line with Accept
+- `src/components/pos/round-history.tsx` — MODIFIED: type import path
+- `src/components/pos/table-grid.tsx` — MODIFIED: exports `COUNTER_QUERY_KEY`
+- `src/app/api/tables/route.ts`, `src/app/api/sessions/route.ts`, `src/app/api/sessions/[sessionId]/close/route.ts`, `src/app/api/sessions/[sessionId]/tables/route.ts`, `src/app/api/tables/[tableId]/merge/route.ts`, `src/app/api/tables/[tableId]/unmerge/route.ts`, `src/app/api/tables/[tableId]/sessions/close/route.ts`, `src/app/orders/[sessionId]/page.tsx` — MODIFIED: dishes, not rows
+- `_bmad-output/implementation-artifacts/deferred-work.md` — MODIFIED
 
 ### Change Log
 
+- 2026-09-17: Implemented, Tasks 1–8. Sending a round is one transaction under the session lock, idempotent on a client send id (a new `order_rounds` table whose primary key is that id), priced by the server with the waiter's quote as a check, and announced to authenticated, role-policed socket rooms only after it commits. Verified against the running server: 20/20 API cases, including six simultaneous sends producing six distinct rounds and five simultaneous identical sends producing exactly one; 20/20 socket cases, including refusal of unauthenticated and forged connections, a kitchen ticket that carries only kitchen lines and the seat note, and no second announcement on a replay. Every "items" count in the app now counts dishes. Found while wiring: a cache refresh aimed at a query key that does not exist (`counter-sales` for `counter-sessions`), fixed by exporting the real key. The order screen's Send flow compiles and renders but has not been exercised in a browser.
 - 2026-09-16: Story created. Reading the socket server and the 2026-08-21 change proposal against the epic's ACs found three things the story must carry. **Socket rooms and socket authentication do not exist**, though the architecture requires them before submission is built — and the kitchen payload includes guests' physical descriptions, so authentication is a requirement. **The proposal's idempotency change (E4) and its print-queue story (E1) were never applied to `epics.md`**, and E4's proposed schema (one unique key per session) would have blocked every round after the first; the key belongs on a new `order_rounds` table. **The client-quoted price cannot be written as-is**, or the tablet sets prices; the server writes the menu price and refuses a mismatch. Five ACs added (idempotency, server price, seat ownership, socket auth, dish counts) plus one for retry safety. Six traps, including the lost-response retry that would double an order and the row-count "items" that 4.4's quantity merge has made wrong on the floor.

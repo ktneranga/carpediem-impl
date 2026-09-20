@@ -1,6 +1,6 @@
 'use client'
 
-import type { SubmittedRoundRow } from '@/server/orders/submitted-rounds'
+import type { SubmittedRoundRow } from '@/types/orders'
 import { clockTime, lkrFromPaisa, quantity as formatQuantity } from '@/lib/format'
 
 /**

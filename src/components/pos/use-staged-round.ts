@@ -40,23 +40,38 @@ export type StagedLine = {
 
 const DESTINATIONS: readonly string[] = ['kitchen', 'pizza_kitchen', 'bar']
 const STORAGE_PREFIX = 'cdrms:staged:'
+const SEND_PREFIX = 'cdrms:staged-send:'
 const EMPTY: StagedLine[] = []
 
 function storageKey(sessionId: string): string {
   return `${STORAGE_PREFIX}${sessionId}`
 }
 
+function sendKey(sessionId: string): string {
+  return `${SEND_PREFIX}${sessionId}`
+}
+
 /**
- * A line id that works on plain `http://`.
+ * An id that works on plain `http://`.
  *
  * `crypto.randomUUID()` exists only in a secure context. A tablet reaching the
  * POS at `http://192.168.x.x` — an ordinary deployment for this product — has
- * no such function, and every Add tap threw before anything was staged. The id
- * only has to be unique within one device's staged round.
+ * no such function, and every Add tap threw before anything was staged.
+ *
+ * Used for line ids AND for the send id. A line id only has to be unique within
+ * one device's round, but the send id is the primary key of `order_rounds`, so
+ * the fallback produces a real version-4 UUID (122 random bits) — the server
+ * validates the format, and a collision would be answered as someone else's
+ * round.
  */
-function newLineId(): string {
+function newId(): string {
   if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID()
-  return `line-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  // The fallback must still be a UUID: it is also used for the send id, which
+  // the server validates as one. Version 4 layout, from Math.random.
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.floor(Math.random() * 16)
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+  })
 }
 
 /**
@@ -158,7 +173,53 @@ function snapshot(sessionId: string): StagedLine[] {
   return lines
 }
 
+// ── The send id (Story 4.5, AC-8 and AC-13) ─────────────────────────────────
+//
+// One id per round CONTENT. It is created on the first tap of Send, kept for
+// every retry of that exact round — including across a reload — and thrown away
+// the moment the round changes. The server treats a repeated id as "already
+// sent", so a retry after a lost response cannot write the round twice, while a
+// round the waiter has since edited is, correctly, a new send.
+
+const pendingSend = new Map<string, string | null>()
+
+function readPendingSend(sessionId: string): string | null {
+  if (pendingSend.has(sessionId)) return pendingSend.get(sessionId) ?? null
+  let value: string | null = null
+  try {
+    value = window.localStorage.getItem(sendKey(sessionId))
+  } catch {
+    value = null
+  }
+  pendingSend.set(sessionId, value)
+  return value
+}
+
+function writePendingSend(sessionId: string, value: string | null): void {
+  pendingSend.set(sessionId, value)
+  try {
+    if (value === null) window.localStorage.removeItem(sendKey(sessionId))
+    else window.localStorage.setItem(sendKey(sessionId), value)
+  } catch {
+    // Memory still holds it for this page's lifetime.
+  }
+}
+
+/**
+ * The id to send this round under: the existing one if the round has not
+ * changed since the last attempt, otherwise a new one (persisted first).
+ */
+export function sendIdForRound(sessionId: string): string {
+  const existing = readPendingSend(sessionId)
+  if (existing) return existing
+  const created = newId()
+  writePendingSend(sessionId, created)
+  return created
+}
+
 function write(sessionId: string, next: StagedLine[]): void {
+  // Any change to the round makes it a different send.
+  writePendingSend(sessionId, null)
   memory.set(sessionId, next)
   try {
     if (next.length === 0) window.localStorage.removeItem(storageKey(sessionId))
@@ -181,8 +242,14 @@ function onStorage(event: StorageEvent): void {
   if (event.key !== null && !event.key.startsWith(STORAGE_PREFIX)) return
   // Another tab changed a round (or cleared storage). Drop the cached copy so
   // the next snapshot rereads it.
-  if (event.key === null) memory.clear()
-  else memory.delete(event.key.slice(STORAGE_PREFIX.length))
+  if (event.key === null) {
+    memory.clear()
+    pendingSend.clear()
+  } else {
+    const sessionId = event.key.slice(STORAGE_PREFIX.length)
+    memory.delete(sessionId)
+    pendingSend.delete(sessionId)
+  }
   notify()
 }
 
@@ -281,7 +348,7 @@ export function useStagedRound(sessionId: string) {
     write(sessionId, [
       ...current,
       {
-        lineId: newLineId(),
+        lineId: newId(),
         menuItemId: item.id,
         name: item.name,
         pricePaisa: item.pricePaisa,
@@ -316,6 +383,21 @@ export function useStagedRound(sessionId: string) {
     )
   }
 
+  /**
+   * Takes the menu's new price onto every line of that dish (Story 4.5, AC-9).
+   *
+   * The waiter confirms it; the send is refused until they do. It is a change
+   * to the round, so the next send goes under a new id.
+   */
+  function acceptPrice(menuItemId: string, pricePaisa: number): void {
+    write(
+      sessionId,
+      snapshot(sessionId).map((line) =>
+        line.menuItemId === menuItemId ? { ...line, pricePaisa } : line,
+      ),
+    )
+  }
+
   /** Moves a line to a live seat — the repair for AC-7's vanished-seat case. */
   function reassignLine(lineId: string, seatSlotId: string, seatLabel: string): void {
     write(
@@ -331,5 +413,5 @@ export function useStagedRound(sessionId: string) {
     write(sessionId, EMPTY)
   }
 
-  return { lines, addLine, removeLine, setQuantity, reassignLine, clear }
+  return { lines, addLine, removeLine, setQuantity, reassignLine, acceptPrice, clear }
 }

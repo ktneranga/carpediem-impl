@@ -1,24 +1,9 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
 import { db } from '@/server/db'
 import { menuItems, orderEvents, seatSlots } from '@/server/db/schema'
+import type { SubmittedRoundRow } from '@/types/orders'
 
-/** One submitted item, as the history renders it. */
-export type SubmittedItemRow = {
-  id: string
-  name: string
-  quantity: number
-  /** Integer paisa, AS QUOTED — read from the event row, never from the menu. */
-  unitPricePaisa: number | null
-  modifierText: string | null
-  seatLabel: string | null
-  submittedAt: string
-}
-
-/** One round of a session's ordering, oldest first. */
-export type SubmittedRoundRow = {
-  roundNumber: number
-  items: SubmittedItemRow[]
-}
+export type { SubmittedItemRow, SubmittedRoundRow } from '@/types/orders'
 
 /** What a history row says when its menu item has since been deleted. */
 const MISSING_ITEM_NAME = 'Item no longer on the menu'

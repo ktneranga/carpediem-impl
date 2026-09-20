@@ -1,6 +1,7 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { and, asc, count, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull } from 'drizzle-orm'
+import { dishCount } from '@/server/orders/item-count'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { loadSubmittedRounds } from '@/server/orders/submitted-rounds'
@@ -117,11 +118,12 @@ export default async function OrderPage({
     .from(tenantConfig)
     .limit(1)
 
-  // Drives which close reasons the screen offers. Counts ITEM_ADDED without
-  // subtracting ITEM_REMOVED, matching /api/tables and both close routes — all
-  // of them change together when Epic 4 adds removal.
+  // Drives which close reasons the screen offers, and the walkout message's
+  // count. DISHES — the sum of ITEM_ADDED quantities (`dishCount`) — not rows;
+  // ITEM_REMOVED is not subtracted because nothing writes it yet. Every
+  // "items" figure in the app uses the same expression.
   const [items] = await db
-    .select({ total: count() })
+    .select({ total: dishCount })
     .from(orderEvents)
     .where(and(eq(orderEvents.sessionId, session.sessionId), eq(orderEvents.eventType, 'ITEM_ADDED')))
 

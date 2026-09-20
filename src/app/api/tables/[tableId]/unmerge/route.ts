@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { and, asc, count, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { dishCount } from '@/server/orders/item-count'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { orderEvents, orderSessions, orderSessionTables, tables } from '@/server/db/schema'
@@ -126,11 +127,11 @@ export async function POST(
       : []
     const survivorLabels = survivors.map((survivor) => survivor.label)
 
-    // Counts ITEM_ADDED without subtracting ITEM_REMOVED, matching /api/tables,
+    // Sums ITEM_ADDED quantities (dishes, not rows) without subtracting ITEM_REMOVED, matching /api/tables,
     // the close route and the order page. All four change together when Epic 4
     // adds removal.
     const [items] = await db
-      .select({ total: count() })
+      .select({ total: dishCount })
       .from(orderEvents)
       .where(and(eq(orderEvents.sessionId, row.sessionId), eq(orderEvents.eventType, 'ITEM_ADDED')))
     const itemCount = Number(items?.total ?? 0)

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { and, asc, count, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { dishCount } from '@/server/orders/item-count'
 import { db } from '@/server/db'
 import {
   orderEvents,
@@ -116,7 +117,7 @@ export async function GET() {
     const itemCounts = new Map<string, number>()
     if (openSessionIds.length > 0) {
       const counts = await db
-        .select({ sessionId: orderEvents.sessionId, total: count() })
+        .select({ sessionId: orderEvents.sessionId, total: dishCount })
         .from(orderEvents)
         // The session filter belongs in the WHERE clause, not in a JS pass
         // afterwards. order_events is the append-only audit table and only ever
@@ -190,9 +191,9 @@ export async function GET() {
       unavailableReason: row.unavailableReason,
       sessionId: row.sessionId,
       openedAt: row.openedAt ? row.openedAt.toISOString() : null,
-      // SIMPLIFICATION: counts ITEM_ADDED only, ignoring ITEM_REMOVED. Removal is
-      // not implemented until Epic 4, so there is nothing to subtract yet. Revisit
-      // in Story 4.4 when items can be removed.
+      // DISHES — the sum of ITEM_ADDED quantities (`dishCount`), not rows: since
+      // Story 4.4 one row can carry "× 3". ITEM_REMOVED is not subtracted
+      // because nothing writes it yet; Epic 7's corrections will.
       itemCount: row.sessionId ? (itemCounts.get(row.sessionId) ?? 0) : 0,
       groupTableLabels: row.sessionId ? (groupLabels.get(row.sessionId) ?? []) : [],
     }))

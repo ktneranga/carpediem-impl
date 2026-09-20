@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { and, asc, count, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { dishCount } from '@/server/orders/item-count'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { orderEvents, orderSessions, orderSessionTables, tables } from '@/server/db/schema'
@@ -196,7 +197,7 @@ export async function POST(
     const groupTableLabels = groupTables.map((groupTable) => groupTable.label)
 
     const [items] = await db
-      .select({ total: count() })
+      .select({ total: dishCount })
       .from(orderEvents)
       .where(and(eq(orderEvents.sessionId, session.id), eq(orderEvents.eventType, 'ITEM_ADDED')))
     const itemCount = Number(items?.total ?? 0)

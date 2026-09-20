@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { and, count, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
+import { dishCount } from '@/server/orders/item-count'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { orderEvents, orderSessions, orderSessionTables, tables } from '@/server/db/schema'
@@ -112,11 +113,11 @@ export async function POST(
       return fail('SESSION_ALREADY_CLOSED', 'This table has no open session', 409)
     }
 
-    // Counts ITEM_ADDED without subtracting ITEM_REMOVED, matching the
+    // Sums ITEM_ADDED quantities (dishes, not rows) without subtracting ITEM_REMOVED, matching the
     // simplification /api/tables already documents. Removal does not exist until
     // Epic 4; when it does, both places change together.
     const [items] = await db
-      .select({ total: count() })
+      .select({ total: dishCount })
       .from(orderEvents)
       .where(and(eq(orderEvents.sessionId, session.id), eq(orderEvents.eventType, 'ITEM_ADDED')))
 

@@ -52,6 +52,14 @@ export type OrderActionStripProps = {
    * send it (FR9). Assembled by the caller, which owns the staged lines.
    */
   destinationSummary?: string
+  /**
+   * Why the round cannot be sent right now, or what happened to the last send —
+   * shown in place of the destination line, in the region screen readers
+   * announce. When `sendBlocked` is true the Send button stays but is disabled,
+   * with this text saying why: a Send that silently does nothing is worse.
+   */
+  note?: string
+  sendBlocked?: boolean
   busy?: boolean
   onSubmitOrder?: () => void
   onClear?: () => void
@@ -63,6 +71,8 @@ export function OrderActionStrip({
   state,
   stagedCount = 0,
   destinationSummary,
+  note,
+  sendBlocked = false,
   busy = false,
   onSubmitOrder,
   onClear,
@@ -166,7 +176,9 @@ export function OrderActionStrip({
             ? 'Nothing staged yet'
             : `${stagedCount} item${stagedCount === 1 ? '' : 's'}`
         }
-        detail={destinationSummary ? `→ ${destinationSummary}` : 'Nothing has gone to the kitchen yet.'}
+        detail={
+          note ?? (destinationSummary ? `→ ${destinationSummary}` : 'Nothing has gone to the kitchen yet.')
+        }
         // The SLOT, not a `w-full` child of the button row. See ActionStripShell.
         //
         // No handler, no button. This used to render the commit unconditionally
@@ -183,7 +195,7 @@ export function OrderActionStrip({
           onSubmitOrder ? (
             <button
               type="button"
-              disabled={busy || stagedCount === 0}
+              disabled={busy || sendBlocked || stagedCount === 0}
               onClick={onSubmitOrder}
               className={commitButtonClass}
             >

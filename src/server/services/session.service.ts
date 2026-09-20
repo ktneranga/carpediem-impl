@@ -1,7 +1,7 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
 import { eq, sql } from 'drizzle-orm'
 import { db } from '@/server/db'
 import { staffSessions, tenantConfig, type staffRoleEnum } from '@/server/db/schema'
+import { signSessionId, verifySessionCookie } from '@/server/auth/session-cookie'
 
 // NOTE: no `import 'server-only'` here.
 // src/proxy.ts imports this module, and the proxy is neither a Server Component
@@ -9,70 +9,18 @@ import { staffSessions, tenantConfig, type staffRoleEnum } from '@/server/db/sch
 // export below is still server-side by construction: they all touch `db`, which
 // carries its own server-only guard.
 
+// The cookie name, the signing and the verification moved to
+// `src/server/auth/session-cookie.ts` in Story 4.5, so the socket authenticator
+// in `server.ts` — where `db` cannot be imported — shares them rather than
+// carrying a copy. Re-exported so existing importers keep working.
+export {
+  MIN_SESSION_SECRET_LENGTH,
+  SESSION_COOKIE_NAME,
+  signSessionId,
+  verifySessionCookie,
+} from '@/server/auth/session-cookie'
+
 export type StaffRole = (typeof staffRoleEnum.enumValues)[number]
-
-export const SESSION_COOKIE_NAME = '__cdrms_session'
-
-/** Minimum acceptable SESSION_SECRET length. Enforced at startup by server.ts. */
-export const MIN_SESSION_SECRET_LENGTH = 32
-
-function getSessionSecret(): string {
-  const secret = process.env.SESSION_SECRET
-  if (!secret || secret.length < MIN_SESSION_SECRET_LENGTH) {
-    // server.ts validates this at boot, so reaching here means the process was
-    // started by some path that skipped the check. Fail rather than sign weakly.
-    throw new Error(
-      `[session] SESSION_SECRET missing or shorter than ${MIN_SESSION_SECRET_LENGTH} characters`,
-    )
-  }
-  return secret
-}
-
-function computeSignature(sessionId: string): string {
-  return createHmac('sha256', getSessionSecret()).update(sessionId).digest('hex')
-}
-
-/**
- * Cookie value is `<sessionId>.<hmac>`.
- *
- * The session id alone would be sufficient for lookup — it is 128 bits of
- * randomness. The signature lets us reject forged or tampered cookies without a
- * database round trip, and gives SESSION_SECRET an actual job.
- */
-export function signSessionId(sessionId: string): string {
-  return `${sessionId}.${computeSignature(sessionId)}`
-}
-
-/**
- * Returns the session id if the signature is valid, otherwise null.
- * Never throws on malformed input — a garbage cookie is just an invalid one.
- */
-export function verifySessionCookie(cookieValue: string | undefined | null): string | null {
-  if (!cookieValue) return null
-
-  const separatorIndex = cookieValue.lastIndexOf('.')
-  if (separatorIndex <= 0) return null
-
-  const sessionId = cookieValue.slice(0, separatorIndex)
-  const providedSignature = cookieValue.slice(separatorIndex + 1)
-
-  let expectedSignature: string
-  try {
-    expectedSignature = computeSignature(sessionId)
-  } catch {
-    return null
-  }
-
-  const provided = Buffer.from(providedSignature, 'utf8')
-  const expected = Buffer.from(expectedSignature, 'utf8')
-
-  // timingSafeEqual throws on length mismatch, and a plain `===` would
-  // short-circuit on the first differing byte — leaking signature bytes.
-  if (provided.length !== expected.length) return null
-  if (!timingSafeEqual(provided, expected)) return null
-
-  return sessionId
-}
 
 /** Idle timeout in minutes for a tenant, from tenant_config. Falls back to 5. */
 export async function getSessionTimeoutMinutes(tenantId: string): Promise<number> {

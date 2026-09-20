@@ -17,11 +17,22 @@ import {
   StagedRoundList,
   type StagedLineProblem,
 } from '@/components/pos/staged-round-list'
-import { clearStagedRound, useStagedRound } from '@/components/pos/use-staged-round'
+import {
+  clearStagedRound,
+  sendIdForRound,
+  useStagedRound,
+} from '@/components/pos/use-staged-round'
 import type { MenuItemRow } from '@/app/api/menu/route'
-import type { SubmittedRoundRow } from '@/server/orders/submitted-rounds'
+import type {
+  OrderConfirmedPayload,
+  SubmitRoundRequest,
+  SubmitRoundResponse,
+  SubmittedRoundRow,
+} from '@/types/orders'
 import { menuQueryOptions } from '@/components/pos/menu-browser'
+import { COUNTER_QUERY_KEY } from '@/components/pos/table-grid'
 import { elapsedMinutesFrom, useMinuteTick } from '@/hooks/use-minute-tick'
+import { useSocketEvent, useSocketRoom } from '@/hooks/use-socket'
 import { signOut } from '@/lib/auth-client'
 import { zoneUsesSeats } from '@/lib/design'
 import { clockTime, elapsed } from '@/lib/format'
@@ -164,6 +175,48 @@ async function seatRequest<T>(url: string, init?: RequestInit): Promise<T> {
   }
 
   return body.data as T
+}
+
+/**
+ * A send the server refused for a reason the waiter can act on.
+ *
+ * Carries the code and the extra fields (which dish, which seat, the new
+ * price) so the screen can point at the line, rather than showing one generic
+ * "not sent".
+ */
+class SendRefusedError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly detail: Record<string, unknown>,
+  ) {
+    super(message)
+  }
+}
+
+/** `POST /api/sessions/:id/orders` — Story 4.5. */
+async function sendRound(sessionId: string, body: SubmitRoundRequest): Promise<SubmitRoundResponse> {
+  const response = await fetch(`/api/sessions/${sessionId}/orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  if (response.status === 401) throw new SessionExpiredError('Session expired')
+  if (response.status === 403) throw new ForbiddenError('Role not permitted')
+
+  const payload = await response.json().catch(() => null)
+
+  if (response.ok && payload?.success) return payload.data as SubmitRoundResponse
+
+  const error = payload?.error ?? {}
+  if (error.code === 'SESSION_ALREADY_CLOSED') throw new SessionGoneError('Already closed')
+  if (typeof error.code === 'string' && response.status < 500) {
+    throw new SendRefusedError(error.code, error.message ?? 'The round was not sent.', error)
+  }
+  // 500, a proxy error page, or no body at all: the round may or may not have
+  // committed. Either way the retry is safe — it reuses the same send id.
+  throw new Error('The round was not sent.')
 }
 
 async function closeTable(input: { sessionId: string; reason: 'abandoned' | 'walkout' }) {
@@ -397,7 +450,7 @@ export function OrderScreen({
   // ── The staged round ──────────────────────────────────────────────────────
   // Client-only by AC-5. Nothing below writes to the database; Story 4.5's
   // submit is the commit point.
-  const { lines, addLine, removeLine, setQuantity, reassignLine, clear } =
+  const { lines, addLine, removeLine, setQuantity, reassignLine, acceptPrice, clear } =
     useStagedRound(sessionId)
 
   /**
@@ -439,12 +492,27 @@ export function OrderScreen({
   // this screen did not, so the staged line never showed its warning.
   const { data: menu } = useQuery(menuQueryOptions)
 
+  // Join this order's room, so a round sent from the OTHER tablet appears here
+  // at once instead of on the next focus refetch. The hook re-joins after every
+  // reconnect. The server only lets a waiter or owner in.
+  useSocketRoom('session:subscribe', { sessionId })
+  useSocketEvent<OrderConfirmedPayload>('order:confirmed', (payload) => {
+    if (payload.sessionId === sessionId) {
+      void queryClient.invalidateQueries({ queryKey: ['orders', sessionId] })
+    }
+  })
+
+  /** Set when a SEND learns the order was closed elsewhere — terminal, like the queries. */
+  const [closedDuringSend, setClosedDuringSend] = useState(false)
+
   // Terminal states reached through a QUERY. The mutation handler below already
   // treats a closed session as terminal; the queries use the same transport and
   // refetch on focus, so the same fact can arrive here — and used to render as
   // "Could not refresh the seats" on a screen still showing a dead order.
   const sessionClosed =
-    seatsError instanceof SessionGoneError || ordersError instanceof SessionGoneError
+    closedDuringSend ||
+    seatsError instanceof SessionGoneError ||
+    ordersError instanceof SessionGoneError
   const signedOut =
     seatsError instanceof SessionExpiredError || ordersError instanceof SessionExpiredError
 
@@ -478,6 +546,15 @@ export function OrderScreen({
     const known = menuItemsById.get(line.menuItemId)
     if (!known) stagedProblems.set(line.lineId, { kind: 'item-gone' })
     else if (!known.available) stagedProblems.set(line.lineId, { kind: 'item-unavailable' })
+    // The server refuses a send whose quoted price differs from the menu's
+    // (Story 4.5, AC-9). Showing it here, before the tap, turns a refusal into
+    // a one-tap confirmation.
+    else if (known.pricePaisa !== line.pricePaisa) {
+      stagedProblems.set(line.lineId, {
+        kind: 'price-changed',
+        currentPricePaisa: known.pricePaisa,
+      })
+    }
   }
 
   function seatName(seat: SeatSlot): string {
@@ -510,6 +587,76 @@ export function OrderScreen({
   }
 
   const sheetSeat = sheet ? (seats.find((seat) => seat.id === sheet.seatId) ?? null) : null
+
+  /** What the bar says about the last send, when it did not go. */
+  const [sendNote, setSendNote] = useState<string | null>(null)
+
+  const sendMutation = useMutation({
+    mutationFn: () => {
+      // The same id for every retry of this exact round, a new one once the
+      // round changes (Trap 5). Taken at the moment of sending, not at render.
+      const submissionId = sendIdForRound(sessionId)
+      return sendRound(sessionId, {
+        submissionId,
+        lines: lines.map((line) => ({
+          menuItemId: line.menuItemId,
+          seatSlotId: line.seatSlotId,
+          quantity: line.quantity,
+          modifierText: line.modifierText,
+          quotedPricePaisa: line.pricePaisa,
+        })),
+      })
+    },
+    onMutate: () => setSendNote(null),
+    onSuccess: async () => {
+      // History first, THEN clear the round: otherwise the column shows
+      // "nothing sent, nothing staged" for the length of a refetch, and the bar
+      // flickers to `empty` before it settles on `submitted`.
+      await queryClient.invalidateQueries({ queryKey: ['orders', sessionId] })
+      clearStagedRound(sessionId)
+      setAddingMore(false)
+      void queryClient.invalidateQueries({ queryKey: ['tables'] })
+      void queryClient.invalidateQueries({ queryKey: COUNTER_QUERY_KEY })
+    },
+    onError: (error) => {
+      if (error instanceof SessionExpiredError) {
+        window.location.assign('/login')
+        return
+      }
+      if (error instanceof ForbiddenError) {
+        setSendNote('Your role cannot send orders.')
+        return
+      }
+      if (error instanceof SessionGoneError) {
+        setClosedDuringSend(true)
+        return
+      }
+      if (error instanceof SendRefusedError) {
+        // Each refusal points at something the live queries can show: refetch
+        // them, and the derived line problems above flag the exact line.
+        switch (error.code) {
+          case 'ITEM_UNAVAILABLE':
+            void queryClient.invalidateQueries({ queryKey: menuQueryOptions.queryKey })
+            setSendNote('Not sent — a dish is no longer available. Take it off and send again.')
+            return
+          case 'PRICE_CHANGED':
+            void queryClient.invalidateQueries({ queryKey: menuQueryOptions.queryKey })
+            setSendNote('Not sent — a price has changed. Accept the new price and send again.')
+            return
+          case 'SEAT_NOT_FOUND':
+            void queryClient.invalidateQueries({ queryKey: seatsQueryKey })
+            setSendNote('Not sent — a dish is on a seat that was removed. Move it and send again.')
+            return
+          default:
+            setSendNote(`Not sent — ${error.message}`)
+            return
+        }
+      }
+      // Network failure or a server error. The round stays, and so does its
+      // send id: if the server did commit, the retry is answered as a replay.
+      setSendNote('Not sent — check the connection and tap Send again.')
+    },
+  })
 
   function clearRound() {
     clear()
@@ -903,6 +1050,7 @@ export function OrderScreen({
               onRemove={removeLine}
               onSetQuantity={setQuantity}
               onReassign={(lineId, seat) => reassignLine(lineId, seat.id, seatName(seat))}
+              onAcceptPrice={acceptPrice}
             />
 
             {notice ? (
@@ -1058,15 +1206,25 @@ export function OrderScreen({
       {/* The bar. Its state is `stripState` above — four facts, including the
           Add More Items override.
 
-          Hold, Bill & split and Send are in the design and NOT here yet —
-          Teran's call on 2026-09-16. Send is Story 4.5, billing is Epic 6, and
-          Hold has no requirement. `onSubmitOrder` and `onGenerateBill` stay
-          undefined, and the strip renders no button for an undefined handler:
-          both used to render enabled and dead. */}
+          Send is live (Story 4.5). Bill & split (Epic 6) and Hold (no
+          requirement) are still absent: `onGenerateBill` stays undefined and
+          the strip renders no button for an undefined handler.
+
+          While any staged line has a problem the Send button stays but is
+          disabled, and the bar says why — the server would refuse the round,
+          and a Send that silently did nothing would be worse. */}
       <OrderActionStrip
         state={stripState}
         stagedCount={stagedItemCount}
         destinationSummary={destinationSummary}
+        busy={sendMutation.isPending}
+        sendBlocked={stagedProblems.size > 0}
+        note={
+          stagedProblems.size > 0
+            ? `Fix ${stagedProblems.size} item${stagedProblems.size === 1 ? '' : 's'} before sending.`
+            : (sendNote ?? undefined)
+        }
+        onSubmitOrder={lines.length > 0 ? () => sendMutation.mutate() : undefined}
         onClear={
           lines.length === 0
             ? undefined

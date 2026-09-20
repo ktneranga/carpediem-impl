@@ -18,6 +18,8 @@ export type StagedLineProblem =
   | { kind: 'seat-gone' }
   | { kind: 'item-unavailable' }
   | { kind: 'item-gone' }
+  /** The menu price moved after the dish was staged (Story 4.5, AC-9). */
+  | { kind: 'price-changed'; currentPricePaisa: number }
 
 /**
  * The round the waiter is building, before anybody sends it (FR11).
@@ -55,6 +57,7 @@ export function StagedRoundList({
   onRemove,
   onSetQuantity,
   onReassign,
+  onAcceptPrice,
 }: {
   /** False outside the Tables zone: every line is on Seat 1, so naming it is noise. */
   showSeats?: boolean
@@ -66,6 +69,8 @@ export function StagedRoundList({
   onRemove: (lineId: string) => void
   onSetQuantity: (lineId: string, quantity: number) => void
   onReassign: (lineId: string, seat: SeatSlot) => void
+  /** Takes the new menu price onto every line of that dish. */
+  onAcceptPrice: (menuItemId: string, pricePaisa: number) => void
 }) {
   if (lines.length === 0) {
     return (
@@ -191,12 +196,31 @@ export function StagedRoundList({
                         `${line.seatLabel || 'This seat'} was removed. Move this to someone else, or take it off.`
                       : problem.kind === 'item-gone'
                         ? `${line.name} is no longer on the menu. Take it off to send the round.`
-                        : `${line.name} is no longer available. Take it off to send the round.`}
+                        : problem.kind === 'price-changed'
+                          ? `${line.name} now costs ${lkrFromPaisa(problem.currentPricePaisa)} each (was ${lkrFromPaisa(line.pricePaisa)}). Confirm with the guest before sending.`
+                          : `${line.name} is no longer available. Take it off to send the round.`}
                   </p>
 
                   {/* The repair, in place — a blocked round with no way to fix
                       it from the same screen is a dead end mid-service. These
                       keep the 56px floor: they are the only way out. */}
+                  {/* The waiter accepts the new price explicitly — the server
+                      never charges a price the waiter did not see. */}
+                  {problem.kind === 'price-changed' ? (
+                    <button
+                      type="button"
+                      onClick={() => onAcceptPrice(line.menuItemId, problem.currentPricePaisa)}
+                      className={cn(
+                        'h-touch-kitchen self-start rounded-control bg-brand-700 px-sp-4',
+                        'text-fs-14 font-bold whitespace-nowrap text-white',
+                        'transition-transform duration-80 ease-standard active:scale-[0.97]',
+                        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                      )}
+                    >
+                      Accept {lkrFromPaisa(problem.currentPricePaisa)}
+                    </button>
+                  ) : null}
+
                   {problem.kind === 'seat-gone' && seats.length > 0 ? (
                     <div className="flex flex-wrap gap-sp-2">
                       {seats.map((seat) => (

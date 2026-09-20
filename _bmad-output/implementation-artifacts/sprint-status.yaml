@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-03
-last_updated: 2026-09-16
+last_updated: 2026-09-17
 project: carpe-diem-restaurant
 project_key: NOKEY
 tracking_system: file-system
@@ -87,7 +87,7 @@ development_status:
   4-2-implement-menu-browse-and-search: done
   4-3-implement-seat-slot-management: done
   4-4-implement-add-item-to-order-with-modifiers-and-seat-assignment: done
-  4-5-implement-order-submission-and-multi-destination-routing: ready-for-dev
+  4-5-implement-order-submission-and-multi-destination-routing: review
   epic-4-retrospective: optional
 
   # ── Epic 5: Ticket Output — ESC/POS Printing & KDS Display ───────────────

@@ -103,3 +103,43 @@ function getServerStatusSnapshot(): boolean {
 export function useSocketStatus(): boolean {
   return useSyncExternalStore(subscribeToStatus, getStatusSnapshot, getServerStatusSnapshot)
 }
+
+/**
+ * Joins a server room for the lifetime of the component, and again after every
+ * reconnect (Story 4.5).
+ *
+ * A room belongs to one connection. When the socket drops and reconnects it is
+ * a NEW connection on the server, in no rooms at all — so a join sent once on
+ * mount would silently stop delivering after the first Wi-Fi blip. The join is
+ * therefore re-sent on every `connect`.
+ *
+ * The server decides whether the join is allowed (`registerRoomHandlers` in
+ * `src/server/socket/authenticate.ts`) and answers through the ack; a refused
+ * join is logged and otherwise ignored, because the screen still works — it
+ * just learns about other devices' changes on its next refetch.
+ *
+ * `args` is compared by value (serialised), so an inline object literal does
+ * not re-join on every render.
+ */
+export function useSocketRoom(command: string, args?: Record<string, unknown>): void {
+  const argsKey = JSON.stringify(args ?? null)
+
+  useEffect(() => {
+    const socket = getSocket()
+    const payload = JSON.parse(argsKey) as Record<string, unknown> | null
+    const onReply = (reply: { ok?: boolean; error?: string } | undefined) => {
+      if (!reply?.ok) console.warn(`[socket] ${command} refused:`, reply?.error ?? 'no reply')
+    }
+    const join = () => {
+      if (payload) socket.emit(command, payload, onReply)
+      else socket.emit(command, onReply)
+    }
+
+    if (socket.connected) join()
+    socket.on('connect', join)
+
+    return () => {
+      socket.off('connect', join)
+    }
+  }, [command, argsKey])
+}

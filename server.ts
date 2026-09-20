@@ -2,6 +2,8 @@ import { createServer } from 'http'
 import { parse } from 'url'
 import next from 'next'
 import { Server } from 'socket.io'
+// Relative, standalone: this file runs outside Next, where `server-only` throws.
+import { authenticateSocket, registerRoomHandlers } from './src/server/socket/authenticate'
 
 const dev = process.env.NODE_ENV !== 'production'
 
@@ -41,6 +43,17 @@ app
     // Expose io on global so src/server/socket/index.ts can export it
     // without creating a circular dependency on server.ts
     global.__io = io
+
+    // Story 4.5 (AC-11). No live staff session, no connection — until this
+    // existed, anything on the Wi-Fi could connect and receive every broadcast,
+    // and order events carry guests' seat notes.
+    io.use((socket, nextMiddleware) => {
+      void authenticateSocket(socket, nextMiddleware)
+    })
+
+    // Who may join which room: kitchen role → production rooms; waiter/owner →
+    // one session's room; owner → owner.
+    registerRoomHandlers(io)
 
     io.on('connection', (socket) => {
       console.log('[socket.io] client connected:', socket.id)

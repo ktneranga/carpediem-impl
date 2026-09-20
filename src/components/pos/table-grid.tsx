@@ -16,7 +16,12 @@ import type { TableGridRow } from '@/app/api/tables/route'
 import type { StaffRole } from '@/server/auth/permissions'
 
 const TABLES_QUERY_KEY = ['tables'] as const
-const COUNTER_QUERY_KEY = ['counter-sessions'] as const
+/**
+ * The open counter sales list. Exported so the order screen can refresh it after
+ * a send — a second hand-typed copy of this array is how a refresh silently
+ * targets a key that does not exist (it happened while wiring Story 4.5).
+ */
+export const COUNTER_QUERY_KEY = ['counter-sessions'] as const
 
 /** An open counter sale — an order attached to no table (FR64). */
 export type CounterSession = {

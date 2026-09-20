@@ -433,6 +433,45 @@ export const orderEvents = pgTable('order_events', {
   index('idx_order_events_session_round').on(t.sessionId, t.roundNumber),
 ])
 
+/**
+ * One SENT round of a session's ordering — the fact that a waiter tapped Send.
+ *
+ * ── The primary key is the CLIENT's submission id ────────────────────────────
+ * That is the idempotency key (Story 4.5 AC-8, from sprint-change-proposal
+ * 2026-08-21 Change E4). The tablet creates the id when the waiter first taps
+ * Send and reuses it on every retry, so a double tap, a lost response or a
+ * reload mid-send collides here instead of writing the round twice.
+ *
+ * The proposal put the key on `order_sessions` (`client_order_uuid UNIQUE`).
+ * A session has MANY rounds, so that key would have made round 2 collide with
+ * round 1. It belongs on the round.
+ *
+ * ── `(session_id, round_number)` is unique ───────────────────────────────────
+ * The backstop for two waiters sending at once (AC-4). The service derives the
+ * number under `lockOpenSession`, so this should never fire; if it does it is a
+ * 409, not a 500.
+ *
+ * ── Append-only ─────────────────────────────────────────────────────────────
+ * Migration 0015 puts the same trigger on this table as `order_events` has. A
+ * sent round is a fact; a correction is a new event (Epic 7).
+ *
+ * `order_events.round_number` stays as well, denormalised on purpose: the
+ * history, the Epic 5 ticket header and the Epic 7 timeline all read events,
+ * and this table exists for idempotency and the round's own facts, not to be
+ * joined by every reader.
+ */
+export const orderRounds = pgTable('order_rounds', {
+  id:          uuid('id').primaryKey(),
+  sessionId:   uuid('session_id').notNull().references(() => orderSessions.id),
+  roundNumber: integer('round_number').notNull(),
+  staffId:     uuid('staff_id').notNull().references(() => staff.id),
+  /** Dishes in the round — the sum of quantities — so a replay can answer as the original did. */
+  itemCount:   integer('item_count').notNull(),
+  submittedAt: timestamp('submitted_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('idx_order_rounds_session_round').on(t.sessionId, t.roundNumber),
+])
+
 export const paymentRecords = pgTable('payment_records', {
   id:               uuid('id').primaryKey().defaultRandom(),
   sessionId:        uuid('session_id').notNull().references(() => orderSessions.id),
