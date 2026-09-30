@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
-import { dishCount } from '@/server/orders/item-count'
+import { dishCount, dishTotalPaisa } from '@/server/orders/item-count'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { orderEvents, orderSessions, orderSessionTables, tables } from '@/server/db/schema'
@@ -27,10 +27,18 @@ function fail(code: string, message: string, status: number) {
  * Seats a counter sale — attaches tables to a session that had none (AC-5).
  *
  * The customer bought at the bar and then took a table. The order, its items and
- * its audit trail are untouched; only what it occupies changes, and `kind` flips
- * from `counter` to `table` inside `attachTables`' transaction. That this works
+ * its audit trail are untouched; only what it occupies changes. That this works
  * at all is the payoff of Story 3.8's join table: zero, one or many tables per
  * session were already expressible.
+ *
+ * ── `kind` does NOT flip ─────────────────────────────────────────────────────
+ * This comment used to say it flipped to `table` inside `attachTables`'
+ * transaction. It does not, and nothing anywhere updates the column:
+ * `attachTables` keeps it deliberately, because `kind` records where an order
+ * STARTED, not what it currently occupies. Anything asking "is this on the
+ * floor?" must therefore look at the attached tables, not at `kind` — the
+ * mistake that stopped a seated counter sale's card from ever refreshing
+ * (Story 5.0 review, `orders/route.ts`).
  *
  * Addressed by SESSION because a counter sale has no table to address it
  * through — the same reason `/api/tables/:tableId/merge` cannot serve this case
@@ -197,10 +205,11 @@ export async function POST(
     const groupTableLabels = groupTables.map((groupTable) => groupTable.label)
 
     const [items] = await db
-      .select({ total: dishCount })
+      .select({ total: dishCount, totalPaisa: dishTotalPaisa })
       .from(orderEvents)
       .where(and(eq(orderEvents.sessionId, session.id), eq(orderEvents.eventType, 'ITEM_ADDED')))
     const itemCount = Number(items?.total ?? 0)
+    const totalPaisa = Number(items?.totalPaisa ?? 0)
 
     for (const groupTable of groupTables) {
       emitTableStatusChanged({
@@ -209,6 +218,7 @@ export async function POST(
         sessionId: session.id,
         openedAt: session.openedAt.toISOString(),
         itemCount,
+        totalPaisa,
         unavailableReason: null,
         groupTableLabels,
       })

@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from 'react'
 import type { MenuItemRow } from '@/app/api/menu/route'
+import { MAX_LINE_QUANTITY } from '@/types/orders'
 
 /**
  * One line in the staged round.
@@ -217,6 +218,20 @@ export function sendIdForRound(sessionId: string): string {
   return created
 }
 
+/**
+ * Throws the pending send id away without touching the round.
+ *
+ * For `SUBMISSION_ID_REUSED` — the id belongs to a DIFFERENT session's round,
+ * so every retry under it is refused the same way. Two tabs on one device, or a
+ * mirrored id restored against the wrong session, get there. Without this the
+ * round could never be sent again from this device: the waiter would have to
+ * edit it to force a new id, and "change the order to be able to send it" is
+ * not an instruction anyone can act on mid-service.
+ */
+export function resetSendId(sessionId: string): void {
+  writePendingSend(sessionId, null)
+}
+
 function write(sessionId: string, next: StagedLine[]): void {
   // Any change to the round makes it a different send.
   writePendingSend(sessionId, null)
@@ -334,11 +349,14 @@ export function useStagedRound(sessionId: string) {
     )
 
     if (existing) {
+      // Capped at what the server accepts. An uncapped merge let a waiter tap
+      // past 99, and the round was then refused as a whole — every line of it,
+      // at the one moment the kitchen needed it.
       write(
         sessionId,
         current.map((line) =>
           line.lineId === existing.lineId
-            ? { ...line, quantity: line.quantity + amount }
+            ? { ...line, quantity: Math.min(line.quantity + amount, MAX_LINE_QUANTITY) }
             : line,
         ),
       )
@@ -371,10 +389,11 @@ export function useStagedRound(sessionId: string) {
   /**
    * Sets a line's quantity. Clamped at 1: zero is what Remove means, and a
    * zero-quantity line would submit an `order_event` for nothing. The list's
-   * minus removes the line at 1 instead of calling this.
+   * minus removes the line at 1 instead of calling this. Clamped at
+   * MAX_LINE_QUANTITY at the top, which is what the server's schema allows.
    */
   function setQuantity(lineId: string, quantity: number): void {
-    const next = Math.max(1, Math.trunc(quantity))
+    const next = Math.min(Math.max(1, Math.trunc(quantity)), MAX_LINE_QUANTITY)
     write(
       sessionId,
       snapshot(sessionId).map((line) =>
@@ -408,10 +427,38 @@ export function useStagedRound(sessionId: string) {
     )
   }
 
-  /** Empties the round AND its mirror. Story 4.5 calls this after a 201. */
+  /** Empties the round AND its mirror. */
   function clear(): void {
     write(sessionId, EMPTY)
   }
 
-  return { lines, addLine, removeLine, setQuantity, reassignLine, acceptPrice, clear }
+  /**
+   * Removes exactly the lines that were SENT, after a 201 (Story 4.5).
+   *
+   * Not `clear()`. A send is a network round trip, and the waiter keeps taking
+   * orders during it — the request carries a snapshot of the round taken before
+   * it left, so any dish tapped while it was in flight is NOT in that snapshot.
+   * Clearing everything destroyed those taps silently: no error, no undo, and
+   * the guest's food simply never reaches the kitchen. Only the ids the server
+   * actually committed are removed; whatever arrived meanwhile stays staged as
+   * the next round.
+   */
+  function clearSentLines(lineIds: string[]): void {
+    const sent = new Set(lineIds)
+    write(
+      sessionId,
+      snapshot(sessionId).filter((line) => !sent.has(line.lineId)),
+    )
+  }
+
+  return {
+    lines,
+    addLine,
+    removeLine,
+    setQuantity,
+    reassignLine,
+    acceptPrice,
+    clear,
+    clearSentLines,
+  }
 }

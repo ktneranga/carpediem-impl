@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
-import { dishCount } from '@/server/orders/item-count'
+import { dishCount, dishTotalPaisa } from '@/server/orders/item-count'
 import { db } from '@/server/db'
 import {
   orderEvents,
@@ -23,6 +23,13 @@ export type TableGridRow = {
   /** ISO timestamp from PostgreSQL. The client derives elapsed time from it. */
   openedAt: string | null
   itemCount: number
+  /**
+   * What the open order has run up so far, in integer paisa. 0 with no session.
+   *
+   * Priced from the event rows, so it is what the guests were quoted. It is not
+   * a bill: no service charge, no tax, no comps — Epic 6 owns those.
+   */
+  totalPaisa: number
   /**
    * Labels of every table this session occupies, e.g. `["B1","B3"]`.
    *
@@ -115,9 +122,16 @@ export async function GET() {
     const openSessionIds = rows.map((r) => r.sessionId).filter((id): id is string => id !== null)
 
     const itemCounts = new Map<string, number>()
+    // Money runs alongside the count, out of the same grouped scan — the card
+    // shows both, and a second query over the same rows would buy nothing.
+    const sessionTotals = new Map<string, number>()
     if (openSessionIds.length > 0) {
       const counts = await db
-        .select({ sessionId: orderEvents.sessionId, total: dishCount })
+        .select({
+          sessionId: orderEvents.sessionId,
+          total: dishCount,
+          totalPaisa: dishTotalPaisa,
+        })
         .from(orderEvents)
         // The session filter belongs in the WHERE clause, not in a JS pass
         // afterwards. order_events is the append-only audit table and only ever
@@ -134,6 +148,7 @@ export async function GET() {
 
       for (const row of counts) {
         itemCounts.set(row.sessionId, Number(row.total))
+        sessionTotals.set(row.sessionId, Number(row.totalPaisa))
       }
     }
 
@@ -195,6 +210,7 @@ export async function GET() {
       // Story 4.4 one row can carry "× 3". ITEM_REMOVED is not subtracted
       // because nothing writes it yet; Epic 7's corrections will.
       itemCount: row.sessionId ? (itemCounts.get(row.sessionId) ?? 0) : 0,
+      totalPaisa: row.sessionId ? (sessionTotals.get(row.sessionId) ?? 0) : 0,
       groupTableLabels: row.sessionId ? (groupLabels.get(row.sessionId) ?? []) : [],
     }))
 

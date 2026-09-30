@@ -123,6 +123,7 @@ export async function POST(
           sessionId: null,
           openedAt: null,
           itemCount: 0,
+          totalPaisa: 0,
           unavailableReason: null,
           groupTableLabels: [],
         })

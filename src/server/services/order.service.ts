@@ -8,11 +8,13 @@ import {
   orderRounds,
   orderSessions,
   orderSessionTables,
+  printJobs,
   seatSlots,
   tables,
   zones,
 } from '@/server/db/schema'
 import { lockOpenSession } from '@/server/services/table-session.service'
+import { buildTicketPayloads } from '@/server/print/ticket'
 import { zoneUsesSeats } from '@/lib/design'
 import type {
   ProductionDestination,
@@ -63,6 +65,16 @@ export type SubmittedRound = SubmitRoundResponse & {
     tableLabels: string[]
     usesSeats: boolean
     openedAt: Date
+    /**
+     * Whether this is a counter sale, from `order_sessions.kind`.
+     *
+     * NOT `tableIds.length === 0`: a table order whose tables were all released
+     * also has none, and it was being announced as a counter sale, refreshing
+     * no card at all.
+     */
+     isCounterSale: boolean
+    /** The committed row's timestamp — PostgreSQL's clock, not Node's. */
+    submittedAt: Date
     byDestination: Map<ProductionDestination, TicketLine[]>
   } | null
 }
@@ -103,7 +115,11 @@ function replayOf(
  * consumer ("hands requests to `order.service.submit()`") — runs exactly the
  * same validation, atomicity and audit rules as the tablet.
  *
- * ── Order of operations, all under one lock ──────────────────────────────────
+ * ── Order of operations ──────────────────────────────────────────────────────
+ * Step 1 runs BEFORE any lock — it is the fast path for a replay, which must
+ * answer even for a session that has since been closed. Everything from step 2
+ * is under the session row lock.
+ *
  * 1. Replay? Answer from the existing round and write nothing (AC-8).
  * 2. Lock the session and refuse a closed one (`lockOpenSession`).
  * 3. Re-check replay under the lock — two identical requests now serialise, so
@@ -114,6 +130,8 @@ function replayOf(
  *    (AC-7, AC-9). Read `FOR SHARE`, so an 86 cannot commit mid-check.
  * 6. Derive the round number under the lock (Trap 1).
  * 7. Insert the round, then the events.
+ * 8. Insert one `print_jobs` row per destination (Story 5.0) — in this same
+ *    transaction, so an order cannot exist without its tickets queued.
  */
 export async function submitRound(
   tx: Tx,
@@ -205,13 +223,18 @@ export async function submitRound(
 
   // 7 — the round first: it is the idempotency record, and if its primary key
   // collides nothing else has been written yet.
-  await tx.insert(orderRounds).values({
-    id: submissionId,
-    sessionId,
-    roundNumber,
-    staffId,
-    itemCount,
-  })
+  const [committedRound] = await tx
+    .insert(orderRounds)
+    .values({
+      id: submissionId,
+      sessionId,
+      roundNumber,
+      staffId,
+      itemCount,
+    })
+    // The database stamps `submitted_at`; the ticket and the audit row must
+    // carry the same instant, so the emit uses this rather than `new Date()`.
+    .returning({ submittedAt: orderRounds.submittedAt })
 
   // Ids are generated here rather than returned, so each ticket line can be
   // tied to its event without relying on RETURNING preserving insert order.
@@ -252,7 +275,11 @@ export async function submitRound(
   })
 
   const [session] = await tx
-    .select({ openedAt: orderSessions.openedAt })
+    .select({
+      openedAt: orderSessions.openedAt,
+      kind: orderSessions.kind,
+      tenantId: orderSessions.tenantId,
+    })
     .from(orderSessions)
     .where(eq(orderSessions.id, sessionId))
     .limit(1)
@@ -267,6 +294,40 @@ export async function submitRound(
     )
     .orderBy(asc(tables.label))
 
+  // A merge is within one zone, so the first table speaks for the group.
+  // A counter sale has no table and no zone, and so no seats.
+  const usesSeats = zoneUsesSeats(attached[0]?.zoneName ?? null)
+  const tableLabels = attached.map((table) => table.label)
+
+  // ── 8 — the print queue (Story 5.0, AC-1) ────────────────────────────────
+  //
+  // INSIDE this transaction, on purpose and by requirement. An order that
+  // commits without its tickets queued is an order the kitchen never hears
+  // about; a ticket queued by a transaction that then rolls back is food nobody
+  // ordered. Both are impossible while these rows are written with `tx`.
+  //
+  // It is also why this sits AFTER the replay checks rather than in the route:
+  // a repeat submission returns at step 1 and never reaches here, so a retry of
+  // a lost response cannot enqueue a second ticket (Story 4.5, AC-8).
+  //
+  // No bytes, no socket, no printer. The worker delivers; this only records.
+  const tickets = buildTicketPayloads({
+    byDestination,
+    roundNumber,
+    tableLabels,
+    usesSeats,
+    submittedAt: committedRound!.submittedAt,
+  })
+  await tx.insert(printJobs).values(
+    tickets.map((ticket) => ({
+      tenantId: session!.tenantId,
+      sessionId,
+      roundId: submissionId,
+      destination: ticket.destination,
+      ticket,
+    })),
+  )
+
   return {
     submissionId,
     roundNumber,
@@ -274,11 +335,11 @@ export async function submitRound(
     replayed: false,
     announcement: {
       tableIds: attached.map((table) => table.id),
-      tableLabels: attached.map((table) => table.label),
-      // A merge is within one zone, so the first table speaks for the group.
-      // A counter sale has no table and no zone, and so no seats.
-      usesSeats: zoneUsesSeats(attached[0]?.zoneName ?? null),
+      tableLabels,
+      usesSeats,
       openedAt: session!.openedAt,
+      isCounterSale: session!.kind === 'counter',
+      submittedAt: committedRound!.submittedAt,
       byDestination,
     },
   }

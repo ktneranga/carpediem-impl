@@ -5,9 +5,11 @@
  * never import from `src/server/`. Story 4.4's review left two components
  * importing these from `src/server/orders/submitted-rounds` — type-only and
  * erased at build, but the boundary is a rule, not a runtime accident.
+ *
+ * It imports nothing. It used to take `MenuItemRow` from `@/app/api/menu/route`
+ * to derive the destination union, which pulled a route handler — and through
+ * it `server-only` — into the module written to keep the two apart.
  */
-
-import type { MenuItemRow } from '@/app/api/menu/route'
 
 /** One submitted item, as the history renders it. */
 export type SubmittedItemRow = {
@@ -27,7 +29,8 @@ export type SubmittedRoundRow = {
   items: SubmittedItemRow[]
 }
 
-export type ProductionDestination = MenuItemRow['productionDestination']
+/** FR9's three destinations. Mirrors `production_destination` in the schema. */
+export type ProductionDestination = 'kitchen' | 'pizza_kitchen' | 'bar'
 
 /** Limits on one send. Shared so the client can refuse before the server does. */
 export const MAX_ROUND_LINES = 100
@@ -109,5 +112,11 @@ export type OrderConfirmedPayload = {
   staffId: string
   sessionId: string
   roundNumber: number
-  itemCount: number
+  /**
+   * Dishes in THIS ROUND — not the session's total.
+   *
+   * Named apart from `table:status_changed`'s `itemCount`, which is the whole
+   * session's. The two were emitted in adjacent lines with the same name.
+   */
+  roundItemCount: number
 }

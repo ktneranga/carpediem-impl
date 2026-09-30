@@ -219,9 +219,9 @@ export async function lockOpenSession(tx: Tx, sessionId: string): Promise<void> 
  * The next free seat label for a session — "Seat 1", "Seat 2", …
  *
  * Derived from the HIGHEST seat number in use (not the count — see below), then
- * made safe by the unique index rather than by this read. Two devices adding a seat at the same instant both
- * see the same count and both propose the same label; one commits, the other
- * takes a 23505 and retries. That is deliberate: this codebase decides races in
+ * made safe by the unique index rather than by this read. Two devices adding a
+ * seat at the same instant both see the same highest number and both propose
+ * the same label; one commits, the other takes a 23505 and retries. That is deliberate: this codebase decides races in
  * the database, and a pre-check that "looks" atomic is the exact defect Story
  * 3.9's review found in the last-table guard.
  */

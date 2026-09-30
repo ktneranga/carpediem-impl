@@ -15,16 +15,51 @@ import { io, type Socket } from 'socket.io-client'
  * server on port 3000, so no URL configuration is needed.
  */
 let sharedSocket: Socket | undefined
+let retryTimer: ReturnType<typeof setTimeout> | undefined
+
+/** Backs off 2s → 4s → … → 30s while the handshake keeps being refused. */
+const HANDSHAKE_RETRY_MIN_MS = 2_000
+const HANDSHAKE_RETRY_MAX_MS = 30_000
+let handshakeRetryMs = HANDSHAKE_RETRY_MIN_MS
 
 function getSocket(): Socket {
   if (!sharedSocket) {
-    sharedSocket = io({
+    const socket = io({
       // Socket.io reconnects by default; these just make the behaviour explicit
       // and bounded rather than relying on library defaults staying put.
       reconnection: true,
       reconnectionDelay: 1_000,
       reconnectionDelayMax: 5_000,
     })
+
+    // ── A refused HANDSHAKE is not retried by the library ────────────────────
+    // `reconnection: true` covers a dropped connection, NOT a connection the
+    // `io.use` middleware rejected: the Manager sets `skipReconnect` on a
+    // `connect_error` from the middleware and stops for good (socket.io-client
+    // `manager.js`, the `error` path of `onopen`). Since Story 4.5 the
+    // handshake authenticates, so this now happens routinely — the database
+    // was briefly unreachable, or the tab was asleep past the idle timeout and
+    // the staff member has since signed back in. Left alone, the tablet stays
+    // silently socket-less until a full page reload.
+    //
+    // So: reconnect by hand, backing off. If the session really is gone the
+    // retries keep being refused and cost one query each at 30s intervals.
+    socket.on('connect_error', (error) => {
+      if (socket.active) return // a transport blip — the library handles it
+      console.warn('[socket] Handshake refused:', error.message)
+      if (retryTimer) return
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined
+        if (sharedSocket === socket) socket.connect()
+      }, handshakeRetryMs)
+      handshakeRetryMs = Math.min(handshakeRetryMs * 2, HANDSHAKE_RETRY_MAX_MS)
+    })
+
+    socket.on('connect', () => {
+      handshakeRetryMs = HANDSHAKE_RETRY_MIN_MS
+    })
+
+    sharedSocket = socket
   }
   return sharedSocket
 }
@@ -38,6 +73,13 @@ function getSocket(): Socket {
  * `getSocket()` call creates a fresh one.
  */
 export function disconnectSocket(): void {
+  // Cancel any pending handshake retry first: reconnecting a signed-out
+  // staff member's socket is exactly what this function exists to prevent.
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = undefined
+  }
+  handshakeRetryMs = HANDSHAKE_RETRY_MIN_MS
   sharedSocket?.disconnect()
   sharedSocket = undefined
 }
@@ -120,8 +162,18 @@ export function useSocketStatus(): boolean {
  *
  * `args` is compared by value (serialised), so an inline object literal does
  * not re-join on every render.
+ *
+ * `leaveCommand` is the paired unsubscribe, sent on unmount. The socket is a
+ * module singleton that outlives the component, so without it a tablet that
+ * leaves an order stays in that order's room and keeps receiving its
+ * confirmations for the rest of the shift. `session:subscribe` also leaves the
+ * previous session server-side, but only when another order is opened.
  */
-export function useSocketRoom(command: string, args?: Record<string, unknown>): void {
+export function useSocketRoom(
+  command: string,
+  args?: Record<string, unknown>,
+  leaveCommand?: string,
+): void {
   const argsKey = JSON.stringify(args ?? null)
 
   useEffect(() => {
@@ -140,6 +192,12 @@ export function useSocketRoom(command: string, args?: Record<string, unknown>): 
 
     return () => {
       socket.off('connect', join)
+      // Only when connected: a leave sent while disconnected goes nowhere, and
+      // a reconnect starts in no rooms anyway.
+      if (leaveCommand && socket.connected) {
+        if (payload) socket.emit(leaveCommand, payload)
+        else socket.emit(leaveCommand)
+      }
     }
-  }, [command, argsKey])
+  }, [command, argsKey, leaveCommand])
 }

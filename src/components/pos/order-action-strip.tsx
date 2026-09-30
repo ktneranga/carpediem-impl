@@ -2,9 +2,9 @@
 
 import {
   ActionStripShell,
-  commitButtonClass,
   primaryButtonClass,
   secondaryButtonClass,
+  sendButtonClass,
 } from '@/components/pos/action-strip-chrome'
 
 /**
@@ -26,8 +26,15 @@ import {
  * all reference them and the button labels by name. `ux-design-specification.md`
  * :887 gives a different six-row table indexed by TABLE state — it predates the
  * floor strip, its first two rows ("New Order", "Start Order") now belong to
- * that strip, and renaming to match it would orphan four stories. The one thing
- * kept verbatim from the spec is the full-width commit; see `commitButtonClass`.
+ * that strip, and renaming to match it would orphan four stories.
+ *
+ * ── The buttons sit on one row (2026-09-20, Teran's mockup) ──────────────────
+ * Send used to take a full-width row of its own, per `ux-design-specification.md`
+ * :899. It is now the last control on the button row, made primary by width and
+ * weight rather than by a row — see `sendButtonClass` for what that trades and
+ * why. Hold and Bill & split, which the mockup also draws, are still not
+ * rendered: neither does anything yet, and the strip draws no button without a
+ * handler (both logged in `deferred-work.md`).
  *
  * ── Pure presentation ────────────────────────────────────────────────────────
  * No fetching, no mutation, no router. Every action is a callback handed down.
@@ -155,10 +162,10 @@ export function OrderActionStrip({
 
   // Items are staged and nothing has left for the kitchen yet.
   //
-  // Submit goes in the shell's `commit` slot, which renders it as a direct flex
-  // item on its own full-width row. It is the one action in the order flow that
-  // reaches production and cannot be quietly taken back, and the UX spec calls
-  // it "the single unmissable primary action".
+  // Send is the LAST control on the row, and the only solid brand fill on it. It
+  // is the one action in the order flow that reaches production and cannot be
+  // quietly taken back, so it has to be the thing the eye lands on — which is
+  // now width, weight and position rather than a row of its own.
   //
   // `stagedCount` can legitimately be 0 here — the parent owns the state and a
   // round can be opened before anything is added — so the label says so rather
@@ -179,32 +186,6 @@ export function OrderActionStrip({
         detail={
           note ?? (destinationSummary ? `→ ${destinationSummary}` : 'Nothing has gone to the kitchen yet.')
         }
-        // The SLOT, not a `w-full` child of the button row. See ActionStripShell.
-        //
-        // No handler, no button. This used to render the commit unconditionally
-        // with `onClick={onSubmitOrder}`, so a caller that had not wired
-        // submission yet got a fully enabled "Submit Order" that silently did
-        // nothing on tap. That is the dead-control defect this file's own header
-        // argues against ("NO buttons at all, never disabled ones: a disabled
-        // control invites a tap and teaches nothing") — and an undefined handler
-        // produced the same thing a no-op would have.
-        //
-        // Story 4.4 stages items without wiring submission; 4.5 passes the
-        // handler and the commit appears.
-        commit={
-          onSubmitOrder ? (
-            <button
-              type="button"
-              disabled={busy || sendBlocked || stagedCount === 0}
-              onClick={onSubmitOrder}
-              className={commitButtonClass}
-            >
-              {busy
-                ? 'Sending…'
-                : `Send ${stagedCount} to ${destinationSummary ?? 'the kitchen'}`}
-            </button>
-          ) : undefined
-        }
       >
         {onClear ? (
           <button
@@ -216,6 +197,26 @@ export function OrderActionStrip({
             className={secondaryButtonClass}
           >
             Clear
+          </button>
+        ) : null}
+        {/* No handler, no button. This used to render unconditionally with
+            `onClick={onSubmitOrder}`, so a caller that had not wired submission
+            yet got a fully enabled "Submit Order" that silently did nothing on
+            tap. That is the dead-control defect this file's own header argues
+            against ("NO buttons at all, never disabled ones: a disabled control
+            invites a tap and teaches nothing") — and an undefined handler
+            produced the same thing a no-op would have.
+
+            Story 4.4 stages items without wiring submission; 4.5 passes the
+            handler and Send appears. */}
+        {onSubmitOrder ? (
+          <button
+            type="button"
+            disabled={busy || sendBlocked || stagedCount === 0}
+            onClick={onSubmitOrder}
+            className={sendButtonClass}
+          >
+            {busy ? 'Sending…' : `Send ${stagedCount} to ${destinationSummary ?? 'the kitchen'}`}
           </button>
         ) : null}
       </ActionStripShell>

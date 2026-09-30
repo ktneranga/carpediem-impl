@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
-import { dishCount } from '@/server/orders/item-count'
+import { dishCount, dishTotalPaisa } from '@/server/orders/item-count'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { orderEvents, orderSessions, orderSessionTables, tables } from '@/server/db/schema'
@@ -212,9 +212,9 @@ export async function POST(
 
     const groupTableLabels = groupTables.map((groupTable) => groupTable.label)
 
-    // Sums ITEM_ADDED quantities (dishes, not rows) without subtracting ITEM_REMOVED, matching /api/tables,
-    // the close route and the order page. All four change together when Epic 4
-    // adds removal.
+    // Sums ITEM_ADDED quantities (dishes, not rows) without subtracting
+    // ITEM_REMOVED, matching every other item figure in the app. All eight
+    // sites share `dishCount`; Epic 7 adds removal, and they change with it.
     //
     // NOT hardcoded 0. That was copied from the open route, where zero is true
     // by definition; here it is false, because merging into a LIVE session is
@@ -222,10 +222,11 @@ export async function POST(
     // since the group card reads its primary — the first table by label —
     // merging A9 into B2 made a twenty-item order display "No items yet".
     const [items] = await db
-      .select({ total: dishCount })
+      .select({ total: dishCount, totalPaisa: dishTotalPaisa })
       .from(orderEvents)
       .where(and(eq(orderEvents.sessionId, session.id), eq(orderEvents.eventType, 'ITEM_ADDED')))
     const itemCount = Number(items?.total ?? 0)
+    const totalPaisa = Number(items?.totalPaisa ?? 0)
 
     for (const groupTable of groupTables) {
       emitTableStatusChanged({
@@ -234,6 +235,7 @@ export async function POST(
         sessionId: session.id,
         openedAt: session.openedAt.toISOString(),
         itemCount,
+        totalPaisa,
         unavailableReason: null,
         groupTableLabels,
       })

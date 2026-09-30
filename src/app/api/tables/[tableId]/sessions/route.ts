@@ -267,6 +267,8 @@ export async function POST(
         sessionId: session.id,
         openedAt,
         itemCount: 0,
+        // A session opens empty; the first send emits the running total.
+        totalPaisa: 0,
         groupTableLabels,
         // A session change never alters availability; none of these tables is
         // out of service, or the request would have been refused above.

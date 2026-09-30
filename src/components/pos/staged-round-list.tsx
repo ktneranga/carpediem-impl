@@ -3,6 +3,7 @@
 import { AlertTriangle, Minus, Plus, Trash2 } from 'lucide-react'
 import type { SeatSlot } from '@/components/pos/seat-selector'
 import type { StagedLine } from '@/components/pos/use-staged-round'
+import { MAX_LINE_QUANTITY } from '@/types/orders'
 import { lkrFromPaisa } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -175,11 +176,15 @@ export function StagedRoundList({
                     {line.quantity}
                   </output>
 
+                  {/* Disabled at the cap the server's schema enforces. The
+                      store clamps too, but a + that keeps accepting taps and
+                      changes nothing reads as a broken screen. */}
                   <button
                     type="button"
+                    disabled={line.quantity >= MAX_LINE_QUANTITY}
                     onClick={() => onSetQuantity(line.lineId, line.quantity + 1)}
                     aria-label={`One more ${line.name}`}
-                    className={stepperButton}
+                    className={cn(stepperButton, 'disabled:opacity-40')}
                   >
                     <Plus aria-hidden="true" strokeWidth={2.5} className="size-4" />
                   </button>

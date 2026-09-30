@@ -1,6 +1,6 @@
 # Story 4.5: Implement Order Submission & Multi-Destination Routing
 
-Status: review
+Status: done
 
 - **Epic:** 4 — Order Entry & Multi-Destination Routing (last story)
 - **Story ID:** 4.5
@@ -177,6 +177,56 @@ Status: review
 - [x] **Task 8 — Verify** (AC: all)
   - No test framework; manual, as every prior story. Matrix below.
   - **The concurrent-send test and the replay test are not optional.** AC-4 and AC-8 are the reasons this story adds a table.
+
+
+### Review Findings (code review, 2026-09-20)
+
+Three layers: Blind Hunter (diff only), Edge Case Hunter (diff + project), Acceptance Auditor (diff + spec). Scope: Story 4.5 alone — the earlier work was committed as `ceb9fd6`. Every AC was found met; nothing below is a missing feature. Findings marked **[verified]** were checked against the code or `node_modules` before being written down.
+
+**Decisions needed**
+
+- [x] [Review][Decision] **A socket connection never refreshes the staff session's idle clock** — the handshake and every room join READ `last_active_at` against the 5-minute timeout but never touch it. A device whose only activity is the socket — precisely Epic 5's kitchen display — crosses the timeout and is then refused on every reconnect and every join, while its existing connection keeps working. Options: (a) touch `last_active_at` on connect and on join, which keeps a display alive but means an idle tablet in a drawer never expires either; (b) exempt the `kitchen` role only; (c) leave it and let Epic 5's display log in as a device with a long timeout. [`src/server/socket/authenticate.ts`]
+  - **Decided (Teran, 2026-09-20): (b) — the `kitchen` role only.** A kitchen display reads and does not poll, so its
+    socket IS its activity; `last_active_at` is refreshed on connect and on join for that role alone. A waiter's or
+    owner's session is untouched: theirs can send orders and take payments, and the idle timeout is what protects an
+    unattended tablet. Epic 5's display therefore needs no separate login and no device-level timeout.
+
+**Patches**
+
+- [x] [Review][Patch] **[verified] Dishes staged during a send are silently destroyed** — `mutationFn` snapshots the lines into the request, but `onSuccess` calls `clearStagedRound`, which empties whatever is staged NOW. Only Send and Clear are gated by `busy`; the menu is not, and `onSuccess` awaits a refetch first, so the window is as long as the network is slow. A dish tapped in that window is never sent, never billed, and leaves no trace. Clear only the lines that were sent. [`order-screen.tsx` `sendMutation`]
+- [x] [Review][Patch] **[verified] A refused socket handshake kills live updates for the rest of the page's life** — Socket.io sets `skipReconnect = true` after a middleware rejection (`manager.js:77`), and nothing in the app listens for `connect_error` or calls `connect()` again. Any transient cause — a database blip in `authenticateSocket`'s own catch, pool exhaustion, a session that idled out during a Wi-Fi drop — permanently stops `order:confirmed`, `menu:item_updated` and `table:status_changed` on that tablet, with no visible sign. [`src/hooks/use-socket.ts`]
+- [x] [Review][Patch] **Any waiter can join any order's room, in any tenant** — `session:subscribe` checks the UUID shape and the role, then joins. It never checks that the session exists, is open, or belongs to the caller's tenant — `identityFromCookieHeader` reads `tenant_id` and discards it. Today the payload is counts and a staff id; Epic 5 and 6 will put the order in that room. [`src/server/socket/authenticate.ts`]
+- [x] [Review][Patch] **`SUBMISSION_ID_REUSED` is an unbreakable loop** — the send id is cleared only by EDITING the round, and this refusal is the one case that requires a new id. Every further tap of Send reproduces it; the only escape is to discard the round. [`order-screen.tsx` `onError`, `use-staged-round.ts`]
+- [x] [Review][Patch] **The client's own limits are never enforced, so hitting them gives an unactionable 400** — `MAX_LINE_QUANTITY` and `MAX_ROUND_LINES` are exported "so the client can refuse before the server does", and nothing uses them. The stepper has no upper bound and repeated Adds merge into one growing line, so 100 teas is one line at quantity 100: Send stays enabled, zod rejects the body, and the bar says "The round could not be read" naming neither line nor limit. [`staged-round-list.tsx`, `use-staged-round.ts`, `order-screen.tsx`]
+- [x] [Review][Patch] **A refusal note outlives the problem it describes** — `sendNote` is cleared only by the next send. After a `PRICE_CHANGED`, the refetch makes the line flag, the bar shows "Fix 1 item", the waiter taps Accept, and the bar reverts to the stale "Accept the new price and send again" with Send now enabled. It also occupies the detail slot, hiding "→ Kitchen & Bar" until the next attempt. [`order-screen.tsx`]
+- [x] [Review][Patch] **`SendRefusedError.detail` is built, documented as pointing at the line, and never read** — the server returns `itemId`, `seatId` and `currentPricePaisa`; the client parses them and shows one generic string per code. Either name the dish in the message or stop carrying the fields. [`order-screen.tsx`]
+- [x] [Review][Patch] **"Not sent" is stated as fact in the one case the code says may have committed** — the 5xx branch's own comment reads "the round may or may not have committed", and the message tells the waiter it was not sent. A waiter who believes it and re-stages by hand produces a duplicate under a NEW id, which idempotency cannot catch. `replayed: true` is also never surfaced, so "already sent" looks identical to a fresh send. [`order-screen.tsx`]
+- [x] [Review][Patch] **`useSocketRoom` says it joins "for the lifetime of the component" and never leaves** — cleanup only removes the `connect` listener, and the socket is a singleton, so a tablet that navigates back to the floor stays in `session:<id>` indefinitely. The server-side "leave other session rooms" only fires on the next join, which covers order→order and nothing else. Add a leave on unmount (and the handler for it). [`use-socket.ts`, `authenticate.ts`]
+- [x] [Review][Patch] **Room names are written twice and can silently diverge** — `events.ts` derives them for emitting; `authenticate.ts` hardcodes the same strings for joining, because `events.ts` carries `server-only`. A rename on one side stops delivery with no error — the exact failure `events.ts`'s own header warns about for `table:statusChanged`. Extract a dependency-free `socket/rooms.ts`, the precedent this story already set with `session-cookie.ts`. [`events.ts`, `authenticate.ts`]
+- [x] [Review][Patch] **A real round-number conflict can be reported as "this send belongs to a different order"** — `isUniqueViolation` returns true when the driver omits `constraint`, and the route tests `ROUND_PKEY` first; a `(session_id, round_number)` collision then finds no row for that id and answers `SUBMISSION_ID_REUSED` ("stop") instead of `ROUND_CONFLICT` ("send again"). Test the round-number index first. [`orders/route.ts`]
+- [x] [Review][Patch] **The replay lookup runs inside the catch with no guard** — if that `select` throws, it escapes past the `console.error` below it, so the one path that exists to disambiguate a duplicate write logs nothing. [`orders/route.ts`]
+- [x] [Review][Patch] **`socket.join` / `socket.leave` are unguarded inside async listeners** — Socket.io does not catch a rejected listener, so an adapter failure becomes an unhandled rejection and, by default, takes down the process serving the whole POS. [`authenticate.ts`]
+- [x] [Review][Patch] **The auth pool is `max: 3` and every connect AND every join queries it** — twenty tablets reconnecting after one Wi-Fi blip is forty queries against three connections, and the authentication path becomes the bottleneck that keeps staff out. [`authenticate.ts`]
+- [x] [Review][Patch] **`staffId` is written to a `uuid` column with only a presence check** — a malformed header yields Postgres `22P02` and a 500 rather than a 4xx. The proxy does strip and set it, but this route asserts that rather than checking it. [`orders/route.ts`]
+- [x] [Review][Patch] **A table order whose tables were all released is announced as a counter sale** — the emit branches on `tableIds.length === 0`, which is also true for an unmerged-to-nothing table session; it then fires `counter:changed` and refreshes no card. Branch on the session's `kind`. [`orders/route.ts`]
+- [x] [Review][Patch] **Two different numbers are both called `itemCount` in the same emit sequence** — the confirmation's is this round's dishes; `table:status_changed`'s is the session's. Same name, adjacent lines, no comment. [`types/orders.ts`, `orders/route.ts`]
+- [x] [Review][Patch] **The ticket timestamp comes from Node while the audit row's comes from Postgres** — `new Date().toISOString()` stamps both emits; `submitted_at` is `defaultNow()`. This codebase's rule is that the database owns the clock, and the socket authenticator says so explicitly. Return the committed `submittedAt` and emit that. [`orders/route.ts`, `order.service.ts`]
+- [x] [Review][Patch] **A session closed between the commit and the floor emit is re-announced as occupied** — the post-commit refresh reads no `closed_at`, so a phantom occupied card survives until the next refetch. [`orders/route.ts`]
+- [x] [Review][Patch] **Five comments were only half-corrected, and now contradict each other** — four still end "All four change together when Epic 4 adds removal" (there are eight sites, and Epic 4 is finished), while the new one in `/api/tables` says Epic 7 will add removal. `nextSeatLabel` still says "both see the same count" in its second sentence. `submitRound`'s header says "all under one lock" while step 1 runs before the lock. [`unmerge`, `merge`, `sessions/close`, `sessions/route`, `tables/route`, `table-session.service.ts`, `order.service.ts`]
+- [x] [Review][Patch] **"Joining is policed in `server.ts`"** — it is policed in `authenticate.ts`; `server.ts` only calls the registrar. A security-relevant pointer in the file a reader consults to find who can see seat notes. [`events.ts`]
+- [x] [Review][Patch] **`modifierText` is length-checked before trimming** — a 121-character note that trims to 118 is a 400, against Task 4's stated "≤120 (trimmed)". [`orders/route.ts`]
+- [x] [Review][Patch] **The neutral types module imports from an API route** — `src/types/orders.ts` exists to fix the `src/server` boundary and pulls `MenuItemRow` from `@/app/api/menu/route`, which transitively reaches `server-only`. Declare the destination union locally. [`types/orders.ts`]
+- [x] [Review][Patch] **`item-count.ts` overstates the defect it fixed** — the close routes only test the count against zero, which rows and quantities agree on; what was wrong was the displayed figure, not the walkout decision. [`item-count.ts`]
+- [x] [Review][Patch] **The emitter signatures diverge from Task 5 without being logged** — `emitOrderSubmitted(payload)` rather than `(room, payload)`. Better as built; record it under Deliberate divergences. [`events.ts`, this file]
+
+**Deferred** (real, not this story's to fix — also in `deferred-work.md`)
+
+- [x] [Review][Defer] **Two tabs on one device can send the same round twice** [`use-staged-round.ts`] — the `storage` listener's prefix does not match the send key
+- [x] [Review][Defer] **`modifierText` is not stripped of control characters before reaching a thermal printer** [`orders/route.ts`] — Epic 5 owns the ticket bytes
+- [x] [Review][Defer] **Two sends committing together can emit their floor counts out of order** [`orders/route.ts`] — the card self-corrects on the next refetch
+- [x] [Review][Defer] **No automated tests anywhere in the project** [repo-wide] — pre-existing; every story so far has verified by hand
+
+Dismissed (3): a NULL `quantity` breaking `dishCount` (the column is `integer NOT NULL DEFAULT 1` since migration 0000); the `FOR SHARE` reasoning being wrong (it is correct, and no code writes `is_available` or `price_paisa` yet); and the same-session idempotency race (walked end to end by two layers and sound).
 
 ---
 
@@ -387,12 +437,59 @@ claude-opus-5 (Claude Code)
 - **AC-6's "force a DB error mid-transaction"** was not induced. Rollback is by construction (one `db.transaction`; announcements run only after it returns), and every refused case above confirmed zero rows written.
 - **A retry after a genuinely lost response** was not staged end to end; its two halves were — the id persists with the round in the store, and a repeated id is answered as a replay (including five at once).
 
+**Review fixes (2026-09-20)** — all 25 patches applied, plus the decision above.
+
+The ones that changed behaviour rather than wording:
+
+- **Only the lines that were SENT are cleared** (`clearSentLines`). `clearStagedRound` emptied the round as it was when the
+  response arrived, so a dish tapped while the send was in flight was destroyed silently — no error, no undo, no ticket.
+- **A refused handshake is now retried**, backing off 2s → 30s. Socket.io sets `skipReconnect` after a middleware rejection
+  (`manager.js`), so one database blip or one expired session ended live updates on that tablet until a full page reload.
+- **A session room is joined only for an order in the caller's own tenant**, and left on unmount (`session:unsubscribe`).
+- **`SUBMISSION_ID_REUSED` clears the send id** (`resetSendId`), which was previously escapable only by discarding the round.
+- **`MAX_ROUND_LINES` / `MAX_LINE_QUANTITY` are enforced on the client**: the `+` stepper stops at the cap, the store clamps,
+  and Send is blocked with the limit named instead of a 400 that names nothing.
+- **A refusal note dies with the round it describes** — it is held with the line array it was about, so any edit drops it.
+- **The refusal names the dish** (`SendRefusedError.detail`), and a 5xx now says "Not sure it was sent — tap Send again; it
+  cannot be ordered twice" rather than asserting the round was not sent. A replay (200) says so out loud.
+- **`ROUND_CONFLICT` is tested before `SUBMISSION_ID_REUSED`**, because `isUniqueViolation` matches any name when the driver
+  omits `constraint`, and "send again" is the safe misreading; "this belongs to another order" is terminal.
+- **The replay lookup inside the catch is guarded**, so it cannot escape the handler and replace the JSON body with an error page.
+- **The floor emit branches on `order_sessions.kind`**, not `tableIds.length === 0` (a table order with every table released
+  was being announced as a counter sale), and is skipped when the session has been closed since the commit.
+- **Both emits carry the committed row's `submitted_at`** — PostgreSQL's clock, not Node's.
+- **`modifierText` is trimmed before its length is judged**; `staffId` is validated as a UUID; the auth pool is `max: 10`;
+  every socket listener is wrapped so a rejection cannot take the process down.
+- **Room names live in one dependency-free `socket/rooms.ts`**, imported by both the emit and the join side.
+- **`order:confirmed.itemCount` → `roundItemCount`**, which was the same name as `table:status_changed`'s session total in
+  adjacent lines.
+
+*Review-patch verification — 16/16, plus the original 40 re-run green (20/20 API, 20/20 socket):*
+
+| Case | Result |
+|---|---|
+| `session:unsubscribe` | ✅ acks, leaves the room (no further `order:confirmed`), validates the id |
+| Kitchen session keep-alive | ✅ refreshed on connect and on join (1s); a waiter's is NOT (241s) |
+| 120-char note with padding | ✅ 201, stored as the trimmed 120 characters |
+| 121-char note / quantity 100 | ✅ 400 each; quantity 99 → 201 |
+| Counter sale send | ✅ `counter:changed` only, no `table:status_changed` |
+| `order:confirmed` timestamp | ✅ equals the `order_rounds` row's `submitted_at` |
+| Send on a closed order | ✅ 409 `SESSION_ALREADY_CLOSED` |
+
+**Still not exercised in a browser** — every client patch above (the stepper cap, the note's lifetime, the named refusal, the
+5xx wording, the replay message, the leave-on-unmount) compiles and is unclicked, like the Send flow it sits on.
+
 **Deliberate divergences**
 
 - **Kitchen-role users serve every production room.** There is no bar or pizza role; logged for Epic 10.
 - **`registerRoomHandlers` lives beside the authenticator** rather than in `socket/index.ts`, because it must be importable from `server.ts`, where anything touching `server-only` throws.
 - **A session room is left automatically** when the same tablet joins another order's room, so a long shift does not collect every table's confirmations.
 - **The price check is derived on the client as well as enforced on the server**, so a changed price shows before the tap, not only as a refusal after it.
+- **The emitters take one payload, not `(room, payload)`.** Task 5 wrote `emitOrderSubmitted(room, payload)`; it is
+  `emitOrderSubmitted(payload)`, because the payload already carries `destination` and `sessionId` and the room is
+  derived from them in `socket/rooms.ts`. A caller cannot pass a payload to the wrong room.
+- **The kitchen role's session is kept alive by its socket** (the review decision above), which is a deliberate
+  exception to the idle timeout, scoped to the one role that cannot refresh it any other way.
 
 ### File List
 
@@ -407,14 +504,17 @@ claude-opus-5 (Claude Code)
 - `src/server/auth/session-cookie.ts` — NEW: dependency-free cookie signing and checking
 - `src/server/services/session.service.ts` — MODIFIED: uses and re-exports the cookie module
 - `src/server/services/table-session.service.ts` — MODIFIED: `nextSeatLabel` comment corrected
-- `src/server/socket/authenticate.ts` — NEW: handshake authentication and room policy
+- `src/server/socket/authenticate.ts` — NEW: handshake authentication and room policy; tenant-checked session joins,
+  wrapped listeners, `session:unsubscribe`, kitchen keep-alive, pool `max: 10`
+- `src/server/socket/rooms.ts` — NEW: the room names, shared by the emit and join sides
 - `src/server/socket/events.ts` — MODIFIED: `emitOrderSubmitted`, `emitOrderConfirmed`, room names
 - `server.ts` — MODIFIED: `io.use(authenticateSocket)`, `registerRoomHandlers(io)`
-- `src/hooks/use-socket.ts` — MODIFIED: `useSocketRoom`
-- `src/components/pos/use-staged-round.ts` — MODIFIED: per-round send id, `acceptPrice`, UUID fallback
+- `src/hooks/use-socket.ts` — MODIFIED: `useSocketRoom` (+ leave on unmount), handshake-refusal retry
+- `src/components/pos/use-staged-round.ts` — MODIFIED: per-round send id, `acceptPrice`, UUID fallback, `clearSentLines`,
+  `resetSendId`, quantity clamped to `MAX_LINE_QUANTITY`
 - `src/components/pos/order-screen.tsx` — MODIFIED: Send, error states, session room, live history
 - `src/components/pos/order-action-strip.tsx` — MODIFIED: `note`, `sendBlocked`
-- `src/components/pos/staged-round-list.tsx` — MODIFIED: price-changed line with Accept
+- `src/components/pos/staged-round-list.tsx` — MODIFIED: price-changed line with Accept, `+` capped at the quantity limit
 - `src/components/pos/round-history.tsx` — MODIFIED: type import path
 - `src/components/pos/table-grid.tsx` — MODIFIED: exports `COUNTER_QUERY_KEY`
 - `src/app/api/tables/route.ts`, `src/app/api/sessions/route.ts`, `src/app/api/sessions/[sessionId]/close/route.ts`, `src/app/api/sessions/[sessionId]/tables/route.ts`, `src/app/api/tables/[tableId]/merge/route.ts`, `src/app/api/tables/[tableId]/unmerge/route.ts`, `src/app/api/tables/[tableId]/sessions/close/route.ts`, `src/app/orders/[sessionId]/page.tsx` — MODIFIED: dishes, not rows
@@ -422,5 +522,14 @@ claude-opus-5 (Claude Code)
 
 ### Change Log
 
+- 2026-09-20: Code review applied — 25 patches and one decision. The costly one: a successful send cleared the whole staged
+  round, so any dish tapped during the request was destroyed; only the sent lines are cleared now. A refused socket handshake
+  is retried (the library gives up for good after a middleware rejection), session rooms are tenant-checked and left on
+  unmount, and the kitchen role's session is kept alive by its own socket so Epic 5's display needs no login of its own. The
+  route now branches on the session's kind rather than "no tables", skips the floor emit for a session closed since the
+  commit, emits the database's timestamp, validates `staffId`, trims a note before measuring it, and tests the round-number
+  conflict before the id-reuse one. The client enforces the send limits it already exported, names the dish a refusal points
+  at, stops claiming "not sent" when the round may have committed, and lets a refusal note die with the round it described.
+  Verified: 16/16 new checks for the patched behaviours, and the original 40 re-run green.
 - 2026-09-17: Implemented, Tasks 1–8. Sending a round is one transaction under the session lock, idempotent on a client send id (a new `order_rounds` table whose primary key is that id), priced by the server with the waiter's quote as a check, and announced to authenticated, role-policed socket rooms only after it commits. Verified against the running server: 20/20 API cases, including six simultaneous sends producing six distinct rounds and five simultaneous identical sends producing exactly one; 20/20 socket cases, including refusal of unauthenticated and forged connections, a kitchen ticket that carries only kitchen lines and the seat note, and no second announcement on a replay. Every "items" count in the app now counts dishes. Found while wiring: a cache refresh aimed at a query key that does not exist (`counter-sales` for `counter-sessions`), fixed by exporting the real key. The order screen's Send flow compiles and renders but has not been exercised in a browser.
 - 2026-09-16: Story created. Reading the socket server and the 2026-08-21 change proposal against the epic's ACs found three things the story must carry. **Socket rooms and socket authentication do not exist**, though the architecture requires them before submission is built — and the kitchen payload includes guests' physical descriptions, so authentication is a requirement. **The proposal's idempotency change (E4) and its print-queue story (E1) were never applied to `epics.md`**, and E4's proposed schema (one unique key per session) would have blocked every round after the first; the key belongs on a new `order_rounds` table. **The client-quoted price cannot be written as-is**, or the tablet sets prices; the server writes the menu price and refuses a mismatch. Five ACs added (idempotency, server price, seat ownership, socket auth, dish counts) plus one for retry safety. Six traps, including the lost-response retry that would double an order and the row-count "items" that 4.4's quantity merge has made wrong on the floor.

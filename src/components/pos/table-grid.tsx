@@ -13,6 +13,7 @@ import { elapsedMinutesFrom, useMinuteTick } from '@/hooks/use-minute-tick'
 import { clockTime, elapsed, mergedTitle } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { TableGridRow } from '@/app/api/tables/route'
+import type { TableStatusChangedPayload } from '@/types/tables'
 import type { StaffRole } from '@/server/auth/permissions'
 
 const TABLES_QUERY_KEY = ['tables'] as const
@@ -39,16 +40,6 @@ export type CounterSession = {
   sequence: number
 }
 
-type TableStatusChangedPayload = {
-  tableId: string
-  status: 'open' | 'occupied' | 'unavailable'
-  sessionId: string | null
-  openedAt: string | null
-  itemCount: number
-  unavailableReason: string | null
-  /** Every table on this session, in label order. Empty when there is none. */
-  groupTableLabels: string[]
-}
 
 /**
  * One card on the grid: a single table, or a whole merged group.
@@ -628,6 +619,10 @@ export function TableGrid({
         sessionId: payload.sessionId,
         openedAt: payload.openedAt,
         itemCount: payload.itemCount,
+        // Patched with the count, never apart from it. The card shows dishes
+        // and money side by side, so a payload that moved one and not the other
+        // would read as a table that ordered three more things for free.
+        totalPaisa: payload.totalPaisa,
         // Patched, not left alone. Omitting it meant a device that did not make
         // the change kept whatever reason its row already held — null (showing
         // "No reason recorded") or, after a return-to-service, the PREVIOUS
@@ -1279,6 +1274,10 @@ export function TableGrid({
                   capacity={unit.capacity}
                   elapsedMinutes={elapsedMinutesFrom(table.openedAt, minuteTick)}
                   itemCount={table.sessionId ? table.itemCount : undefined}
+                  // Session-level, so every member of a group carries the same
+                  // figure; the unit's primary speaks for all of them.
+                  totalPaisa={table.sessionId ? table.totalPaisa : undefined}
+                  unavailableReason={table.unavailableReason}
                   // Compared by UNIT, not by table id — otherwise selecting a
                   // group would light up only whichever member happened to be
                   // primary, on a card that represents all of them.

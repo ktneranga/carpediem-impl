@@ -9,8 +9,10 @@
 
 import {
   Armchair,
+  Ban,
   Beer,
   CakeSlice,
+  Check,
   ChefHat,
   Coffee,
   Croissant,
@@ -23,6 +25,7 @@ import {
   Sandwich,
   Soup,
   Umbrella,
+  Users,
   Utensils,
   UtensilsCrossed,
   type LucideIcon,
@@ -44,13 +47,27 @@ export type TableStatus = 'open' | 'occupied' | 'unavailable'
  * ink fails contrast, and an edge without its word fails the colour rule.
  *
  * `label` is not optional decoration. Colour never carries meaning alone.
+ *
+ * `icon` is the same rule taken one step further — the design system's status
+ * specimens are captioned "colour is never alone", and every one of them pairs
+ * its hue with a glyph as well as a word. Shipped as part of the tone so a
+ * status cannot pick up a tint on one screen and a different mark on another.
  */
 export const STATUS_TONES: Record<
   TableStatus,
-  { label: string; band: string; body: string; chip: string; ink: string; edge: string }
+  {
+    label: string
+    icon: LucideIcon
+    band: string
+    body: string
+    chip: string
+    ink: string
+    edge: string
+  }
 > = {
   open: {
     label: 'Open',
+    icon: Check,
     band: 'bg-open-band',
     body: 'bg-open-body',
     chip: 'bg-open-chip',
@@ -59,6 +76,8 @@ export const STATUS_TONES: Record<
   },
   occupied: {
     label: 'Occupied',
+    // People, not a clock: the clock says how LONG, this says what the state is.
+    icon: Users,
     band: 'bg-occupied-band',
     body: 'bg-occupied-body',
     chip: 'bg-occupied-chip',
@@ -67,6 +86,7 @@ export const STATUS_TONES: Record<
   },
   unavailable: {
     label: 'Unavailable',
+    icon: Ban,
     band: 'bg-unavailable-band',
     body: 'bg-unavailable-body',
     chip: 'bg-unavailable-chip',

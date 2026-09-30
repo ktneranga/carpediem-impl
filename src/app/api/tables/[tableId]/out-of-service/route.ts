@@ -137,6 +137,7 @@ export async function POST(
       sessionId: null,
       openedAt: null,
       itemCount: 0,
+      totalPaisa: 0,
       unavailableReason: reason,
       // No session on an availability change, so no group.
       groupTableLabels: [],

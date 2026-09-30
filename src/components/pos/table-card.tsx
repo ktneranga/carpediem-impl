@@ -1,7 +1,8 @@
 'use client'
 
+import { Clock, Split } from 'lucide-react'
 import { STATUS_TONES, type TableStatus } from '@/lib/design'
-import { elapsed, mergedTitle } from '@/lib/format'
+import { elapsed, lkrFromPaisa, mergedTitle } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 export type { TableStatus }
@@ -15,6 +16,17 @@ export type TableCardProps = {
   capacity?: number | null
   elapsedMinutes?: number
   itemCount?: number
+  /**
+   * What the open order has run up, in paisa. Undefined when there is no session.
+   *
+   * On the card because the mockup puts it there: a waiter crossing the floor
+   * can see what a table is standing at without opening it. It is the sum of
+   * what was sent, at the prices quoted — NOT a bill. Service charge, tax,
+   * comps and discounts are Epic 6's, and none of them is in this number.
+   */
+  totalPaisa?: number
+  /** Why the table is out of service. Shown under "Not in service". */
+  unavailableReason?: string | null
   selected?: boolean
   /** Staged for a merge — distinct from `selected`, which marks the anchor. */
   pendingMerge?: boolean
@@ -54,6 +66,8 @@ export function TableCard({
   capacity,
   elapsedMinutes,
   itemCount,
+  totalPaisa,
+  unavailableReason,
   selected = false,
   pendingMerge = false,
   groupLabels = [],
@@ -62,6 +76,7 @@ export function TableCard({
   onSelect,
 }: TableCardProps) {
   const tone = STATUS_TONES[status]
+  const StatusIcon = tone.icon
   const showOccupiedDetail = status === 'occupied' && elapsedMinutes !== undefined
 
   // `capacity` arrives already SUMMED for a group — the card does not add it up,
@@ -94,9 +109,19 @@ export function TableCard({
   // degraded to `Table 1 +2`. A screen-reader user must not be the only person
   // on the floor who cannot find out which tables the party is sitting at.
   const spokenName = isMerged ? `${spokenList(groupLabels)}, merged` : label
-  const accessibleName = showOccupiedDetail
-    ? `${spokenName}, ${tone.label.toLowerCase()}, ${elapsed(elapsedMinutes)}`
-    : `${spokenName}, ${tone.label.toLowerCase()}`
+  const accessibleName = [
+    spokenName,
+    tone.label.toLowerCase(),
+    showOccupiedDetail ? elapsed(elapsedMinutes) : null,
+    // The same facts the card shows, in the same order — the money and the
+    // out-of-service reason included, or a screen-reader user would be the only
+    // person on the floor who cannot tell what a table is standing at, or why
+    // it is off the floor.
+    status === 'occupied' && totalPaisa ? lkrFromPaisa(totalPaisa) : null,
+    status === 'unavailable' && unavailableReason ? unavailableReason : null,
+  ]
+    .filter(Boolean)
+    .join(', ')
 
   return (
     <button
@@ -113,7 +138,12 @@ export function TableCard({
         // Saturated band + tinted body + matching edge, so status reads without
         // focusing. `overflow-hidden` is what lets the band meet the 20px corner
         // cleanly instead of poking a square shoulder through it.
-        'relative flex h-30 flex-col overflow-hidden rounded-card border-2 text-left',
+        //
+        // 152px, raised from 120px on 2026-09-20: a merged occupied card now
+        // carries four lines — the timer, the items, the running total and the
+        // group — and at 120px the last of them was clipped by the
+        // `overflow-hidden` above, silently and only on the busiest cards.
+        'relative flex h-38 flex-col overflow-hidden rounded-card border-2 text-left',
         // Only from `sm` up. At two columns a spanning card would be the entire
         // row, which on a phone-width viewport is just a card with no neighbours.
         wide && 'sm:col-span-2',
@@ -142,10 +172,13 @@ export function TableCard({
         <span className="truncate text-fs-18 font-extrabold tracking-title text-white">
           {title}
         </span>
-        {/* The word, always. Hue is accompanied by the label; the label is not
-            optional — so selection is carried by the border, elevation and halo,
-            and never by replacing the one thing that must not be misread. */}
-        <span className="shrink-0 text-fs-12 font-semibold tracking-micro text-white uppercase">
+        {/* The word, always — and now the glyph beside it, which is the design
+            system's "colour is never alone" rule taken to the letter. Hue is
+            accompanied by the label; the label is not optional — so selection
+            is carried by the border, elevation and halo, and never by replacing
+            the one thing that must not be misread. */}
+        <span className="flex shrink-0 items-center gap-sp-1 text-fs-12 font-semibold tracking-micro text-white uppercase">
+          <StatusIcon aria-hidden="true" strokeWidth={2.5} className="size-3.5" />
           {tone.label}
         </span>
       </span>
@@ -161,26 +194,59 @@ export function TableCard({
       >
         {status === 'occupied' ? (
           <>
-            <span className={cn('text-fs-16 font-semibold tabular-nums', tone.ink)}>
+            {/* The clock, from the mockup. How long a party has been sitting is
+                the first thing read on an occupied card, and the glyph is what
+                lets it be read as a duration rather than as a quantity. */}
+            <span className={cn('flex items-center gap-sp-1 text-fs-16 font-bold tabular-nums', tone.ink)}>
+              <Clock aria-hidden="true" strokeWidth={2.5} className="size-4 shrink-0" />
               {elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : '—'}
             </span>
-            {showFullGroup ? (
-              <span className={cn('truncate text-fs-12 font-semibold', tone.ink)}>
-                {groupLabels.join(' + ')}
-              </span>
-            ) : null}
-            <span className={cn('text-fs-12 tabular-nums', tone.ink)}>
+            <span className={cn('truncate text-fs-12 tabular-nums', tone.ink)}>
               {itemCount !== undefined ? `${itemCount} item${itemCount === 1 ? '' : 's'}` : 'No items yet'}
-              {/* The table count is what tells a waiter this single card is a
-                  party spread over several tables, and `seats` is their COMBINED
-                  capacity — the number needed to place a party of seven, which
-                  nobody could get before without adding up cards in their head. */}
-              {isMerged && !showFullGroup ? ` · ${groupLabels.length} tables` : ''}
+              {/* `seats` is the group's COMBINED capacity — the number needed to
+                  place a party of seven, which nobody could get before without
+                  adding up cards in their head. The mockup reads "3 covers"
+                  here; covers are not captured anywhere yet (see the note in
+                  `deferred-work.md`), and a card that says "1 cover" on every
+                  table would be worse than one that says what it knows. */}
               {capacity != null ? ` · seats ${capacity}` : ''}
             </span>
+            {/* The running total, the mockup's most prominent line after the
+                title. Absent rather than "LKR 0" before anything is sent: an
+                order with nothing on it has no total, and a zero reads as a
+                table that has been sitting for an hour ordering nothing. */}
+            {totalPaisa ? (
+              <span className={cn('text-fs-18 font-extrabold tabular-nums', tone.ink)}>
+                {lkrFromPaisa(totalPaisa)}
+              </span>
+            ) : null}
+            {/* Which other tables the party is on. The mockup writes it
+                "Merged with T07"; with more than one other table the labels are
+                listed instead, because naming them is the whole point — a
+                waiter looking at `B1 +2` otherwise has to open the card to find
+                out where the party is sitting. */}
+            {isMerged ? (
+              <span className={cn('flex items-center gap-sp-1 truncate text-fs-12 font-semibold', tone.ink)}>
+                <Split aria-hidden="true" strokeWidth={2.5} className="size-3.5 shrink-0" />
+                <span className="truncate">
+                  {showFullGroup
+                    ? groupLabels.join(' + ')
+                    : `Merged with ${groupLabels.filter((other) => other !== label).join(', ')}`}
+                </span>
+              </span>
+            ) : null}
           </>
         ) : status === 'unavailable' ? (
-          <span className={cn('text-fs-14 font-semibold', tone.ink)}>Not in service</span>
+          <>
+            <span className={cn('text-fs-14 font-semibold', tone.ink)}>Not in service</span>
+            {/* The REASON, which the API has always returned and the card has
+                never shown — "Sun bed broken" in the mockup. Without it an owner
+                has to open the table to find out why it is off the floor, and
+                the person who took it off already typed the answer. */}
+            {unavailableReason ? (
+              <span className={cn('truncate text-fs-12', tone.ink)}>{unavailableReason}</span>
+            ) : null}
+          </>
         ) : (
           <>
             <span
@@ -190,7 +256,7 @@ export function TableCard({
             </span>
             {capacity != null ? (
               <span className={cn('text-fs-12 tabular-nums', selected ? 'text-slate-600' : tone.ink)}>
-                seats {capacity}
+                Seats {capacity}
               </span>
             ) : null}
           </>

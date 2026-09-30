@@ -91,6 +91,8 @@ export async function POST(
       sessionId: null,
       openedAt: null,
       itemCount: 0,
+      // No session, so nothing has been run up.
+      totalPaisa: 0,
       // Cleared alongside the column, so a remote cache cannot keep showing the
       // previous outage's reason against a table that is back in service.
       unavailableReason: null,

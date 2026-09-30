@@ -33,6 +33,12 @@ import { cn } from '@/lib/utils'
  * column with a `flex-1` main; `sticky bottom-0` alone never pushes the strip to
  * the bottom of a short screen, it only shifts it toward that edge from wherever
  * it already sits. Both `table-grid.tsx` and `order-screen.tsx` do this.
+ *
+ * ── The full-width `commit` slot was removed on 2026-09-20 ───────────────────
+ * It existed for one caller: the order strip's Send, on its own row beneath
+ * everything else. Teran's mockup puts Send on the button row with the others,
+ * so the slot had no user left. `sendButtonClass` below is what makes it read as
+ * the primary action now — width and weight rather than a row of its own.
  */
 export function ActionStripShell({
   regionLabel,
@@ -40,7 +46,6 @@ export function ActionStripShell({
   label,
   detail,
   muted = false,
-  commit,
   children,
 }: {
   /** Names the landmark. "Selected table actions", "Order actions". */
@@ -57,18 +62,6 @@ export function ActionStripShell({
    * invites a tap and teaches nothing.
    */
   muted?: boolean
-  /**
-   * The full-width commit, rendered on its own row beneath everything else.
-   *
-   * A SLOT rather than just another child, because `w-full` on a child of the
-   * button row resolves to 100% of that row — which is `flex: 0 1 auto` in a
-   * `justify-between` container, so its used width is max-content. "Submit
-   * Order" therefore wrapped onto its own line and rendered about 300px wide,
-   * right-aligned, while both its own docstring and the branch that rendered it
-   * claimed it spanned the strip. Being a direct flex item of the shell with
-   * `w-full` is what actually makes it full-width.
-   */
-  commit?: React.ReactNode
   children?: React.ReactNode
 }) {
   return (
@@ -99,8 +92,6 @@ export function ActionStripShell({
       </div>
 
       <div className="flex flex-wrap items-center gap-sp-3">{children}</div>
-
-      {commit ? <div className="w-full">{commit}</div> : null}
     </div>
   )
 }
@@ -142,16 +133,12 @@ export const secondaryButtonClass = cn(
 )
 
 /**
- * The full-width commit.
+ * The full-width commit, for a SHEET rather than a strip.
  *
  * `ux-design-specification.md:899` — "Send Order is always full-width brand-700,
- * the single unmissable primary action." (The spec's label is "Send Order";
- * Story 4.1 Decision 2 keeps the epics' "Submit Order", which four later stories
- * reference by name. The full-width rule is what is being honoured here.) It is
- * the ONLY control in the system
- * that takes the whole strip width; everything else sits in the right-hand row.
- * Reserved for submitting a round to production, which is the one action in the
- * order flow that reaches the kitchen and cannot be quietly taken back.
+ * the single unmissable primary action." That is still the treatment inside the
+ * modifier sheet, whose "Add to Order" spans the sheet. The order STRIP no
+ * longer uses it; see `sendButtonClass`.
  */
 export const commitButtonClass = cn(
   'h-touch-waiter w-full rounded-waiter px-sp-5 text-fs-18 font-extrabold tracking-title',
@@ -160,4 +147,32 @@ export const commitButtonClass = cn(
   'active:scale-[0.99] active:shadow-pressed',
   'disabled:opacity-40 disabled:active:scale-100',
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+)
+
+/**
+ * Send — the order strip's primary action, on the button row.
+ *
+ * ── A deliberate divergence from the UX spec, taken 2026-09-20 ───────────────
+ * `ux-design-specification.md:899` makes Send full-width on its own row. Teran's
+ * mockup puts it on the row with the others, and that is what is built. What the
+ * spec was protecting — that the one irreversible action in the order flow is
+ * unmissable — is carried by weight instead of by width: it is the widest
+ * control on the row (`min-w-64`), the only solid brand fill among them, a size
+ * larger, and last in reading order.
+ *
+ * Still `h-touch-waiter` (80px) though the mockup draws about 56px. Every
+ * waiter-context control in this product is 80px; a bar tapped mid-service, at
+ * speed, with wet hands is the last place to shave a target.
+ *
+ * Disabled is `opacity-40` of the solid brand, which lands on the soft blue the
+ * mockup shows for "nothing staged yet" — the same state, reached by a rule
+ * rather than by a second colour to keep in step.
+ */
+export const sendButtonClass = cn(
+  'h-touch-waiter min-w-64 rounded-waiter px-sp-6 text-fs-18 font-extrabold tracking-title',
+  'bg-brand-700 text-white shadow-el-2 inset-shadow-top',
+  'transition-[transform,box-shadow] duration-80 ease-standard',
+  'active:scale-[0.97] active:bg-brand-500 active:shadow-pressed',
+  'disabled:opacity-40 disabled:active:scale-100',
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700',
 )

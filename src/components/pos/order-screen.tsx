@@ -19,15 +19,19 @@ import {
 } from '@/components/pos/staged-round-list'
 import {
   clearStagedRound,
+  resetSendId,
   sendIdForRound,
+  type StagedLine,
   useStagedRound,
 } from '@/components/pos/use-staged-round'
 import type { MenuItemRow } from '@/app/api/menu/route'
-import type {
-  OrderConfirmedPayload,
-  SubmitRoundRequest,
-  SubmitRoundResponse,
-  SubmittedRoundRow,
+import {
+  MAX_LINE_QUANTITY,
+  MAX_ROUND_LINES,
+  type OrderConfirmedPayload,
+  type SubmitRoundRequest,
+  type SubmitRoundResponse,
+  type SubmittedRoundRow,
 } from '@/types/orders'
 import { menuQueryOptions } from '@/components/pos/menu-browser'
 import { COUNTER_QUERY_KEY } from '@/components/pos/table-grid'
@@ -450,8 +454,16 @@ export function OrderScreen({
   // ── The staged round ──────────────────────────────────────────────────────
   // Client-only by AC-5. Nothing below writes to the database; Story 4.5's
   // submit is the commit point.
-  const { lines, addLine, removeLine, setQuantity, reassignLine, acceptPrice, clear } =
-    useStagedRound(sessionId)
+  const {
+    lines,
+    addLine,
+    removeLine,
+    setQuantity,
+    reassignLine,
+    acceptPrice,
+    clear,
+    clearSentLines,
+  } = useStagedRound(sessionId)
 
   /**
    * The modifier sheet: the dish, and the seat it was opened FOR.
@@ -495,7 +507,7 @@ export function OrderScreen({
   // Join this order's room, so a round sent from the OTHER tablet appears here
   // at once instead of on the next focus refetch. The hook re-joins after every
   // reconnect. The server only lets a waiter or owner in.
-  useSocketRoom('session:subscribe', { sessionId })
+  useSocketRoom('session:subscribe', { sessionId }, 'session:unsubscribe')
   useSocketEvent<OrderConfirmedPayload>('order:confirmed', (payload) => {
     if (payload.sessionId === sessionId) {
       void queryClient.invalidateQueries({ queryKey: ['orders', sessionId] })
@@ -588,17 +600,41 @@ export function OrderScreen({
 
   const sheetSeat = sheet ? (seats.find((seat) => seat.id === sheet.seatId) ?? null) : null
 
-  /** What the bar says about the last send, when it did not go. */
-  const [sendNote, setSendNote] = useState<string | null>(null)
+  /**
+   * What the bar says about the last send, when it did not go.
+   *
+   * Held WITH the round it is about. The store replaces the array on every
+   * change, so `forLines === lines` is false the moment the waiter stages,
+   * removes or re-seats anything — and the note disappears by itself. It used
+   * to persist, so "a price has changed" stayed over a round that no longer
+   * contained the dish, and the waiter was left looking for a problem they had
+   * already fixed. `forLines: null` is a note about no particular round.
+   */
+  const [sendNote, setSendNote] = useState<{ text: string; forLines: StagedLine[] | null } | null>(
+    null,
+  )
+  const sendNoteText =
+    sendNote && (sendNote.forLines === null || sendNote.forLines === lines) ? sendNote.text : null
+
+  /** The dish a refusal points at, by name, when the round still holds it. */
+  function refusedDishName(detail: Record<string, unknown>): string | null {
+    const itemId = typeof detail.itemId === 'string' ? detail.itemId : null
+    if (!itemId) return null
+    return lines.find((line) => line.menuItemId === itemId)?.name ?? null
+  }
 
   const sendMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       // The same id for every retry of this exact round, a new one once the
       // round changes (Trap 5). Taken at the moment of sending, not at render.
       const submissionId = sendIdForRound(sessionId)
-      return sendRound(sessionId, {
+      // The exact lines THIS request carries, captured before it leaves. A send
+      // is a network round trip and the waiter keeps working through it; what
+      // comes back can only speak for these.
+      const sent = lines
+      const response = await sendRound(sessionId, {
         submissionId,
-        lines: lines.map((line) => ({
+        lines: sent.map((line) => ({
           menuItemId: line.menuItemId,
           seatSlotId: line.seatSlotId,
           quantity: line.quantity,
@@ -606,15 +642,26 @@ export function OrderScreen({
           quotedPricePaisa: line.pricePaisa,
         })),
       })
+      return { response, sentLineIds: sent.map((line) => line.lineId) }
     },
     onMutate: () => setSendNote(null),
-    onSuccess: async () => {
+    onSuccess: async ({ response, sentLineIds }) => {
       // History first, THEN clear the round: otherwise the column shows
       // "nothing sent, nothing staged" for the length of a refetch, and the bar
       // flickers to `empty` before it settles on `submitted`.
       await queryClient.invalidateQueries({ queryKey: ['orders', sessionId] })
-      clearStagedRound(sessionId)
+      // Only what the server committed. `clearStagedRound` emptied EVERYTHING,
+      // so a dish tapped while the send was in flight was thrown away with no
+      // error and no undo — the guest's food simply never reached the kitchen.
+      // Anything staged meanwhile stays, as the next round.
+      clearSentLines(sentLineIds)
       setAddingMore(false)
+      if (response.replayed) {
+        // 200, not 201: this round was already on the order. Said out loud,
+        // because the history gains nothing and a silent Send reads as a
+        // failure — the waiter's next move would be to send it again.
+        setSendNote({ text: 'Already sent — this round was on the order already.', forLines: null })
+      }
       void queryClient.invalidateQueries({ queryKey: ['tables'] })
       void queryClient.invalidateQueries({ queryKey: COUNTER_QUERY_KEY })
     },
@@ -624,7 +671,7 @@ export function OrderScreen({
         return
       }
       if (error instanceof ForbiddenError) {
-        setSendNote('Your role cannot send orders.')
+        setSendNote({ text: 'Your role cannot send orders.', forLines: null })
         return
       }
       if (error instanceof SessionGoneError) {
@@ -634,27 +681,62 @@ export function OrderScreen({
       if (error instanceof SendRefusedError) {
         // Each refusal points at something the live queries can show: refetch
         // them, and the derived line problems above flag the exact line.
+        // The server says WHICH dish or seat. Naming it saves the waiter
+        // hunting a long round for the one line that is flagged.
+        const dish = refusedDishName(error.detail)
         switch (error.code) {
           case 'ITEM_UNAVAILABLE':
             void queryClient.invalidateQueries({ queryKey: menuQueryOptions.queryKey })
-            setSendNote('Not sent — a dish is no longer available. Take it off and send again.')
+            setSendNote({
+              text: dish
+                ? `Not sent — ${dish} is no longer available. Take it off and send again.`
+                : 'Not sent — a dish is no longer available. Take it off and send again.',
+              forLines: lines,
+            })
             return
           case 'PRICE_CHANGED':
             void queryClient.invalidateQueries({ queryKey: menuQueryOptions.queryKey })
-            setSendNote('Not sent — a price has changed. Accept the new price and send again.')
+            setSendNote({
+              text: dish
+                ? `Not sent — the price of ${dish} has changed. Accept it and send again.`
+                : 'Not sent — a price has changed. Accept the new price and send again.',
+              forLines: lines,
+            })
             return
           case 'SEAT_NOT_FOUND':
             void queryClient.invalidateQueries({ queryKey: seatsQueryKey })
-            setSendNote('Not sent — a dish is on a seat that was removed. Move it and send again.')
+            setSendNote({
+              text: 'Not sent — a dish is on a seat that was removed. Move it and send again.',
+              forLines: lines,
+            })
+            return
+          case 'SUBMISSION_ID_REUSED':
+            // This send id belongs to another order's round, so every retry
+            // under it is refused identically. Throw it away and the next tap
+            // goes under a fresh one — the round itself is untouched and has
+            // not been sent anywhere.
+            resetSendId(sessionId)
+            setSendNote({ text: 'Not sent — tap Send again.', forLines: null })
+            return
+          case 'ROUND_CONFLICT':
+            setSendNote({
+              text: 'Not sent — another round was sent at the same moment. Tap Send again.',
+              forLines: null,
+            })
             return
           default:
-            setSendNote(`Not sent — ${error.message}`)
+            setSendNote({ text: `Not sent — ${error.message}`, forLines: lines })
             return
         }
       }
-      // Network failure or a server error. The round stays, and so does its
-      // send id: if the server did commit, the retry is answered as a replay.
-      setSendNote('Not sent — check the connection and tap Send again.')
+      // A network failure, or a 5xx. Deliberately NOT "nothing was saved": the
+      // request may have committed and lost its response. The round stays, and
+      // so does its send id, so tapping Send again either sends it or is
+      // answered as a replay — never a second copy in the kitchen.
+      setSendNote({
+        text: 'Not sure it was sent — tap Send again; it cannot be ordered twice.',
+        forLines: lines,
+      })
     },
   })
 
@@ -675,6 +757,15 @@ export function OrderScreen({
       : submittedRounds.length > 0 && !addingMore
         ? 'submitted'
         : 'empty'
+
+  // Bigger than one send may be. The server's schema refuses the round WHOLE —
+  // every line of it — so the screen stops it here and says which limit was
+  // reached, instead of a 400 that names nothing. A round this size is split by
+  // sending part of it and staging the rest; quantities are already capped as
+  // they are staged, so an over-cap one can only come from a mirror written
+  // before that cap existed.
+  const overLimit =
+    lines.length > MAX_ROUND_LINES || lines.some((line) => line.quantity > MAX_LINE_QUANTITY)
 
   // With items on the table, leaving is a walkout — money is owed and nobody
   // paid it. With nothing ordered, it is an abandonment. The server enforces
@@ -1218,11 +1309,15 @@ export function OrderScreen({
         stagedCount={stagedItemCount}
         destinationSummary={destinationSummary}
         busy={sendMutation.isPending}
-        sendBlocked={stagedProblems.size > 0}
+        sendBlocked={stagedProblems.size > 0 || overLimit}
         note={
           stagedProblems.size > 0
             ? `Fix ${stagedProblems.size} item${stagedProblems.size === 1 ? '' : 's'} before sending.`
-            : (sendNote ?? undefined)
+            : overLimit
+              ? lines.length > MAX_ROUND_LINES
+                ? `Too many items to send at once (${MAX_ROUND_LINES} maximum). Send some now and the rest after.`
+                : `One line is over ${MAX_LINE_QUANTITY}. Lower it and send again.`
+              : (sendNoteText ?? undefined)
         }
         onSubmitOrder={lines.length > 0 ? () => sendMutation.mutate() : undefined}
         onClear={

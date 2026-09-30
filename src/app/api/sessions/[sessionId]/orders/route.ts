@@ -5,7 +5,8 @@ import { z } from 'zod'
 import { db } from '@/server/db'
 import { orderEvents, orderRounds, orderSessions } from '@/server/db/schema'
 import { isUniqueViolation } from '@/server/db/errors'
-import { dishCount } from '@/server/orders/item-count'
+import { dishCount, dishTotalPaisa } from '@/server/orders/item-count'
+import { wakePrintQueue } from '@/server/print/wake'
 import { loadSubmittedRounds } from '@/server/orders/submitted-rounds'
 import {
   ItemUnavailableError,
@@ -30,7 +31,8 @@ import {
 
 export type { SubmittedItemRow, SubmittedRoundRow } from '@/types/orders'
 
-const sessionIdSchema = z.string().uuid()
+/** Both the session id in the path and the staff id in the header are uuids. */
+const uuidSchema = z.string().uuid()
 
 function fail(
   code: string,
@@ -57,7 +59,13 @@ const submitSchema = z.object({
         menuItemId: z.string().uuid(),
         seatSlotId: z.string().uuid(),
         quantity: z.number().int().min(1).max(MAX_LINE_QUANTITY),
-        modifierText: z.string().max(MAX_MODIFIER_TEXT),
+        // TRIMMED, then measured. The service stores the trimmed text, so a
+        // 120-character note typed with a trailing space was refused for being
+        // 121 long while the value that would actually have been written fits.
+        modifierText: z
+          .string()
+          .transform((text) => text.trim())
+          .refine((text) => text.length <= MAX_MODIFIER_TEXT),
         quotedPricePaisa: z.number().int().min(0),
       }),
     )
@@ -88,7 +96,7 @@ export async function GET(
 ) {
   const { sessionId: rawSessionId } = await params
 
-  const parsedSessionId = sessionIdSchema.safeParse(rawSessionId)
+  const parsedSessionId = uuidSchema.safeParse(rawSessionId)
   if (!parsedSessionId.success) {
     return fail('INVALID_SESSION_ID', 'Session id must be a UUID', 400)
   }
@@ -137,9 +145,13 @@ export async function GET(
  * already did, and doing it again is the duplicate ticket AC-8 exists to stop.
  *
  * ── No printing ──────────────────────────────────────────────────────────────
+ * ── Printing ─────────────────────────────────────────────────────────────────
  * `architecture.md:867` calls a synchronous print service here. That step was
  * superseded by the durable print queue (sprint-change-proposal-2026-08-21,
- * Story 5.0), which will enqueue from these same committed rows.
+ * Story 5.0), which now enqueues inside `submitRound`'s transaction — one
+ * `print_jobs` row per destination, written with the same `tx` as the round.
+ * This handler only WAKES the worker after the commit; it never opens a socket
+ * to a printer, which is what keeps a jammed printer off the response path.
  *
  * RBAC: inherited from `{ prefix: '/api/sessions', roles: ['owner','waiter'] }`.
  */
@@ -149,7 +161,7 @@ export async function POST(
 ) {
   const { sessionId: rawSessionId } = await params
 
-  const parsedSessionId = sessionIdSchema.safeParse(rawSessionId)
+  const parsedSessionId = uuidSchema.safeParse(rawSessionId)
   if (!parsedSessionId.success) {
     return fail('INVALID_SESSION_ID', 'Session id must be a UUID', 400)
   }
@@ -157,8 +169,13 @@ export async function POST(
 
   // Set by the proxy from a validated session, and stripped from anything a
   // client sent. The identity every event row is attributed to (NFR-S3).
+  //
+  // Checked as a UUID, not just for presence: `order_events.staff_id` is a uuid
+  // column, so anything else reaches PostgreSQL as an invalid-input error and
+  // comes back as a 500 saying "nothing was saved" — true, but unreadable. The
+  // proxy cannot produce one; a direct call with a forged header can.
   const staffId = request.headers.get('x-staff-id')
-  if (!staffId) {
+  if (!staffId || !uuidSchema.safeParse(staffId).success) {
     return fail('UNAUTHENTICATED', 'Sign in required', 401)
   }
 
@@ -208,33 +225,60 @@ export async function POST(
     if (error instanceof SubmissionIdReusedError) {
       return fail('SUBMISSION_ID_REUSED', 'This send belongs to a different order.', 409)
     }
+    // ── Order matters ────────────────────────────────────────────────────────
+    // `isUniqueViolation` treats a 23505 whose `constraint` is UNDEFINED as a
+    // match for whatever name it is asked about (see its header: the fallback
+    // for a driver that stops reporting the name). So on such an error the
+    // FIRST branch wins, and this is the order that fails safely:
+    //
+    // ROUND_CONFLICT tells the tablet to send again, and a retry re-runs every
+    // check from the top: if the round really did collide on its number, the
+    // retry succeeds; if the error was actually a reused id, the retry reaches
+    // the PKEY branch below and gets the terminal answer it deserves. Either
+    // way the waiter ends up at the right outcome, one tap later.
+    //
+    // The reverse order cannot recover: SUBMISSION_ID_REUSED is terminal, so a
+    // round-number collision reported as one throws away a legitimate send and
+    // tells the waiter to start the round over.
+    //
+    // (An earlier version of this comment claimed the retry "answers 200",
+    // which is only true when the id really was a replay of THIS session.)
+    //
+    // Should be impossible under the session lock; a conflict, not a fault.
+    if (isUniqueViolation(error, ROUND_NUMBER_INDEX)) {
+      return fail('ROUND_CONFLICT', 'Another round was sent at the same moment. Send again.', 409)
+    }
     // Two sends with the same id from DIFFERENT sessions can race: each holds
     // only its own session's lock, so neither replay check sees the other's
     // uncommitted round. Answer from whatever committed.
     if (isUniqueViolation(error, ROUND_PKEY)) {
-      const [existing] = await db
-        .select({
-          sessionId: orderRounds.sessionId,
-          roundNumber: orderRounds.roundNumber,
-          itemCount: orderRounds.itemCount,
-        })
-        .from(orderRounds)
-        .where(eq(orderRounds.id, submissionId))
-        .limit(1)
-      if (existing && existing.sessionId === sessionId) {
-        const replay: SubmitRoundResponse = {
-          submissionId,
-          roundNumber: existing.roundNumber,
-          itemCount: existing.itemCount,
-          replayed: true,
+      try {
+        const [existing] = await db
+          .select({
+            sessionId: orderRounds.sessionId,
+            roundNumber: orderRounds.roundNumber,
+            itemCount: orderRounds.itemCount,
+          })
+          .from(orderRounds)
+          .where(eq(orderRounds.id, submissionId))
+          .limit(1)
+        if (existing && existing.sessionId === sessionId) {
+          const replay: SubmitRoundResponse = {
+            submissionId,
+            roundNumber: existing.roundNumber,
+            itemCount: existing.itemCount,
+            replayed: true,
+          }
+          return NextResponse.json({ success: true, data: replay }, { status: 200 })
         }
-        return NextResponse.json({ success: true, data: replay }, { status: 200 })
+        return fail('SUBMISSION_ID_REUSED', 'This send belongs to a different order.', 409)
+      } catch (lookupError) {
+        // This read is INSIDE the catch. An unguarded throw here escapes the
+        // handler entirely, so the waiter gets Next's own error page instead of
+        // the `{ success: false }` body every caller parses.
+        console.error('[api/sessions/:sessionId/orders] Replay lookup failed:', lookupError)
+        return fail('INTERNAL_ERROR', 'The round was not sent. Nothing was saved.', 500)
       }
-      return fail('SUBMISSION_ID_REUSED', 'This send belongs to a different order.', 409)
-    }
-    // Should be impossible under the session lock; a conflict, not a fault.
-    if (isUniqueViolation(error, ROUND_NUMBER_INDEX)) {
-      return fail('ROUND_CONFLICT', 'Another round was sent at the same moment. Send again.', 409)
     }
     console.error('[api/sessions/:sessionId/orders] Failed to send round:', error)
     return fail('INTERNAL_ERROR', 'The round was not sent. Nothing was saved.', 500)
@@ -253,7 +297,15 @@ export async function POST(
 
   // ── Committed. Announce. ──────────────────────────────────────────────────
   const { announcement } = result
-  const timestamp = new Date().toISOString()
+
+  // The tickets were queued inside the transaction that just committed (Story
+  // 5.0). This only asks the worker to look now rather than on its next tick;
+  // the timer in `server.ts` is what guarantees they go out.
+  wakePrintQueue()
+  // PostgreSQL's clock, from the committed row — not Node's. The ticket, the
+  // confirmation and the `order_rounds` row must all name the same instant, and
+  // the app server's clock is not the one the audit trail is written against.
+  const timestamp = announcement.submittedAt.toISOString()
 
   for (const [destination, ticketLines] of announcement.byDestination) {
     emitOrderSubmitted({
@@ -275,27 +327,53 @@ export async function POST(
     staffId,
     sessionId,
     roundNumber: result.roundNumber,
-    itemCount: result.itemCount,
+    roundItemCount: result.itemCount,
   })
 
   // The floor's item count changed (AC-12). Read after commit, in dishes.
   try {
     const [dishes] = await db
-      .select({ total: dishCount })
+      .select({ total: dishCount, totalPaisa: dishTotalPaisa })
       .from(orderEvents)
       .where(and(eq(orderEvents.sessionId, sessionId), eq(orderEvents.eventType, 'ITEM_ADDED')))
 
-    if (announcement.tableIds.length === 0) {
-      // A counter sale has no card on the floor; its list shows the count.
+    // ── The two are NOT alternatives ─────────────────────────────────────────
+    // This was an if/else on `isCounterSale`, which broke a real flow: a
+    // counter sale that is later SEATED keeps `kind = 'counter'` for ever —
+    // `attachTables` deliberately never updates it ("that column records where
+    // the order started, not what it currently occupies") — so such a session
+    // has tables attached AND `isCounterSale === true`, took the counter
+    // branch, and its table card was never refreshed again. Found in review.
+    //
+    // So: refresh the counter list when the order is of kind counter, refresh
+    // the cards when there are tables, and for a seated counter sale do both.
+    // (The `tableIds.length === 0` test this replaced was wrong the other way
+    // round, and its stated motivation — a table order with every table
+    // released — cannot happen: `releaseTable` refuses the last one.)
+    if (announcement.isCounterSale) {
       emitCounterSalesChanged()
-    } else {
-      for (const tableId of announcement.tableIds) {
+    }
+
+    if (announcement.tableIds.length > 0) {
+      // Is the session still open? The round committed, the lock was released,
+      // and the close route may have run between then and now. `occupied` sent
+      // after a close puts the table back on the floor as busy with nothing on
+      // it, and nothing later corrects it — the close emitted its own `open`
+      // BEFORE this one. Skipping is right: the close already told the floor.
+      const [current] = await db
+        .select({ closedAt: orderSessions.closedAt })
+        .from(orderSessions)
+        .where(eq(orderSessions.id, sessionId))
+        .limit(1)
+
+      for (const tableId of current?.closedAt ? [] : announcement.tableIds) {
         emitTableStatusChanged({
           tableId,
           status: 'occupied',
           sessionId,
           openedAt: announcement.openedAt.toISOString(),
           itemCount: dishes?.total ?? 0,
+          totalPaisa: dishes?.totalPaisa ?? 0,
           // An occupied table carries no out-of-service reason — migration
           // 0006's CHECK makes that impossible.
           unavailableReason: null,

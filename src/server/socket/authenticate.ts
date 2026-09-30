@@ -4,30 +4,46 @@
  * ── Why this module stands alone ─────────────────────────────────────────────
  * It is imported by `server.ts`, a plain Node process outside Next's module
  * graph. `@/server/db` and the session service both reach `server-only`, whose
- * default export THROWS there. So: its own tiny `pg` pool, plain SQL, relative
+ * default export THROWS there. So: its own `pg` pool, plain SQL, relative
  * imports only — the precedent is `src/server/db/sweep-sessions.ts`.
  *
  * ── What it checks ───────────────────────────────────────────────────────────
- * Exactly what `validateSession` checks for an HTTP request: the cookie's HMAC,
- * then that the session row exists and its idle age — measured by PostgreSQL's
- * clock, not Node's — is inside the tenant's timeout. It does not destroy an
- * expired row; the proxy and the ten-minute sweep already do.
+ * What `validateSession` checks for an HTTP request: the cookie's HMAC, then
+ * that the session row exists and its idle age — measured by PostgreSQL's
+ * clock — is inside the tenant's timeout. Every room join re-checks, so a
+ * socket that connected before its session expired cannot use it to join.
  *
- * ── What it does not check ───────────────────────────────────────────────────
- * The session is checked when the socket CONNECTS and again on every room join.
- * A socket already in a room stays there until it disconnects, even if the
- * session idles out meanwhile. Sign-out disconnects the device's socket
- * (`disconnectSocket`); an idle-expired socket is closed only when it drops.
- * Logged in deferred-work.md.
+ * ── The kitchen's session is kept alive by its socket ────────────────────────
+ * A KITCHEN session's `last_active_at` is refreshed on connect and on join
+ * (Teran, 2026-09-20). A kitchen display's only activity IS the socket: it
+ * reads, it does not poll, so it would cross the 5-minute idle timeout and then
+ * be refused on every reconnect while its current connection kept working.
+ * Waiter and owner sessions are NOT refreshed this way — theirs can send orders
+ * and take payments, and the idle timeout is what protects an unattended
+ * tablet. Story 5.3's ticket status is the kitchen's only write, and it is
+ * attributed like any other.
+ *
+ * ── What it still does not do ────────────────────────────────────────────────
+ * A socket already in a room stays there until it disconnects, even if its
+ * session expires meanwhile. Sign-out disconnects the device's socket. Logged
+ * in deferred-work.md.
  */
 import { Pool } from 'pg'
 import type { Server, Socket } from 'socket.io'
 import { readCookie, SESSION_COOKIE_NAME, verifySessionCookie } from '../auth/session-cookie'
+import {
+  OWNER_ROOM,
+  PRODUCTION_SUBSCRIBE,
+  SESSION_ROOM_PREFIX,
+  sessionRoom,
+} from './rooms'
 
 export type SocketRole = 'owner' | 'waiter' | 'kitchen'
 
 export type SocketIdentity = {
+  sessionId: string
   staffId: string
+  tenantId: string
   role: SocketRole
 }
 
@@ -37,8 +53,10 @@ function getPool(): Pool {
   if (pool) return pool
   const connectionString = process.env.DATABASE_URL
   if (!connectionString) throw new Error('[socket] DATABASE_URL is not set')
-  // Small: one query per connect and per join, both brief.
-  pool = new Pool({ connectionString, max: 3 })
+  // Every connect AND every join queries here. Twenty tablets reconnecting
+  // after one Wi-Fi blip is forty queries; at max 3 the authentication path
+  // itself became the thing keeping staff out.
+  pool = new Pool({ connectionString, max: 10 })
   pool.on('error', (error) => console.error('[socket] Auth pool error:', error))
   return pool
 }
@@ -56,8 +74,14 @@ export async function identityFromCookieHeader(
   const sessionId = verifySessionCookie(readCookie(cookieHeader, SESSION_COOKIE_NAME))
   if (!sessionId) return null
 
-  const result = await getPool().query<{ staff_id: string; role: SocketRole; live: boolean }>(
+  const result = await getPool().query<{
+    staff_id: string
+    tenant_id: string
+    role: SocketRole
+    live: boolean
+  }>(
     `SELECT s.staff_id,
+            s.tenant_id,
             s.role,
             extract(epoch from (now() - s.last_active_at))
               <= coalesce(c.session_timeout_minutes, 5) * 60 AS live
@@ -69,7 +93,29 @@ export async function identityFromCookieHeader(
   )
   const row = result.rows[0]
   if (!row || !row.live) return null
-  return { staffId: row.staff_id, role: row.role }
+
+  // See the header: the kitchen's session is kept alive by its socket.
+  if (row.role === 'kitchen') {
+    try {
+      await getPool().query('UPDATE staff_sessions SET last_active_at = now() WHERE id = $1', [
+        sessionId,
+      ])
+    } catch (error) {
+      // Refreshing is a convenience; failing it must not refuse the connection.
+      console.error('[socket] Could not refresh the kitchen session:', error)
+    }
+  }
+
+  return { sessionId, staffId: row.staff_id, tenantId: row.tenant_id, role: row.role }
+}
+
+/** Is this order in the caller's restaurant? */
+async function sessionBelongsToTenant(sessionId: string, tenantId: string): Promise<boolean> {
+  const result = await getPool().query(
+    'SELECT 1 FROM order_sessions WHERE id = $1 AND tenant_id = $2 LIMIT 1',
+    [sessionId, tenantId],
+  )
+  return result.rowCount === 1
 }
 
 function identityOf(socket: Socket): SocketIdentity | null {
@@ -90,20 +136,15 @@ export async function authenticateSocket(
     ;(socket.data as { identity?: SocketIdentity }).identity = identity
     next()
   } catch (error) {
-    // A database outage must not let anyone in.
+    // A database outage must not let anyone in. The client retries — see
+    // `useSocketRoom`'s sibling in `use-socket.ts`: Socket.io does NOT retry a
+    // middleware rejection on its own.
     console.error('[socket] Handshake authentication failed:', error)
     next(new Error('UNAUTHENTICATED'))
   }
 }
 
 type Ack = (result: { ok: boolean; error?: string }) => void
-
-/** Which roles may join which production room. The kitchen role serves every station. */
-const PRODUCTION_ROOMS: Record<string, string> = {
-  'kitchen:subscribe': 'kitchen',
-  'pizza:subscribe': 'pizza_kitchen',
-  'bar:subscribe': 'bar',
-}
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -114,23 +155,27 @@ const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  *   There is no bar or pizza role; one kitchen login serves every station until
  *   Epic 10 adds station users (deferred-work.md).
  * - `owner:subscribe` → `owner` role.
- * - `session:subscribe { sessionId }` → `waiter` or `owner`.
+ * - `session:subscribe { sessionId }` → `waiter` or `owner`, AND the order must
+ *   be in the caller's own restaurant. Role alone was not enough: a session id
+ *   from another tenant would have been joined without question.
+ * - `session:unsubscribe { sessionId }` → leaves, so a tablet that navigates
+ *   back to the floor stops receiving that order's confirmations.
  *
- * Every join re-checks the session against the database, so a socket that
- * connected before its session idled out cannot use that to join a room.
- * A refused join answers through the ack and never throws.
+ * Every handler is wrapped: Socket.io does not catch a rejected listener, and
+ * an unhandled rejection takes down the process serving the whole POS.
  */
 export function registerRoomHandlers(io: Server): void {
   io.on('connection', (socket) => {
-    async function allowed(roles: SocketRole[]): Promise<boolean> {
+    async function allowed(roles: SocketRole[]): Promise<SocketIdentity | null> {
       const identity = identityOf(socket)
-      if (!identity || !roles.includes(identity.role)) return false
+      if (!identity || !roles.includes(identity.role)) return null
       try {
         const current = await identityFromCookieHeader(socket.handshake.headers.cookie)
-        return current !== null && current.staffId === identity.staffId
+        if (!current || current.staffId !== identity.staffId) return null
+        return current
       } catch (error) {
         console.error('[socket] Join re-check failed:', error)
-        return false
+        return null
       }
     }
 
@@ -138,21 +183,33 @@ export function registerRoomHandlers(io: Server): void {
       if (typeof ack === 'function') (ack as Ack)(result)
     }
 
-    for (const [command, room] of Object.entries(PRODUCTION_ROOMS)) {
-      socket.on(command, async (ack?: unknown) => {
+    /** Runs a handler so no rejection escapes into the process. */
+    function handle(command: string, run: (args: unknown, ack: unknown) => Promise<void>) {
+      socket.on(command, (...received: unknown[]) => {
+        const ack = received.length > 1 ? received[1] : received[0]
+        const args = received.length > 1 ? received[0] : undefined
+        void run(args, ack).catch((error) => {
+          console.error(`[socket] ${command} failed:`, error)
+          reply(ack, { ok: false, error: 'INTERNAL_ERROR' })
+        })
+      })
+    }
+
+    for (const [command, room] of Object.entries(PRODUCTION_SUBSCRIBE)) {
+      handle(command, async (_args, ack) => {
         if (!(await allowed(['kitchen']))) return reply(ack, { ok: false, error: 'FORBIDDEN' })
         await socket.join(room)
         reply(ack, { ok: true })
       })
     }
 
-    socket.on('owner:subscribe', async (ack?: unknown) => {
+    handle('owner:subscribe', async (_args, ack) => {
       if (!(await allowed(['owner']))) return reply(ack, { ok: false, error: 'FORBIDDEN' })
-      await socket.join('owner')
+      await socket.join(OWNER_ROOM)
       reply(ack, { ok: true })
     })
 
-    socket.on('session:subscribe', async (args: unknown, ack?: unknown) => {
+    handle('session:subscribe', async (args, ack) => {
       const sessionId =
         typeof args === 'object' && args !== null
           ? (args as { sessionId?: unknown }).sessionId
@@ -160,17 +217,36 @@ export function registerRoomHandlers(io: Server): void {
       if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) {
         return reply(ack, { ok: false, error: 'INVALID_SESSION_ID' })
       }
-      if (!(await allowed(['waiter', 'owner']))) {
+
+      const identity = await allowed(['waiter', 'owner'])
+      if (!identity) return reply(ack, { ok: false, error: 'FORBIDDEN' })
+
+      // The order must be in this staff member's restaurant. Without this, a
+      // role check alone let any waiter join any order's room in any tenant.
+      if (!(await sessionBelongsToTenant(sessionId, identity.tenantId))) {
         return reply(ack, { ok: false, error: 'FORBIDDEN' })
       }
-      // A tablet looks at one order at a time; leave any previous one so a
-      // long shift does not accumulate every table's confirmations.
+
+      // A tablet looks at one order at a time; leave any previous one so a long
+      // shift does not accumulate every table's confirmations.
       for (const room of socket.rooms) {
-        if (room.startsWith('session:') && room !== `session:${sessionId}`) {
+        if (room.startsWith(SESSION_ROOM_PREFIX) && room !== sessionRoom(sessionId)) {
           await socket.leave(room)
         }
       }
-      await socket.join(`session:${sessionId}`)
+      await socket.join(sessionRoom(sessionId))
+      reply(ack, { ok: true })
+    })
+
+    handle('session:unsubscribe', async (args, ack) => {
+      const sessionId =
+        typeof args === 'object' && args !== null
+          ? (args as { sessionId?: unknown }).sessionId
+          : undefined
+      if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) {
+        return reply(ack, { ok: false, error: 'INVALID_SESSION_ID' })
+      }
+      await socket.leave(sessionRoom(sessionId))
       reply(ack, { ok: true })
     })
   })

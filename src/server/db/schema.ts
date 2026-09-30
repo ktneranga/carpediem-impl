@@ -6,11 +6,16 @@ import {
   text,
   integer,
   boolean,
+  jsonb,
   timestamp,
   index,
   uniqueIndex,
   primaryKey,
 } from 'drizzle-orm/pg-core'
+// Type-only, and from a module that imports nothing. It types the `print_jobs`
+// ticket column so a malformed payload is a compile error rather than a
+// surprise at the printer.
+import type { TicketPayload } from '@/types/tickets'
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
 
@@ -92,6 +97,20 @@ export const authModeEnum = pgEnum('auth_mode', [
   'session_persistent',
   'per_transaction',
   'per_action',
+])
+
+/**
+ * A print job's lifecycle (Story 5.0).
+ *
+ * `pending → printing → printed`, or `pending → dead` once the retries are
+ * exhausted. `dead` is not a deletion: the row stays, and the ticket can be
+ * delivered later by hand or by a future reprint.
+ */
+export const printJobStatusEnum = pgEnum('print_job_status', [
+  'pending',
+  'printing',
+  'printed',
+  'dead',
 ])
 
 // ── Foundation ────────────────────────────────────────────────────────────────
@@ -508,6 +527,91 @@ export const disputeRecords = pgTable('dispute_records', {
   resolvedAt:        timestamp('resolved_at', { withTimezone: true }),
 }, (t) => [
   index('idx_dispute_records_session_id').on(t.sessionId),
+])
+
+/**
+ * The durable print queue (Story 5.0, sprint-change-proposal-2026-08-21 Issue C).
+ *
+ * ── Why a table and not a TCP call ───────────────────────────────────────────
+ * Printing used to be a synchronous socket write inside the submit handler. A
+ * printer out of paper at 8pm meant twelve orders, twelve failed writes and a
+ * human trying to remember which twelve tickets to reprint under service
+ * pressure — an order existing with no ticket in the kitchen, which is the one
+ * failure this product exists to prevent.
+ *
+ * Rows are inserted in the SAME transaction as the round (`submitRound`), so an
+ * order can never exist without its tickets queued, and a rolled-back order can
+ * never leave a ticket behind. That transactional enqueue is the reason this is
+ * PostgreSQL rather than a broker — a broker would need a second write that can
+ * fail on its own.
+ *
+ * ── NOT append-only, deliberately ────────────────────────────────────────────
+ * Every other table that records a fact — `order_events`, `order_rounds`,
+ * `payment_records` — carries the `prevent_immutable_table_mutation` trigger
+ * from migration 0001. This one must not: `status` and `attempts` are working
+ * state and are updated on every retry. The audit record of what was ordered
+ * lives in `order_events` and is not duplicated here; a job's `ticket` is a
+ * rendering of those rows, kept so the paper copy is not re-derived from a
+ * session that has since been merged, closed or re-seated.
+ *
+ * ── Addressed by DESTINATION, not by printer ─────────────────────────────────
+ * `station_configs` and `printer_configs` exist but are empty, and
+ * `station_configs.type` has no `pizza_kitchen`. The job names the production
+ * destination and the worker resolves that to a transport at DELIVERY time, so
+ * a printer re-pointed at 7pm does not strand jobs queued at 6:55pm. Story 10.3
+ * gives stations real rows; only `resolveTransport` changes when it does.
+ */
+export const printJobs = pgTable('print_jobs', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  tenantId:  uuid('tenant_id').notNull().references(() => tenants.id),
+  sessionId: uuid('session_id').notNull().references(() => orderSessions.id),
+  /** The round this ticket is for. One job per destination present in it. */
+  roundId:   uuid('round_id').notNull().references(() => orderRounds.id),
+  destination: productionDestinationEnum('destination').notNull(),
+  /**
+   * The ticket as DATA, not as ESC/POS bytes.
+   *
+   * Story 5.2 owns byte assembly; bytes stored here would have to be re-rendered
+   * anyway after any formatting change, and could not be written at all until
+   * 5.2 exists. Shape: `TicketPayload` in `src/types/tickets.ts`.
+   */
+  ticket:    jsonb('ticket').$type<TicketPayload>().notNull(),
+  status:    printJobStatusEnum('status').notNull().default('pending'),
+  attempts:  integer('attempts').notNull().default(0),
+  lastError: text('last_error'),
+  /** When the worker claimed it. Stale claims are recovered — see the worker. */
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  /** Earliest next attempt. The backoff is written here, not slept in memory. */
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * Queue position — `clock_timestamp()`, NOT `now()`.
+   *
+   * `now()` is the TRANSACTION timestamp, identical for every statement in a
+   * transaction and stamped when it BEGAN. Two sends racing for the session
+   * lock could therefore be queued in the reverse of the order they committed:
+   * the transaction that started earlier and won the lock later still carried
+   * the earlier `created_at`. Since the claim orders by this column, that is a
+   * kitchen printing round 6 before round 5.
+   */
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .default(sql`clock_timestamp()`),
+  printedAt: timestamp('printed_at', { withTimezone: true }),
+}, (t) => [
+  // Two shapes to serve, both introduced by the head-of-line rule:
+  //
+  // 1. The claim itself — `status = 'pending' AND next_attempt_at <= now()
+  //    ORDER BY created_at`. Equality first, then the range column. The sort
+  //    cannot be served by an index with a range predicate in front of it, so
+  //    PostgreSQL sorts the ready rows; at a few dozen tickets an hour that is
+  //    nothing.
+  // 2. The `NOT EXISTS` that asks "is anything older still in play for this
+  //    destination?" — one lookup per candidate row, which is why
+  //    `destination` finally earns its place in an index (Story 5.0's task
+  //    list asked for it before the query that needed it existed).
+  index('idx_print_jobs_claim').on(t.status, t.nextAttemptAt, t.createdAt),
+  index('idx_print_jobs_destination_order').on(t.destination, t.createdAt),
+  index('idx_print_jobs_session_id').on(t.sessionId),
 ])
 
 // ── Configuration ─────────────────────────────────────────────────────────────

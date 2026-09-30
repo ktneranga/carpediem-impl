@@ -1,5 +1,8 @@
 import 'server-only'
-import type { OrderConfirmedPayload, OrderSubmittedPayload, ProductionDestination } from '@/types/orders'
+import type { OrderConfirmedPayload, OrderSubmittedPayload } from '@/types/orders'
+import type { TableStatusChangedPayload } from '@/types/tables'
+import type { PrinterAlertPayload } from '@/types/tickets'
+import { OWNER_ROOM, productionRoom, sessionRoom } from './rooms'
 import { getIO } from './index'
 
 /**
@@ -9,41 +12,15 @@ import { getIO } from './index'
  * the colon, past tense for broadcasts. epics.md wrote `table:statusChanged` in
  * seven places; that was corrected on 2026-08-21. A camelCase listener never
  * fires, and nothing errors — real-time simply stops working silently.
+ *
+ * The PAYLOAD shapes live under `src/types/`, which a component may import.
+ * This module carries `server-only`, so the grid had been keeping its own
+ * copy of `TableStatusChangedPayload` — one contract declared twice, which
+ * drifts the moment either side gains a field.
  */
 
-export type TableStatusChangedPayload = {
-  tableId: string
-  status: 'open' | 'occupied' | 'unavailable'
-  sessionId: string | null
-  openedAt: string | null
-  itemCount: number
-  /**
-   * Why the table is out of service; null otherwise.
-   *
-   * Carried on the event because the client PATCHES its cache rather than
-   * refetching — so a field the payload omits keeps whatever stale value the
-   * row already had. Without this, a device that did not initiate the change
-   * showed "No reason recorded", and after a return-to-service the previous
-   * outage's reason survived to be displayed against the next one.
-   */
-  unavailableReason: string | null
-  /**
-   * Every table on this session, in label order. Empty when there is no session.
-   *
-   * Carried because the client PATCHES its cache rather than refetching, and
-   * `toGridUnits` decides a merged group exists SOLELY by this array's length.
-   * Without it in the payload, a merge collapsed into one card only on the
-   * device that performed it — every other tablet kept `groupTableLabels: []`
-   * on the patched row and rendered the party as two separate occupied cards
-   * with identical timers, which is the exact ambiguity collapsing exists to
-   * remove. Un-merge was the mirror: survivors kept labels naming a table that
-   * was already back on the floor as a free card in the same grid.
-   *
-   * Same reasoning as `unavailableReason` above — a field the payload omits
-   * keeps whatever stale value the cached row already had.
-   */
-  groupTableLabels: string[]
-}
+export type { TableStatusChangedPayload }
+
 
 /**
  * Broadcasts a table occupancy change to every connected device.
@@ -135,19 +112,14 @@ export function emitMenuItemUpdated(payload: MenuItemUpdatedPayload): void {
 // Everything ABOVE is a broadcast to every connected (and, since Story 4.5,
 // authenticated) socket, because every device shows the floor and the menu.
 // Order events are not: a kitchen ticket carries guests' seat notes and belongs
-// on the kitchen's screen only. Joining is policed in `server.ts` — only the
-// kitchen role may join a production room; only a waiter or owner may join a
-// session's room.
-
-/** The production room for a destination. One per FR9 destination. */
-export function productionRoom(destination: ProductionDestination): string {
-  return destination
-}
-
-/** The room for everyone looking at one order. */
-export function sessionRoom(sessionId: string): string {
-  return `session:${sessionId}`
-}
+// on the kitchen's screen only.
+//
+// Joining is policed in `src/server/socket/authenticate.ts` (`server.ts` only
+// registers it): the kitchen role may join a production room; a waiter or owner
+// may join a session room, and only for an order in their own restaurant.
+//
+// The room NAMES come from `./rooms`, shared with the join side — they used to
+// be spelled separately in both files.
 
 /**
  * A round reached one production destination: its lines only.
@@ -172,6 +144,28 @@ export function emitOrderConfirmed(payload: OrderConfirmedPayload): void {
     getIO().to(sessionRoom(payload.sessionId)).emit('order:confirmed', payload)
   } catch (error) {
     console.error('[socket] Failed to emit order:confirmed:', error)
+  }
+}
+
+/**
+ * A print job gave up after its retries (Story 5.0, AC-6).
+ *
+ * Owner room only: it names tables, and the job behind it holds guests' seat
+ * notes.
+ *
+ * ── The worker does NOT call this ────────────────────────────────────────────
+ * It cannot: this module is `server-only` and the worker is loaded from
+ * `server.ts`. `src/server/print/worker.ts` emits the same event through the
+ * same `global.__io` handle `getIO()` reads. This function exists for callers
+ * INSIDE Next — Story 5.2's reprint, and Epic 9's dashboard — so they do not
+ * hand-type the event name. Both sides take `PrinterAlertPayload`, which is
+ * where the shape is kept honest.
+ */
+export function emitPrinterAlert(payload: PrinterAlertPayload): void {
+  try {
+    getIO().to(OWNER_ROOM).emit('printer:alert', payload)
+  } catch (error) {
+    console.error('[socket] Failed to emit printer:alert:', error)
   }
 }
 

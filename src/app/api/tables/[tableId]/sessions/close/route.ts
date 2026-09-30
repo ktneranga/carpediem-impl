@@ -113,9 +113,9 @@ export async function POST(
       return fail('SESSION_ALREADY_CLOSED', 'This table has no open session', 409)
     }
 
-    // Sums ITEM_ADDED quantities (dishes, not rows) without subtracting ITEM_REMOVED, matching the
-    // simplification /api/tables already documents. Removal does not exist until
-    // Epic 4; when it does, both places change together.
+    // Sums ITEM_ADDED quantities (dishes, not rows) without subtracting
+    // ITEM_REMOVED, matching every other item figure in the app. All eight
+    // sites share `dishCount`; Epic 7 adds removal, and they change with it.
     const [items] = await db
       .select({ total: dishCount })
       .from(orderEvents)
@@ -164,6 +164,7 @@ export async function POST(
         sessionId: null,
         openedAt: null,
         itemCount: 0,
+        totalPaisa: 0,
         // A session change never alters availability; the table is not out of
         // service on either of these paths.
         unavailableReason: null,

@@ -104,6 +104,107 @@ app
     sweepTimer.unref() // do not keep the event loop alive for housekeeping
     void sweepExpiredSessions() // clear anything stale left from a previous run
 
+    // ── The print queue (Story 5.0) ──────────────────────────────────────────
+    //
+    // Same shape as the sweep above, and here rather than in its own container
+    // for the same reason: one box, a few dozen tickets an hour, and a separate
+    // service would need its own health check and restart policy to do it.
+    //
+    // The TIMER is the guarantee. A send may nudge the worker so a ticket does
+    // not wait for the next tick, but a queue that only drains when somebody
+    // orders would never flush the backlog left by a printer that came back
+    // while the restaurant was quiet (AC-5).
+    const PRINT_TICK_MS = 3 * 1000
+    let printRunning = false
+    let printStopping = false
+
+    const drainPrintQueue = async () => {
+      if (printRunning || printStopping) return // never overlap a drain
+      printRunning = true
+      try {
+        // Standalone, like the reaper: it owns its pool and speaks plain SQL,
+        // because everything under `@/server/db` throws `server-only` here.
+        const { drainPrintQueue: drain } = await import('./src/server/print/worker')
+        const result = await drain()
+        // `failed` belongs in the guard as well as the message. Without it a
+        // printer that is down logged NOTHING on every tick — printed 0, dead
+        // 0, failed n — so the first thing anyone saw was the dead-letter,
+        // after the whole recoverable window had already passed.
+        if (result.printed > 0 || result.dead > 0 || result.failed > 0) {
+          console.log(
+            `[print] ${result.printed} printed, ${result.failed} retrying, ${result.dead} dead-lettered`,
+          )
+        }
+      } catch (err) {
+        // A failed tick is not a reason to take the POS down. The jobs are in
+        // the table; the next tick picks them up.
+        console.error('[print] Queue tick failed:', err)
+      } finally {
+        printRunning = false
+      }
+    }
+
+    // Exported on the global so a Route Handler can wake the queue the instant
+    // a round commits. `global.__io` is set the same way, three lines up, for
+    // the same reason: Next's module graph and this file cannot import from
+    // each other.
+    global.__wakePrintQueue = () => void drainPrintQueue()
+
+    const printTimer = setInterval(drainPrintQueue, PRINT_TICK_MS)
+    printTimer.unref()
+    void drainPrintQueue() // flush anything left queued by a previous run
+
+    // ── Shutdown ─────────────────────────────────────────────────────────────
+    //
+    // Registering these handlers REPLACES Node's default for the whole process,
+    // so this is now the only thing that closes the HTTP server, Socket.io and
+    // the pools. The first version only waited on the print queue and called
+    // `process.exit(0)`, which severed in-flight HTTP requests mid-transaction
+    // on every deploy. Found in review.
+    //
+    // The wait is for the drain to REACH a stopping point, and `printStopping`
+    // is checked inside the drain loop, so the loop finishes the delivery it is
+    // on and then declines to claim another. The cap exists only so a wedged
+    // socket cannot hold a deploy open for ever; crossing it leaves a job
+    // `printing`, which the stale-claim sweep reclaims two minutes later.
+    let shuttingDown = false
+    const shutdown = async (signal: string) => {
+      if (shuttingDown) return
+      shuttingDown = true
+      printStopping = true
+      clearInterval(printTimer)
+      clearInterval(sweepTimer)
+
+      try {
+        const { stopPrintQueue } = await import('./src/server/print/worker')
+        stopPrintQueue()
+      } catch {
+        // The worker was never loaded — nothing is draining.
+      }
+
+      const deadline = Date.now() + 8_000
+      while (printRunning && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      if (printRunning) {
+        console.warn('[print] A delivery was still running at shutdown — it will be reclaimed')
+      }
+
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()))
+      io.close()
+      try {
+        const { closePrintPool } = await import('./src/server/print/worker')
+        await closePrintPool()
+      } catch (err) {
+        console.error('[print] Could not close the queue pool:', err)
+      }
+
+      console.log(`[server] ${signal} — shut down cleanly`)
+      process.exit(0)
+    }
+    process.on('SIGTERM', () => void shutdown('SIGTERM'))
+    process.on('SIGINT', () => void shutdown('SIGINT'))
+
     httpServer.listen(port, () => {
       console.log(`> Ready on http://localhost:${port} [${dev ? 'dev' : 'production'}]`)
     })

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
-import { dishCount } from '@/server/orders/item-count'
+import { dishCount, dishTotalPaisa } from '@/server/orders/item-count'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { orderEvents, orderSessions, orderSessionTables, tables } from '@/server/db/schema'
@@ -127,14 +127,15 @@ export async function POST(
       : []
     const survivorLabels = survivors.map((survivor) => survivor.label)
 
-    // Sums ITEM_ADDED quantities (dishes, not rows) without subtracting ITEM_REMOVED, matching /api/tables,
-    // the close route and the order page. All four change together when Epic 4
-    // adds removal.
+    // Sums ITEM_ADDED quantities (dishes, not rows) without subtracting
+    // ITEM_REMOVED, matching every other item figure in the app. All eight
+    // sites share `dishCount`; Epic 7 adds removal, and they change with it.
     const [items] = await db
-      .select({ total: dishCount })
+      .select({ total: dishCount, totalPaisa: dishTotalPaisa })
       .from(orderEvents)
       .where(and(eq(orderEvents.sessionId, row.sessionId), eq(orderEvents.eventType, 'ITEM_ADDED')))
     const itemCount = Number(items?.total ?? 0)
+    const totalPaisa = Number(items?.totalPaisa ?? 0)
 
     emitTableStatusChanged({
       tableId,
@@ -142,6 +143,9 @@ export async function POST(
       sessionId: null,
       openedAt: null,
       itemCount: 0,
+      // It is back on the floor as a free table; the order it left stays with
+      // the survivors below.
+      totalPaisa: 0,
       unavailableReason: null,
       groupTableLabels: [],
     })
@@ -153,6 +157,7 @@ export async function POST(
         sessionId: row.sessionId,
         openedAt: row.openedAt.toISOString(),
         itemCount: itemCount,
+        totalPaisa,
         unavailableReason: null,
         groupTableLabels: survivorLabels,
       })
