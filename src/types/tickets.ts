@@ -33,6 +33,19 @@ export type TicketPayload = {
   usesSeats: boolean
   /** ISO. The committed round's `submitted_at` — PostgreSQL's clock, not Node's. */
   submittedAt: string
+  /**
+   * The restaurant's IANA zone, from `tenants.timezone` (e.g. `Asia/Colombo`).
+   *
+   * OPTIONAL, and it must stay optional: the queue holds jobs across deploys,
+   * so a ticket written before this field existed still has to print. Those
+   * fall back to the process timezone, which is what they would have used
+   * anyway. Copied in at enqueue rather than read at print time for the same
+   * reason as everything else here — the job must stand alone.
+   *
+   * `src/server/time.ts` has the argument in full: correctness must not depend
+   * on whether `TZ` was set on the host.
+   */
+  timeZone?: string
   lines: TicketLine[]
 }
 
@@ -54,7 +67,15 @@ export type TicketPayload = {
  * also has no members until Epic 9, so owner-only reached nobody at all.
  */
 export type PrinterAlertPayload = {
-  kind: 'retrying' | 'dead'
+  /**
+   * `retrying` — still working on it, asks nothing of anybody.
+   * `dead` — stopped trying, needs attention.
+   * `recovered` — a ticket that had been failing has now printed. Without
+   *   this third kind there was no signal that ever cleared a banner, so one
+   *   transient failure left "the printer is not responding" on every device
+   *   for the rest of service.
+   */
+  kind: 'retrying' | 'dead' | 'recovered'
   jobId: string
   destination: ProductionDestination
   tableLabels: string[]

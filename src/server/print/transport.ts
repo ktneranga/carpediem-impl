@@ -113,8 +113,16 @@ export function resolveTransport(destination: TicketPayload['destination']): Tic
   // path behind a flag that cannot be set is how untested code ships.
   const host = process.env.PRINTER_IP
   if (host) {
-    const port = Number(process.env.PRINTER_PORT ?? 9100)
-    return escposTcpTransport(host, Number.isFinite(port) && port > 0 ? port : 9100)
+    // Every malformed value falls back to 9100 — including the two the first
+    // version missed. `isFinite && > 0` let `91000` (a typo) and `9100.5`
+    // through, and `net.createConnection` then throws `ERR_SOCKET_BAD_PORT`
+    // for every ticket at every station: a one-digit mistake becomes a total
+    // printing outage, while the same typo in the other direction silently
+    // corrected itself.
+    const configured = Number(process.env.PRINTER_PORT)
+    const port =
+      Number.isInteger(configured) && configured > 0 && configured <= 65535 ? configured : 9100
+    return escposTcpTransport(host, port)
   }
 
   // No printer configured: log the ticket and move on. Named per destination so

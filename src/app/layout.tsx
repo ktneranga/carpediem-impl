@@ -38,7 +38,13 @@ export default async function RootLayout({
       {/* Providers is the only client boundary here — this layout stays a Server
           Component so it can keep reading headers() for data-context. */}
       <body className="min-h-full">
-        <Providers>{children}</Providers>
+        {/* `signedIn` gates everything in Providers that opens a socket. The
+            printer banner was mounted unconditionally and so reached /login,
+            where the handshake is refused by design — leaving every idle
+            tablet at the PIN pad in a permanent retry loop, one database
+            query per attempt. The proxy sets this header only for a live
+            session, which is the same fact the socket authenticates on. */}
+        <Providers signedIn={role !== null}>{children}</Providers>
       </body>
     </html>
   )

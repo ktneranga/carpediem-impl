@@ -49,7 +49,8 @@ async function main() {
   const asText = text(kot)
 
   check('starts with ESC @ (initialise)', hex(kot).startsWith('1b40'), hex(kot).slice(0, 8))
-  check('ends with the partial cut GS V 66 3', hex(kot).endsWith('1d564203'), hex(kot).slice(-12))
+  check('ends with a feed clear of the blade, then the partial cut',
+    hex(kot).endsWith('1b64041d564200'), hex(kot).slice(-16))
   check('header is the ticket type, doubled and bold',
     asText.includes('KOT') && hex(kot).includes('1d2111') && hex(kot).includes('1b4501'),
     'KOT + GS!17 + ESC E 1')
@@ -104,6 +105,52 @@ async function main() {
     clockTime(new Date(2026, 0, 1, 0, 5).toISOString()) === '12:05 AM' &&
       clockTime(new Date(2026, 0, 1, 13, 0).toISOString()) === '1:00 PM')
 
+  // ── The review's findings, each with the case that exposed it ────────────
+  check('a half portion is not twelve portions',
+    foldToAscii('½ Roast Chicken') === '1/2 Roast Chicken' && foldToAscii('¾ kg Prawns') === '3/4 kg Prawns',
+    `${foldToAscii('½ Roast Chicken')} | ${foldToAscii('¾ kg Prawns')}`)
+  const sinhala = buildTicket(ticket({
+    usesSeats: false,
+    lines: [{ eventId: 'f', name: 'කුකුල් මස් කරි', quantity: 2, modifierText: null, seatLabel: 'Seat 1', seatNote: null }],
+  }))
+  check('a name that folds to nothing still prints something the kitchen can see',
+    text(sinhala).includes('[name not printable]'),
+    text(sinhala).split('\n').find((l) => l.includes('2 x')))
+
+  const merged = buildTicket(ticket({
+    tableLabels: ['Table 10', 'Table 11', 'Table 12', 'Table 13', 'Table 14'],
+  }))
+  check('a merged session keeps EVERY table on the paper (FR18)',
+    ['Table 10', 'Table 11', 'Table 12', 'Table 13', 'Table 14'].every((label) => text(merged).includes(label)),
+    text(merged).split('\n').slice(1, 4).join(' / '))
+
+  const expanding = buildTicket(ticket({
+    usesSeats: false,
+    lines: [{ eventId: 'g', name: `${'A'.repeat(40)} B…`, quantity: 1, modifierText: null, seatLabel: 'S', seatNote: null }],
+  }))
+  check('folding happens BEFORE measuring, so no line overruns the roll',
+    text(expanding).split('\n').every((line) => line.replace(/[\x00-\x1f]/g, '').length <= PAPER_COLUMNS),
+    JSON.stringify(text(expanding).split('\n').map((l) => l.replace(/[\x00-\x1f]/g, '').length)))
+
+  check('the paper is fed clear of the blade before the cut',
+    hex(kot).includes('1b6404') && hex(kot).endsWith('1d564200'), hex(kot).slice(-20))
+
+  check('an invalid timestamp does not print NaN',
+    clockTime('') === '--:--' && !text(buildTicket(ticket({ submittedAt: '' }))).includes('NaN'),
+    clockTime(''))
+  check('the time is printed in the RESTAURANT’s zone, not the process’s',
+    clockTime('2026-09-25T09:04:00.000Z', 'Asia/Colombo') === '2:34 PM',
+    clockTime('2026-09-25T09:04:00.000Z', 'Asia/Colombo'))
+
+  const malformed = { ...ticket(), lines: [{ eventId: 'h', name: null, quantity: 1, modifierText: null, seatLabel: null, seatNote: null }] } as unknown as TicketPayload
+  let threw = ''
+  try {
+    buildTicket(malformed)
+  } catch (error) {
+    threw = String(error)
+  }
+  check('a null field in a stored payload does not poison the job', threw === '', threw)
+
   // ── The socket (AC-3) ─────────────────────────────────────────────────────
   const printer = await startFakePrinter('accept')
   await escposTcpTransport('127.0.0.1', printer.port).deliver(ticket())
@@ -147,6 +194,43 @@ async function main() {
   check('a printer that hangs up mid-write REJECTS', dropped !== '', dropped || 'resolved — WRONG')
   await dropping.close()
 
+  // ── A KNOWN, DELIBERATE GAP — this check pins it, it does not bless it ───
+  // A printer that accepts the bytes, reads nothing and closes politely is
+  // indistinguishable from one that printed them: the write callback fires at
+  // ~6ms with no error and the peer's FIN is not seen until ~9ms. This
+  // asserts the CURRENT behaviour so that anyone who later makes it reject
+  // sees this check fail and reads why. See the transport's header and
+  // `deferred-work.md`; the real answer is `DLE EOT` real-time status.
+  const polite = await startFakePrinter('politeRefusal')
+  let politeResolved = false
+  try {
+    await escposTcpTransport('127.0.0.1', polite.port).deliver(ticket())
+    politeResolved = true
+  } catch {
+    politeResolved = false
+  }
+  check('KNOWN GAP: a polite refusal still resolves — TCP cannot tell it from a print',
+    politeResolved, politeResolved ? 'resolves (documented)' : 'now rejects — update the docs')
+  await polite.close()
+
+  // ESC/POS status-back: the printer answers. If the read side is not drained,
+  // EOF never arrives, `close` never fires, and a SUCCESSFUL print times out
+  // and is reprinted five more times.
+  const chatty = await startFakePrinter('chatty')
+  const chattyStart = Date.now()
+  let chattyError = ''
+  try {
+    await escposTcpTransport('127.0.0.1', chatty.port).deliver(ticket())
+  } catch (error) {
+    chattyError = String(error)
+  }
+  const chattyMs = Date.now() - chattyStart
+  check('a printer that answers back still completes, and fast',
+    chattyError === '' && chattyMs < 1_000, `${chattyError || 'ok'} in ${chattyMs}ms`)
+  check('and its bytes arrived intact',
+    hex(chatty.received[0] ?? Buffer.alloc(0)) === hex(kot), `${chatty.received[0]?.length} bytes`)
+  await chatty.close()
+
   // ── The seam (AC-7) ───────────────────────────────────────────────────────
   const { resolveTransport } = await import('./transport')
   delete process.env.PRINTER_IP
@@ -179,6 +263,14 @@ async function main() {
        RETURNING id`,
       [destination, JSON.stringify(ticket({ destination: destination as TicketPayload['destination'], roundNumber, tableLabels: ['E2E'] }))],
     )
+    if (!row) {
+      // An empty `order_rounds` makes the INSERT … SELECT a no-op, and the
+      // destructure below used to throw on `.id` — after the pure checks had
+      // already printed PASS, with no summary and rows left behind.
+      throw new Error(
+        'no committed rounds in the database — send an order first, then re-run this script',
+      )
+    }
     return (row as { id: string }).id
   }
 

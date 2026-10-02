@@ -15,12 +15,21 @@
  *                 connect-only timeout misses, and what an out-of-paper printer
  *                 looks like on some models.
  * - `dropMidWrite` — accepts, then destroys the socket. ECONNRESET.
+ * - `politeRefusal` — accepts, reads NOTHING, and sends a clean FIN. Added
+ *                 after review: this is the shape that produced neither an
+ *                 `error` nor a `timeout`, so the transport resolved and a
+ *                 ticket was recorded as printed that never was. Out of paper,
+ *                 spooler full, firmware restarting, a print server deferring.
+ * - `chatty`    — reads everything, writes a status byte back, then FINs.
+ *                 ESC/POS Automatic Status Back is on by default on many
+ *                 models; an unread reply meant EOF was never reached and a
+ *                 SUCCESSFUL print timed out and was reprinted five times.
  *
  * Used by the verification scripts only. Nothing that ships imports it.
  */
 import net from 'node:net'
 
-export type FakePrinterMode = 'accept' | 'hang' | 'dropMidWrite'
+export type FakePrinterMode = 'accept' | 'hang' | 'dropMidWrite' | 'politeRefusal' | 'chatty'
 
 export type FakePrinter = {
   port: number
@@ -61,9 +70,21 @@ export function startFakePrinter(mode: FakePrinterMode = 'accept'): Promise<Fake
       socket.destroy()
       return
     }
+    if (mode === 'politeRefusal') {
+      // Accept, read nothing, close cleanly. No RST, so the client sees no
+      // error — the whole point of this mode.
+      socket.pause()
+      socket.end()
+      return
+    }
 
     const chunks: Buffer[] = []
-    socket.on('data', (chunk) => chunks.push(chunk))
+    socket.on('data', (chunk) => {
+      chunks.push(chunk)
+      // A real printer with ASB enabled volunteers status bytes. The client
+      // must consume them, or it never sees EOF.
+      if (mode === 'chatty') socket.write(Buffer.from([0x14]))
+    })
     socket.on('end', () => {
       received.push(Buffer.concat(chunks))
       socket.end()

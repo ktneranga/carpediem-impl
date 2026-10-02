@@ -32,15 +32,41 @@ import { cn } from '@/lib/utils'
  * It renders nothing until an alert arrives, so the cost on every other screen
  * is one socket listener.
  */
+/** Above this many, the rest collapse into a count — see the stack comment. */
+const MAX_VISIBLE = 3
+
 export function PrinterAlertBanner() {
   // Keyed by job, so a job that retries four times replaces its own banner
   // rather than stacking four. A dead-letter overwrites the retrying notice for
   // the same job, which is exactly the transition staff need to see.
   const [alerts, setAlerts] = useState<Map<string, PrinterAlertPayload>>(new Map())
+  // Jobs a staff member has closed. Without this, dismissing did nothing: the
+  // next retry for the same job — up to five, seconds apart — put the banner
+  // straight back, and the only way to be rid of it was to out-tap the queue.
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 
   useSocketEvent<PrinterAlertPayload>(
     'printer:alert',
     useCallback((payload: PrinterAlertPayload) => {
+      // A ticket that recovered needs no banner — and clearing its old one is
+      // the only way a "still trying" notice ever goes away by itself. It also
+      // resets the dismissal, so a LATER failure of the same job is heard.
+      if (payload.kind === 'recovered') {
+        setAlerts((current) => {
+          if (!current.has(payload.jobId)) return current
+          const next = new Map(current)
+          next.delete(payload.jobId)
+          return next
+        })
+        setDismissed((current) => {
+          if (!current.has(payload.jobId)) return current
+          const next = new Set(current)
+          next.delete(payload.jobId)
+          return next
+        })
+        return
+      }
+
       setAlerts((current) => {
         const next = new Map(current)
         next.set(payload.jobId, payload)
@@ -49,27 +75,47 @@ export function PrinterAlertBanner() {
     }, []),
   )
 
-  const dismiss = (jobId: string) =>
+  const dismiss = (jobId: string) => {
     setAlerts((current) => {
       const next = new Map(current)
       next.delete(jobId)
       return next
     })
+    setDismissed((current) => new Set(current).add(jobId))
+  }
 
-  if (alerts.size === 0) return null
+  const dismissAll = () => {
+    setDismissed((current) => {
+      const next = new Set(current)
+      for (const jobId of alerts.keys()) next.add(jobId)
+      return next
+    })
+    setAlerts(new Map())
+  }
+
+  const showing = [...alerts.values()].filter((alert) => !dismissed.has(alert.jobId))
+  const visible = showing.slice(0, MAX_VISIBLE)
+  const hidden = showing.length - visible.length
 
   const station = (destination: PrinterAlertPayload['destination']) =>
     destination === 'pizza_kitchen' ? 'pizza kitchen' : destination
 
   return (
-    // Above the action strips (shadow-el-3, sticky bottom) and out of the way
-    // of the header. `pointer-events-none` on the stack so the gap between
-    // banners does not swallow taps meant for the screen underneath.
+    // ── The container is ALWAYS rendered ──────────────────────────────────
+    // It used to return null until the first alert, which meant the live
+    // region arrived in the DOM together with its content — and assistive
+    // technology announces MUTATIONS to regions that already exist, so the
+    // first alert, the one that most needs announcing, was silent.
+    //
+    // Pinned below the header rather than over it (`top-16`): the first
+    // version said it stayed out of the header's way and then covered it.
+    // `pointer-events-none` on the stack so the gaps between banners do not
+    // swallow taps meant for the screen underneath.
     <div
-      className="pointer-events-none fixed inset-x-0 top-0 z-50 flex flex-col gap-sp-2 p-sp-3"
+      className="pointer-events-none fixed inset-x-0 top-16 z-50 flex flex-col gap-sp-2 p-sp-3"
       aria-live="polite"
     >
-      {[...alerts.values()].map((alert) => {
+      {visible.map((alert) => {
         const stopped = alert.kind === 'dead'
         return (
           <div
@@ -134,6 +180,31 @@ export function PrinterAlertBanner() {
           </div>
         )
       })}
+
+      {/* ── The stack is capped ────────────────────────────────────────────
+          A ten-minute outage dead-letters every round in turn, and a dead job
+          does not block its station, so they accumulate. Twenty rounds was
+          twenty permanent banners covering the viewport on every tablet and
+          the kitchen display, each intercepting taps, clearable only one at a
+          time — exactly when the POS is needed most. Three, a count, and one
+          control that clears the lot. */}
+      {hidden > 0 ? (
+        <div className="pointer-events-auto flex items-center gap-sp-3 rounded-card border-2 border-slate-200 bg-white px-sp-4 py-sp-2 shadow-el-2">
+          <span className="text-fs-14 font-semibold text-slate-600">
+            and {hidden} more ticket{hidden === 1 ? '' : 's'} waiting on a printer
+          </span>
+        </div>
+      ) : null}
+
+      {showing.length > 1 ? (
+        <button
+          type="button"
+          onClick={dismissAll}
+          className="pointer-events-auto self-end rounded-control border border-slate-200 bg-white px-sp-4 py-sp-2 text-fs-14 font-semibold text-slate-600 shadow-el-1"
+        >
+          Dismiss all ({showing.length})
+        </button>
+      ) : null}
     </div>
   )
 }

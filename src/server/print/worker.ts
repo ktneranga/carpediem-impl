@@ -229,6 +229,27 @@ async function markPrinted(jobId: string): Promise<void> {
   )
 }
 
+/**
+ * Tells the floor a ticket that HAD been failing has printed.
+ *
+ * Only for a job that already alerted (`attempts > 1`), because that is the
+ * only banner there is to clear. Without this there was no recovery signal
+ * anywhere: one transient failure left "the printer is not responding" pinned
+ * to every device for the rest of service, since the only way a banner ever
+ * disappeared was a staff member tapping it.
+ */
+function announceRecovery(job: ClaimedJob): void {
+  if (job.attempts <= 1) return
+  alertStaff({
+    kind: 'recovered',
+    jobId: job.id,
+    destination: job.destination,
+    tableLabels: job.ticket.tableLabels,
+    attempts: job.attempts,
+    lastError: '',
+  })
+}
+
 /** Back to `pending` with the next attempt scheduled, or `dead` if out of tries. */
 async function markFailed(job: ClaimedJob, error: unknown): Promise<'pending' | 'dead'> {
   const message = error instanceof Error ? error.message : String(error)
@@ -301,9 +322,17 @@ function alertStaff(payload: PrinterAlertPayload): void {
  *    `now()` is the TRANSACTION timestamp, so two concurrent sends could be
  *    queued in the reverse of the order they actually committed.
  *
- * A blocked station is bounded by the retry ladder — about 53 seconds, after
- * which the stuck job dead-letters and stops blocking. Other destinations are
- * never affected: a jammed kitchen printer does not delay the bar.
+ * A blocked station is bounded by the retry ladder and the transport's own
+ * per-attempt budget: 53 seconds of waiting plus six attempts × 5 seconds of
+ * blocking, so about 83 seconds before the stuck job dead-letters and stops
+ * blocking. (The ladder alone was quoted here until Story 5.2's review pointed
+ * out that a real socket takes time to fail.)
+ *
+ * Other DESTINATIONS are not blocked by the claim rule — but they do share one
+ * printer today, because `resolveTransport` sends every destination to the
+ * same `PRINTER_IP` until Story 10.3 gives stations their own. So "a jammed
+ * kitchen printer does not delay the bar" is true of the queue and false of
+ * the hardware, and will stay false until there are two printers.
  *
  * Returns what happened, for the caller's log line.
  *
@@ -381,6 +410,7 @@ export async function drainPrintQueue(
     try {
       await markPrinted(job.id)
       printed += 1
+      announceRecovery(job)
     } catch (error) {
       // The ticket IS printed. Only the record failed, so this must not look
       // like a delivery failure: the row stays `printing`, the stale sweep

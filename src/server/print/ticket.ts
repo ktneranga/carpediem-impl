@@ -65,6 +65,12 @@ export function buildTicketPayloads(input: {
   tableLabels: string[]
   usesSeats: boolean
   submittedAt: Date
+  /**
+   * The restaurant's zone, from `tenants.timezone`. Copied in here so the
+   * printed time does not depend on whether `TZ` was set on the host — the
+   * rule `src/server/time.ts` exists to enforce.
+   */
+  timeZone?: string
 }): TicketPayload[] {
   return [...input.byDestination.entries()].map(([destination, lines]) => ({
     destination,
@@ -79,6 +85,7 @@ export function buildTicketPayloads(input: {
         : ['COUNTER'],
     usesSeats: input.usesSeats,
     submittedAt: input.submittedAt.toISOString(),
+    timeZone: input.timeZone,
     lines: lines.map(sanitizeLine),
   }))
 }

@@ -130,8 +130,10 @@ async function main() {
   // ── 3. Dead-lettering alerts and keeps the row (AC-6) ─────────────────────
   const alerts: unknown[] = []
   // Story 5.2 made `printer:alert` a broadcast (the payload carries no guest
-  // data, and nothing joins the owner room until Epic 9). The stub accepts both
-  // shapes so this file does not have to care which one the worker chose.
+  // data, and nothing joins the owner room until Epic 9). The stub understands
+  // both shapes so a regression back to `io.to(OWNER_ROOM)` fails on the room
+  // assertion below with a readable diff, rather than on a TypeError. The
+  // checks themselves are NOT shape-agnostic — they pin the broadcast.
   ;(globalThis as { __io?: unknown }).__io = {
     emit: (event: string, payload: unknown) => alerts.push({ room: '*', event, payload }),
     to: (room: string) => ({ emit: (event: string, payload: unknown) => alerts.push({ room, event, payload }) }),
@@ -239,7 +241,7 @@ async function main() {
   check('a crash loop past the attempt ceiling dead-letters instead of reviving',
     row.status === 'dead' && bounded.recovered === 0 && bounded.dead === 1,
     `${row.status} recovered=${bounded.recovered} dead=${bounded.dead}`)
-  check('and it alerts the owner on the way out', alerts.length === 1, String(alerts.length))
+  check('and it alerts every staff device on the way out', alerts.length === 1, String(alerts.length))
 
   const fresh = await seedJob(302)
   await sql(`UPDATE print_jobs SET status = 'printing', claimed_at = now() WHERE id = $1`, [fresh])

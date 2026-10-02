@@ -11,6 +11,7 @@ import {
   printJobs,
   seatSlots,
   tables,
+  tenants,
   zones,
 } from '@/server/db/schema'
 import { lockOpenSession } from '@/server/services/table-session.service'
@@ -279,8 +280,13 @@ export async function submitRound(
       openedAt: orderSessions.openedAt,
       kind: orderSessions.kind,
       tenantId: orderSessions.tenantId,
+      // The restaurant's own timezone, for the time printed on the ticket.
+      // Read here and copied onto the job, so the paper does not depend on
+      // whether `TZ` was set on the host — see `src/server/time.ts`.
+      timeZone: tenants.timezone,
     })
     .from(orderSessions)
+    .innerJoin(tenants, eq(tenants.id, orderSessions.tenantId))
     .where(eq(orderSessions.id, sessionId))
     .limit(1)
 
@@ -317,6 +323,7 @@ export async function submitRound(
     tableLabels,
     usesSeats,
     submittedAt: committedRound!.submittedAt,
+    timeZone: session!.timeZone,
   })
   await tx.insert(printJobs).values(
     tickets.map((ticket) => ({
