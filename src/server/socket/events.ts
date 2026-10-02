@@ -2,7 +2,7 @@ import 'server-only'
 import type { OrderConfirmedPayload, OrderSubmittedPayload } from '@/types/orders'
 import type { TableStatusChangedPayload } from '@/types/tables'
 import type { PrinterAlertPayload } from '@/types/tickets'
-import { OWNER_ROOM, productionRoom, sessionRoom } from './rooms'
+import { productionRoom, sessionRoom } from './rooms'
 import { getIO } from './index'
 
 /**
@@ -148,22 +148,25 @@ export function emitOrderConfirmed(payload: OrderConfirmedPayload): void {
 }
 
 /**
- * A print job gave up after its retries (Story 5.0, AC-6).
+ * A print job is retrying, or has given up (Story 5.0 AC-6; Change U3).
  *
- * Owner room only: it names tables, and the job behind it holds guests' seat
- * notes.
+ * Broadcast, like `table:status_changed`. Story 5.0 sent it to the owner room
+ * on the assumption that a ticket alert carries guests' seat notes; the payload
+ * carries none — station, tables, attempt count — and the people who can act on
+ * a late ticket are the staff on the floor. The owner room also has no members
+ * until Epic 9, so owner-only reached nobody.
  *
  * ── The worker does NOT call this ────────────────────────────────────────────
  * It cannot: this module is `server-only` and the worker is loaded from
  * `server.ts`. `src/server/print/worker.ts` emits the same event through the
  * same `global.__io` handle `getIO()` reads. This function exists for callers
- * INSIDE Next — Story 5.2's reprint, and Epic 9's dashboard — so they do not
+ * INSIDE Next — a future reprint action, Epic 9's dashboard — so they do not
  * hand-type the event name. Both sides take `PrinterAlertPayload`, which is
  * where the shape is kept honest.
  */
 export function emitPrinterAlert(payload: PrinterAlertPayload): void {
   try {
-    getIO().to(OWNER_ROOM).emit('printer:alert', payload)
+    getIO().emit('printer:alert', payload)
   } catch (error) {
     console.error('[socket] Failed to emit printer:alert:', error)
   }

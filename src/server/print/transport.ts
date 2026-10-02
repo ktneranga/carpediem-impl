@@ -17,6 +17,8 @@
  * `server.ts`, outside Next, where that module throws at import time.
  */
 import type { TicketPayload } from '@/types/tickets'
+import { clockTime, groupBySeat, ticketTypeOf } from './escpos'
+import { escposTcpTransport } from './escpos-transport'
 
 export type TicketTransport = {
   /** For the log line and for `last_error` context. */
@@ -24,12 +26,9 @@ export type TicketTransport = {
   deliver(ticket: TicketPayload): Promise<void>
 }
 
-/** KOT / KOT-P / BOT (FR14–FR16). */
-export function ticketTypeOf(destination: TicketPayload['destination']): string {
-  if (destination === 'pizza_kitchen') return 'KOT-P'
-  if (destination === 'bar') return 'BOT'
-  return 'KOT'
-}
+// `ticketTypeOf` moved to `escpos.ts` with the rest of the layout in Story 5.2,
+// and is re-exported here because callers already import it from this module.
+export { ticketTypeOf }
 
 /**
  * The ticket as plain text.
@@ -42,20 +41,15 @@ export function ticketTypeOf(destination: TicketPayload['destination']): string 
 export function renderTicketText(ticket: TicketPayload): string {
   const lines: string[] = []
   lines.push(`${ticketTypeOf(ticket.destination)}  ·  ${ticket.tableLabels.join(' + ')}`)
-  lines.push(`Round ${ticket.roundNumber}  ·  ${new Date(ticket.submittedAt).toLocaleTimeString()}`)
+  lines.push(`Round ${ticket.roundNumber}  ·  ${clockTime(ticket.submittedAt)}`)
   lines.push('—'.repeat(32))
 
+  // Grouped by seat, because that is how the runner hands the plates out
+  // (epics.md Story 5.1: items grouped by seat slot with the seat as header).
+  // `groupBySeat` is shared with the byte builder — these were two loops with
+  // the same intent, which is how the log and the paper start disagreeing.
   if (ticket.usesSeats) {
-    // Grouped by seat, because that is how the runner hands the plates out
-    // (epics.md Story 5.1: items grouped by seat slot with the seat as header).
-    const bySeat = new Map<string, typeof ticket.lines>()
-    for (const line of ticket.lines) {
-      const header = line.seatNote ? `${line.seatLabel} (${line.seatNote})` : line.seatLabel
-      const existing = bySeat.get(header)
-      if (existing) existing.push(line)
-      else bySeat.set(header, [line])
-    }
-    for (const [seat, seatLines] of bySeat) {
+    for (const [seat, seatLines] of groupBySeat(ticket.lines)) {
       lines.push(seat)
       for (const line of seatLines) {
         lines.push(`  ${line.quantity} × ${line.name}`)
@@ -108,34 +102,23 @@ export const nullTransport: TicketTransport = {
  * than pretending to print: this story has no byte builder to hand it.
  */
 export function resolveTransport(destination: TicketPayload['destination']): TicketTransport {
-  // ── A CONFIGURED printer must never resolve to the null transport ─────────
-  // It did, unconditionally. Set `PRINTER_IP` today and every ticket was
-  // recorded `printed` — a terminal state with no re-queue — while nothing came
-  // out of the printer. Found in review, and it is the exact rule the null
-  // transport's own header states ("It must NEVER be what a real station
-  // silently falls back to").
+  // ── A configured printer gets the real transport (Story 5.2) ──────────────
+  // Read HERE, at delivery time, never at module load or at enqueue: a printer
+  // re-addressed at 7pm must not strand the jobs queued against its old address
+  // at 6:55pm (Story 5.0, Decision 2).
   //
-  // Until Story 5.2 writes the bytes there is nothing to deliver WITH, so the
-  // honest outcome is failure: the job retries, dead-letters, and alerts the
-  // owner, which is visible. Pretending to print is not.
-  if (process.env.PRINTER_IP) {
-    return {
-      name: `unimplemented:${destination}`,
-      deliver: () =>
-        Promise.reject(
-          new Error(
-            `PRINTER_IP is set but ESC/POS delivery is not implemented yet (Story 5.2). ` +
-              `Unset PRINTER_IP to queue tickets without printing them.`,
-          ),
-        ),
-    }
+  // Every destination resolves to the same printer today. `station_configs` and
+  // `printer_configs` hold no rows and have no `connection_mode`, so per-station
+  // printers and the USB path wait for Story 10.3 — building a second delivery
+  // path behind a flag that cannot be set is how untested code ships.
+  const host = process.env.PRINTER_IP
+  if (host) {
+    const port = Number(process.env.PRINTER_PORT ?? 9100)
+    return escposTcpTransport(host, Number.isFinite(port) && port > 0 ? port : 9100)
   }
 
-  // Story 5.2: return the ESC/POS TCP (or USB) transport for this destination's
-  // station, reading its address at DELIVERY time so a re-pointed printer does
-  // not strand queued jobs.
-  //
-  // Named per destination so the log says WHICH station had nowhere to print,
-  // which is the first question asked when a ticket does not appear.
+  // No printer configured: log the ticket and move on. Named per destination so
+  // the log says WHICH station had nowhere to print, which is the first
+  // question asked when a ticket does not appear.
   return { ...nullTransport, name: `null:${destination}` }
 }

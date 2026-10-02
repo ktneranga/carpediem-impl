@@ -129,7 +129,11 @@ async function main() {
 
   // ── 3. Dead-lettering alerts and keeps the row (AC-6) ─────────────────────
   const alerts: unknown[] = []
+  // Story 5.2 made `printer:alert` a broadcast (the payload carries no guest
+  // data, and nothing joins the owner room until Epic 9). The stub accepts both
+  // shapes so this file does not have to care which one the worker chose.
   ;(globalThis as { __io?: unknown }).__io = {
+    emit: (event: string, payload: unknown) => alerts.push({ room: '*', event, payload }),
     to: (room: string) => ({ emit: (event: string, payload: unknown) => alerts.push({ room, event, payload }) }),
   }
   await drainPrintQueue(() => failing)
@@ -138,12 +142,17 @@ async function main() {
     `${row.status} attempts=${row.attempts}`)
   check('the row is still there, with its last error',
     (row.last_error ?? '').includes('ECONNREFUSED'), String(row.last_error))
-  const alert = alerts[0] as { room: string; event: string; payload: { attempts: number; tableLabels: string[] } }
-  check('printer:alert fired to the owner room',
-    alerts.length === 1 && alert.room === 'owner' && alert.event === 'printer:alert',
+  const alert = alerts[0] as {
+    room: string
+    event: string
+    payload: { attempts: number; tableLabels: string[]; kind: string }
+  }
+  check('printer:alert fired to every staff device',
+    alerts.length === 1 && alert.room === '*' && alert.event === 'printer:alert',
     JSON.stringify(alerts.length ? { room: alert.room, event: alert.event } : 'none'))
   check('the alert names the tables and the attempt count',
-    alert?.payload?.attempts === 6 && JSON.stringify(alert?.payload?.tableLabels) === '["TEST"]',
+    alert?.payload?.attempts === 6 && alert?.payload?.kind === 'dead' &&
+      JSON.stringify(alert?.payload?.tableLabels) === '["TEST"]',
     JSON.stringify(alert?.payload))
 
   // ── 4. A returning printer flushes the backlog, in order (AC-5) ───────────
@@ -276,19 +285,16 @@ async function main() {
   }
   check('with no PRINTER_IP, delivery is the null transport and succeeds', nullOk, noPrinter.name)
 
+  // Story 5.2 filled this branch with the real ESC/POS transport. The rule it
+  // has to keep is the one that made the placeholder necessary: a station with
+  // a printer configured must never fall back to something that reports
+  // success without printing. `verify-escpos.ts` proves the delivery itself.
   process.env.PRINTER_IP = '10.0.0.9'
   const configured = resolveTransport('kitchen')
-  let refused = false
-  try {
-    await configured.deliver({
-      destination: 'kitchen', roundNumber: 1, tableLabels: ['TEST'], usesSeats: false,
-      submittedAt: new Date().toISOString(), lines: [],
-    })
-  } catch (error) {
-    refused = String(error).includes('Story 5.2')
-  }
   delete process.env.PRINTER_IP
-  check('with PRINTER_IP set, delivery FAILS rather than pretending', refused, configured.name)
+  check('with PRINTER_IP set, a REAL transport is chosen — never the null one',
+    configured.name.startsWith('escpos:') && !configured.name.startsWith('null:'),
+    configured.name)
 
   // ── 7. The table is mutable (AC-10) ───────────────────────────────────────
   let mutable = true

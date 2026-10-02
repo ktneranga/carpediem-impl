@@ -37,16 +37,24 @@ export type TicketPayload = {
 }
 
 /**
- * `printer:alert` — a job gave up after its retries (Story 5.0, AC-6).
+ * `printer:alert` — a ticket is having trouble reaching its printer.
  *
- * Owner room only. It names tables and carries enough to find the job, and the
- * ticket behind it holds guests' seat notes.
+ * ── Two kinds, and the difference is the whole point (Change U3) ─────────────
+ * `retrying` is informational: the queue is still working on it and will
+ * probably succeed. `dead` means it has stopped trying and someone has to look.
+ * The old design had one banner meaning "failed, reprint manually" — manual
+ * reprint is no longer the recovery mechanism, and a banner that cannot tell
+ * those apart trains staff to ignore both.
  *
- * This is NOT the old "printer failed, reprint manually" banner. The job is
- * still in the table and still recoverable; what the alert means is "the queue
- * has stopped trying on its own" (Change U3).
+ * ── Broadcast to every authenticated device (Story 5.2) ─────────────────────
+ * Story 5.0 sent this to the owner room, reasoning that a ticket carries
+ * guests' seat notes. This payload carries none — no dish, no seat, no note,
+ * just which station and which tables. The people who can act on a dead ticket
+ * are the waiter who sent it and whoever is near the kitchen; the owner room
+ * also has no members until Epic 9, so owner-only reached nobody at all.
  */
 export type PrinterAlertPayload = {
+  kind: 'retrying' | 'dead'
   jobId: string
   destination: ProductionDestination
   tableLabels: string[]

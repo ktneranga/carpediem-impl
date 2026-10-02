@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { PrinterAlertBanner } from '@/components/pos/printer-alert-banner'
 
 export function Providers({ children }: { children: ReactNode }) {
   // Created inside useState, NOT at module scope.
@@ -27,5 +28,13 @@ export function Providers({ children }: { children: ReactNode }) {
       }),
   )
 
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={queryClient}>
+      {/* Global on purpose (Story 5.2): a printer fails while someone is
+          mid-order, and whichever screen they happen to be on should not decide
+          whether they find out. Renders nothing until an alert arrives. */}
+      <PrinterAlertBanner />
+      {children}
+    </QueryClientProvider>
+  )
 }

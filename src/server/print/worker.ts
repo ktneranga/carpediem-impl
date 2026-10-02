@@ -19,9 +19,6 @@
  */
 import { Pool } from 'pg'
 import type { PrinterAlertPayload, TicketPayload } from '@/types/tickets'
-// Relative and dependency-free, like the socket authenticator's imports: the
-// room name is spelled once, in the module both the emit and join sides share.
-import { OWNER_ROOM } from '../socket/rooms'
 import { resolveTransport, type TicketTransport } from './transport'
 
 /**
@@ -146,7 +143,8 @@ async function recoverStaleClaims(): Promise<{ recovered: number; dead: number }
 
   for (const job of buried.rows) {
     console.error(`[print] Job ${job.id} (${job.destination}) dead-lettered after ${job.attempts} crashed attempts`)
-    alertOwner({
+    alertStaff({
+      kind: 'dead',
       jobId: job.id,
       destination: job.destination,
       tableLabels: job.ticket.tableLabels,
@@ -261,20 +259,25 @@ async function markFailed(job: ClaimedJob, error: unknown): Promise<'pending' | 
 }
 
 /**
- * Tells the owner a ticket has stopped trying (AC-6).
+ * Tells the floor a ticket is in trouble (AC-6; Change U3).
+ *
+ * Broadcast, not room-scoped, since Story 5.2: the payload carries no guest
+ * data — station, tables, attempt count — and the people who can act on it are
+ * the waiter who sent the round and whoever is near the kitchen. Nothing joins
+ * the owner room until Epic 9, so the previous owner-only emit reached nobody.
  *
  * Reaches Socket.io through `global.__io` rather than `emitPrinterAlert`,
  * because that module is `server-only` and this file is not loaded by Next. It
- * is the same server instance `server.ts` created, so the emit is identical —
- * `src/server/socket/index.ts` reads the same global.
+ * is the same server instance `server.ts` created — `src/server/socket/index.ts`
+ * reads the same global.
  *
  * A failed emit must never fail the queue: the row already records everything.
  */
-function alertOwner(payload: PrinterAlertPayload): void {
+function alertStaff(payload: PrinterAlertPayload): void {
   try {
     const io = globalThis.__io
     if (!io) return
-    io.to(OWNER_ROOM).emit('printer:alert', payload)
+    io.emit('printer:alert', payload)
   } catch (error) {
     console.error('[print] Could not emit printer:alert:', error)
   }
@@ -345,20 +348,26 @@ export async function drainPrintQueue(
     } catch (error) {
       try {
         const outcome = await markFailed(job, error)
+        const alert = {
+          jobId: job.id,
+          destination: job.destination,
+          tableLabels: job.ticket.tableLabels,
+          attempts: job.attempts,
+          lastError: error instanceof Error ? error.message : String(error),
+        }
         if (outcome === 'dead') {
           dead += 1
           console.error(
             `[print] Job ${job.id} (${job.destination}) dead-lettered after ${job.attempts} attempts`,
           )
-          alertOwner({
-            jobId: job.id,
-            destination: job.destination,
-            tableLabels: job.ticket.tableLabels,
-            attempts: job.attempts,
-            lastError: error instanceof Error ? error.message : String(error),
-          })
+          alertStaff({ kind: 'dead', ...alert })
         } else {
           failed += 1
+          // Change U3: "queued and retrying" is a DIFFERENT message from "gave
+          // up", and staff need the first one — a ticket that is 30 seconds
+          // late is worth knowing about before it is dead. The banner says the
+          // system is still working on it and asks for nothing.
+          alertStaff({ kind: 'retrying', ...alert })
         }
       } catch (writeError) {
         // The database is in trouble too. Leave the row `printing`; the
