@@ -359,6 +359,13 @@ _Actionable requirements from the UX Design Specification:_
 
 ### Epic 6: Bill Settlement & Payment Recording
 
+> **Service charge (decided 2026-10-02, Teran).** The restaurant charges one, and the owner sets the
+> rate from the back-office dashboard (Story 10.5). Epic 6 adds the column and the arithmetic:
+> `tenant_config.service_charge_bp` in basis points (1000 = 10.00%), service computed on the subtotal,
+> tax on subtotal + service, **rounded once at the total — never per line**, and apportioned by largest
+> remainder whenever a bill is split (FR24, FR25) so the parts sum to the whole. The order screen's
+> running total is NOT a bill and gains no service line.
+
 **Goal:** Implement the complete billing and payment flow — consolidated bill generation, mid-settlement drag-and-drop split by person, per-seat-slot settlement, payment recording (cash / card / split), and automatic table session closure when all bills are settled. The SplitBillCanvas is the most complex UI component in the system.
 
 **Requirements Covered:**
@@ -1653,6 +1660,20 @@ So that the mid-settlement person split screen has a tested, accessible canvas r
 
 ### Story 6.2: Implement Consolidated Bill Generation
 
+> **Service charge applies to TABLE SERVICE (decided 2026-10-02, Teran).** The charge is added when the
+> session **has tables attached at bill time** — a counter sale with no table has had no table service
+> and carries no charge. One condition, no schema.
+>
+> Key it off the attached tables, **NOT off `order_sessions.kind`**. `kind` records where an order
+> STARTED and is never updated: a counter sale that is later seated keeps `kind = 'counter'` for the
+> rest of its life. Billing off it would mean a guest who buys at the bar, takes a table and orders
+> three more rounds is billed with no service charge. This is the same mistake that stopped a seated
+> counter sale's floor card refreshing (Story 5.0 review, `orders/route.ts`) — the second time the same
+> column has invited it.
+>
+> **No per-session rate override.** Waiving the charge is a DISCOUNT and belongs with comps in Epic 7 —
+> see the note there.
+
 As a waiter,
 I want to generate a single consolidated bill for all items at a table with one action,
 So that I can present the full total to a party settling together without any split configuration.
@@ -1794,6 +1815,22 @@ So that every payment is captured and the table closes automatically when fully 
 ---
 
 ## Epic 7: Audit Trail & Dispute Resolution
+
+> **Waiving a service charge is a discount, not a configuration change (decided 2026-10-02, Teran).**
+> It was considered as a nullable per-session rate override during Epic 6 planning and rejected: that is
+> a silent `UPDATE` with no who, no why, no authoriser and no audit row — for the one category of change
+> an owner most wants to see in a shift summary (FR51, FR54).
+>
+> `comp_records` already has the right shape — `staff_id`, `authorized_by_staff_id`, `amount_paisa` and
+> a mandatory `reason` — and FR47/FR48 make a comp an append-only loss entry that never alters the
+> original record. A waived service charge should be recorded the same way.
+>
+> **The one schema decision this needs:** `comp_records.order_event_id` is currently per-ITEM and NOT
+> NULL. A bill-level waiver needs either that column made nullable or a sibling record. Story 7.3 owns
+> the call.
+>
+> If a waiver is needed before Epic 7 ships, the interim is still a `comp_records`-shaped row with an
+> authoriser and a reason — never an edit to the rate.
 
 **Goal:** Implement the complete audit trail surface — per-order item history with dispute timeline, manager/owner comp recording with reason codes, item reassignment correction, and the full cross-staff audit trail view. This is CDRMS's core accountability differentiator.
 
@@ -2354,6 +2391,13 @@ So that the system's menu accurately reflects what the restaurant serves and whe
 ---
 
 ### Story 10.5: Implement Tenant Feature Flags & Brand Customization
+
+> **Added 2026-10-02 (Teran):** this story owns the **service charge rate** in the back office —
+> `tenant_config.service_charge_bp`, owner-only, alongside the existing flags. The COLUMN and the bill
+> maths arrive earlier, with Story 6.2, because a bill cannot be computed without them; 10.5 is where a
+> human can change the number. Note the RBAC trap when adding the route: `permissions.ts` matches by
+> prefix and an **unmatched prefix defaults to ALLOW**, so a new `/api/config/...` path must be covered
+> explicitly.
 
 As an owner,
 I want to toggle feature flags and customise the brand colour of the system,

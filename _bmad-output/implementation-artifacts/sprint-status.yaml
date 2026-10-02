@@ -82,27 +82,27 @@ development_status:
   epic-3-retrospective: optional
 
   # ── Epic 4: Order Entry & Multi-Destination Routing ──────────────────────
-  epic-4: in-progress
+  epic-4: done
   4-1-build-orderactionstrip-component: done
   4-2-implement-menu-browse-and-search: done
   4-3-implement-seat-slot-management: done
   4-4-implement-add-item-to-order-with-modifiers-and-seat-assignment: done
   4-5-implement-order-submission-and-multi-destination-routing: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   # ── Epic 5: Ticket Output — ESC/POS Printing & KDS Display ───────────────
-  epic-5: in-progress
+  epic-5: in-progress  # demo path complete (5-0, 5-2 done); 5-1 and 5-3 deferred KDS work
   5-0-implement-durable-print-queue: done
   5-1-build-kotticket-component: backlog  # DEFERRED post-demo — KDS work; kds_display_enabled=false
   5-2-implement-escpos-ticket-generation-and-tcp-printing: done
   5-3-implement-kds-display-screen-and-ticket-status: backlog  # DEFERRED post-demo — KDS work; kds_display_enabled=false
-  epic-5-retrospective: optional
+  epic-5-retrospective: done
 
   # ── Epic 6: Bill Settlement & Payment Recording ───────────────────────────
-  epic-6: backlog
-  6-1-build-splitbillcanvas-component: backlog
-  6-2-implement-consolidated-bill-generation: backlog
-  6-3-implement-mid-settlement-person-split: backlog
+  epic-6: in-progress
+  6-1-build-splitbillcanvas-component: backlog  # DEFERRED post-demo — drag-to-split; 6-4 per-seat covers real splitting
+  6-2-implement-consolidated-bill-generation: ready-for-dev
+  6-3-implement-mid-settlement-person-split: backlog  # DEFERRED post-demo — depends on 6-1
   6-4-implement-per-seat-slot-independent-billing: backlog
   6-5-implement-payment-recording-and-session-auto-close: backlog
   epic-6-retrospective: optional
