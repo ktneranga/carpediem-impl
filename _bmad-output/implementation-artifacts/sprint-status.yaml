@@ -94,7 +94,7 @@ development_status:
   epic-5: in-progress
   5-0-implement-durable-print-queue: done
   5-1-build-kotticket-component: backlog  # DEFERRED post-demo — KDS work; kds_display_enabled=false
-  5-2-implement-escpos-ticket-generation-and-tcp-printing: review
+  5-2-implement-escpos-ticket-generation-and-tcp-printing: done
   5-3-implement-kds-display-screen-and-ticket-status: backlog  # DEFERRED post-demo — KDS work; kds_display_enabled=false
   epic-5-retrospective: optional
 

@@ -506,7 +506,8 @@ Printer integration and mid-settlement drag-and-drop are the two highest-effort 
 
 ### Performance
 
-- **NFR-P1:** Order submission at a POS terminal completes and all tickets are printed or displayed within 3 seconds under normal LAN conditions
+- **NFR-P1:** Order submission at a POS terminal completes within 1 second under normal LAN conditions. The response does not wait on printer I/O (amended 2026-10-02 — printing became asynchronous in Story 5.0)
+- **NFR-P1b:** A ticket reaches a healthy printer within 3 seconds of submission. When the printer is unavailable the job is retried on a bounded ladder and is never discarded; delivery time is a property of the printer, not of the order
 - **NFR-P1a:** Order submission from a tablet over the cloud relay completes within 30 seconds under normal connectivity. The submitting device shows an explicit intermediate state until the local POS confirms commit and print
 - **NFR-P2:** Table and menu browsing screens load within 1 second on the restaurant LAN
 - **NFR-P3:** Bill generation — including mid-settlement drag-and-drop split with per-person total calculation — completes within 2 seconds
@@ -542,8 +543,8 @@ Printer integration and mid-settlement drag-and-drop are the two highest-effort 
 
 ### Integration
 
-- **NFR-I1:** ESC/POS printer integration supports both USB and TCP/IP network connection modes; the active mode is configurable per deployment
-- **NFR-I2:** Printer timeout or connection failure produces an immediate visible system alert — a failed ticket print is never silently dropped
+- **NFR-I1:** ESC/POS printer integration uses TCP/IP. USB support and per-station printer selection are deferred to Story 10.3, which owns station configuration (amended 2026-10-02)
+- **NFR-I2:** A printer timeout or connection failure is retried automatically. Staff see **queued and retrying** while it recovers and **stopped** once the attempts are exhausted; a dead-lettered job remains in the queue, recoverable. A failed ticket print is never silently dropped (amended 2026-10-02)
 - **NFR-I3:** Software updates are delivered via Watchtower image polling from GHCR and applied without interrupting active service (zero-downtime via docker-rollout + health check gate)
 - **NFR-I4:** Tailscale VPN integration allows Owner dashboard access from any internet-connected device without requiring firewall rule changes or public port exposure at the restaurant
 

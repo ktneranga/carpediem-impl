@@ -1,6 +1,6 @@
 # Story 5.2: Implement ESC/POS Ticket Generation & TCP Printing
 
-Status: review
+Status: done
 
 - **Epic:** 5 — Ticket Output: ESC/POS Printing & KDS Display
 - **Story ID:** 5.2
@@ -723,3 +723,6 @@ chatty printer, and the polite refusal. Story 5.0's 24 queue checks still pass.
   Separately: this file was found zeroed by a crashed write (41,774 NUL bytes) and was rebuilt from the
   session transcript and the two scratchpad scripts that held its sections. Content restored; the lesson
   is that it had never been committed.
+- 2026-10-02: Marked done. Code review ran once, all 24 patches applied, one finding recorded as a known
+  gap (a polite refusal cannot be told from a print at the TCP layer). Epic 5 is complete for the demo:
+  5.1 and 5.3 are deferred KDS work while `kds_display_enabled` is false.

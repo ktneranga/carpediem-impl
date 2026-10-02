@@ -295,6 +295,84 @@ This index **replaces** `idx_order_sessions_one_open_per_table`. The original ca
 
 ---
 
+### Print Queue
+
+*Added 2026-10-02 (`sprint-change-proposal-2026-08-21.md` Change A1, applied by
+`sprint-change-proposal-2026-10-02.md`). Built in Story 5.0; the delivery half is Story 5.2.*
+
+Ticket printing is asynchronous and durable. Order submission never blocks on the printer.
+
+**Transactional outbox.** Ticket jobs are inserted into `print_jobs` in the **same transaction** as the
+order (`order.service.submitRound`). An order can never exist without its tickets queued, and a
+rolled-back order can never leave a ticket behind. This is why the queue is PostgreSQL and not a broker:
+a broker needs a second write that can fail on its own, and that dual write is precisely the hole.
+
+**Worker.** A worker inside the existing Node process (`server.ts`, beside the session sweep — not a
+second container) drains the queue every three seconds, and is nudged after each send. It claims with
+`SELECT … FOR UPDATE SKIP LOCKED`, so two workers — two ticks, or two processes during a deploy — can
+never take the same job.
+
+**Retry.** 1s, 2s, 5s, 15s, 30s between six claims, then the job is dead-lettered: an alert fires and the
+row REMAINS in the table, recoverable. Including the transport's own 5-second per-attempt budget, a dead
+station reaches its final attempt in about 83 seconds.
+
+**Ordering.** A job is claimable only when nothing OLDER for the same destination is still in play —
+printing, or waiting out a backoff. A failing ticket holds its own station's queue rather than being
+overtaken, because a kitchen that receives round 3 before round 2 cooks in the wrong order. `created_at`
+defaults to `clock_timestamp()`, not `now()`, so two concurrent sends cannot be queued in the reverse of
+the order they committed.
+
+**Local only.** Postgres-backed, never the cloud broker: printing must work with the internet dead
+(NFR-R1).
+
+**At-least-once, not exactly-once.** A job in `printing` means a worker claimed it, not that it did not
+print — the worker may have written every byte and died before recording it. Recovery retries and
+records that it did, so a duplicate ticket has an explanation. A duplicate is a piece of paper; a missing
+ticket is a table waiting for food nobody is cooking.
+
+**What the transport cannot know.** TCP acknowledges delivery to the printer's kernel; raw ESC/POS on
+port 9100 acknowledges nothing about printing. A printer that accepts the bytes and discards them is
+indistinguishable from one that prints them. Logged in `deferred-work.md`; the answer, if it is ever
+needed, is `DLE EOT` real-time status.
+
+**Delivery is a seam.** `TicketTransport` has one implementation that writes ESC/POS over TCP and one
+that logs (used when no printer is configured — every development machine). Per-station printers and the
+USB path arrive with Story 10.3.
+
+**Schema** (migrations 0016 and 0017):
+
+```sql
+print_jobs(
+  id UUID PK, tenant_id FK, session_id FK, round_id FK -> order_rounds,
+  destination production_destination,   -- kitchen | pizza_kitchen | bar
+  ticket JSONB,                         -- the TicketPayload, self-contained
+  status print_job_status,              -- pending | printing | printed | dead
+  attempts INT DEFAULT 0, last_error TEXT,
+  claimed_at TIMESTAMPTZ, next_attempt_at TIMESTAMPTZ DEFAULT now(),
+  created_at TIMESTAMPTZ DEFAULT clock_timestamp(),   -- NOT now(): see Ordering
+  printed_at TIMESTAMPTZ
+)
+INDEX (status, next_attempt_at, created_at)   -- the claim
+INDEX (destination, created_at)               -- "is anything older still in play?"
+```
+
+Two deliberate divergences from Change A5, both recorded in Story 5.0:
+
+- **`ticket JSONB`, not `payload BYTEA`.** The bytes belong to Story 5.2, so a `BYTEA` column could not
+  have been filled — or verified — when the queue was built. Storing the ticket's DATA also means a
+  formatting fix re-renders queued jobs rather than stranding them.
+- **`destination`, not `station_id FK`.** `station_configs` and `printer_configs` hold no rows, and
+  `station_configs.type` has no `pizza_kitchen`, so the FK would have failed every enqueue. Resolving
+  the transport from the destination at DELIVERY time also means a printer re-addressed at 7pm does not
+  strand jobs queued against its old address at 6:55pm.
+
+**`print_jobs` is mutable, and is the only operational table that is.** It carries NO append-only
+trigger: `status`, `attempts`, `last_error` and `claimed_at` are updated on every retry. Nothing
+auditable is lost — what was ordered lives in `order_events`, which is append-only. A print job is the
+delivery attempt, not the order.
+
+---
+
 ### Infrastructure & Deployment
 
 **Docker Compose service structure:**
@@ -797,7 +875,9 @@ carpe-diem-rms/
     │   │   ├── order.service.ts + .test.ts
     │   │   ├── bill.service.ts + .test.ts
     │   │   ├── payment.service.ts + .test.ts
-    │   │   ├── print.service.ts + .test.ts    # ESC/POS TCP client
+    │   │   │                                  # NOTE: no print service here — see
+    │   │   │                                  # src/server/print/ (server-only throws
+    │   │   │                                  # in the worker's process)
     │   │   ├── session.service.ts + .test.ts  # PIN bcrypt, session CRUD
     │   │   ├── audit.service.ts + .test.ts    # append-only event writes
     │   │   ├── inventory.service.ts + .test.ts# atomic decrement
@@ -821,7 +901,7 @@ carpe-diem-rms/
     │   │   └── config.schema.ts
     │   ├── constants.ts               # error codes, event names, auth mode values
     │   ├── utils.ts                   # money formatting, date utils
-    │   └── escpos.ts                  # ESC/POS byte command builders
+    │                                  # (escpos.ts lives in src/server/print/)
     │
     ├── types/
     │   ├── index.ts                   # shared domain types
@@ -864,15 +944,23 @@ Waiter taps "Send Order"
   → middleware: validate session cookie → inject x-staff-id
   → submitOrderSchema.safeParse(body)
   → financial reauth check (if financialActionReauth = true)
-  → order.service.submit(orderId, staffId)
-      → inventory.service.decrementBatch()     [atomic transaction, SELECT FOR UPDATE]
-      → audit.service.write('ITEMS_SUBMITTED') [append-only INSERT]
-      → print.service.printTickets()            [TCP to PRINTER_IP:9100]
-          → on timeout/fail: io.to('owner').emit('printer:alert', ...)
-  → io.to('kitchen').emit('order:submitted', payload)
-  → io.to('bar').emit('order:submitted', payload)
-  → io.to('owner').emit('order:submitted', payload)
-  → Response.json({ success: true, data: { orderId, ticketsPrinted } })
+  → order.service.submitRound(tx, {...})     [ONE transaction]
+      → inventory.service.decrementBatch()     [Epic 8 — atomic, SELECT FOR UPDATE]
+      → audit: order_rounds + order_events     [append-only INSERT]
+      → INSERT print_jobs, one per destination [the outbox — same tx as the order]
+  → COMMIT
+  → io.to(destination).emit('order:submitted', payload)   [per production room]
+  → io.to(session).emit('order:confirmed', payload)
+  → wakePrintQueue()                           [a nudge; the 3s tick is the guarantee]
+  → Response.json({ success: true, data: { submissionId, roundNumber, itemCount } })
+
+Print worker (same process, every 3s — see Print Queue above):
+  → claim oldest ready job   [FOR UPDATE SKIP LOCKED, head-of-line per destination]
+  → resolveTransport(destination).deliver(ticket)   [TCP to PRINTER_IP:PRINTER_PORT]
+  → printed | retry with backoff | dead-letter + io.emit('printer:alert', ...)
+
+NOTE (2026-10-02): printing used to appear inside the submit flow above, synchronously,
+with `ticketsPrinted` in the response. Story 5.0 replaced that with the queue.
 
 Client (waiter):
   → queryClient.invalidateQueries(['orders', tableId])

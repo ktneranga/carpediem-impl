@@ -115,7 +115,8 @@ This document provides the complete epic and story breakdown for the Carpe Diem 
 ### NonFunctional Requirements
 
 **Performance**
-- NFR-P1: Order submission completes and all tickets are printed or displayed within 3 seconds under normal LAN conditions
+- NFR-P1: Order submission at a POS terminal completes within 1 second under normal LAN conditions; the response does not wait on printer I/O (amended 2026-10-02)
+- NFR-P1b: A ticket reaches a healthy printer within 3 seconds of submission. When the printer is unavailable the job is retried on a bounded ladder (about 83 seconds to the final attempt) and is never discarded — delivery time is a property of the printer, not of the order
 - NFR-P2: Table and menu browsing screens load within 1 second on the restaurant LAN
 - NFR-P3: Bill generation including mid-settlement drag-and-drop split with per-person total calculation completes within 2 seconds
 - NFR-P4: System sustains full performance with 10+ staff sessions simultaneously active across different devices
@@ -143,8 +144,8 @@ This document provides the complete epic and story breakdown for the Carpe Diem 
 - NFR-D4: Inventory portion counts are decremented atomically; concurrent orders cannot result in a count below zero without triggering the unavailable flag
 
 **Integration**
-- NFR-I1: ESC/POS printer integration supports both USB and TCP/IP network connection modes; active mode configurable per deployment
-- NFR-I2: Printer timeout or connection failure produces an immediate visible system alert — a failed ticket print is never silently dropped
+- NFR-I1: ESC/POS printer integration uses TCP/IP. USB support and per-station printer selection are deferred to Story 10.3, which owns station configuration — `station_configs` has no rows, no `connection_mode` column, and no `pizza_kitchen` station type (amended 2026-10-02)
+- NFR-I2: A printer timeout or connection failure is retried automatically. Staff see **queued and retrying** while it recovers and **stopped** once the attempts are exhausted; a dead-lettered job remains in the queue, recoverable. A failed ticket print is never silently dropped (amended 2026-10-02)
 - NFR-I3: Software updates are delivered via Watchtower image polling from GHCR and applied without interrupting active service
 - NFR-I4: Tailscale VPN integration allows Owner dashboard access from any internet-connected device without requiring firewall rule changes
 
@@ -334,7 +335,12 @@ _Actionable requirements from the UX Design Specification:_
 
 ### Epic 5: Ticket Output — ESC/POS Printing & KDS Display
 
-**Goal:** Implement the full ticket generation and delivery pipeline — KOT, KOT-P, and BOT tickets generated on order submission, printed to ESC/POS thermal printers via TCP, and displayed on KDS screens when enabled. Printer failures surface immediately as visible alerts; no ticket is silently dropped.
+**Goal:** Implement the full ticket generation and delivery pipeline — KOT, KOT-P and BOT tickets queued transactionally with the order, delivered to ESC/POS thermal printers over TCP by a retrying worker, and displayed on KDS screens when enabled. A printer outage delays tickets; it never loses them, and it never delays the waiter.
+
+**Sequencing:** Story 5.0 (the queue) comes first — Story 5.2 delivers through it.
+
+**Demo scope (Teran, 2026-10-02): paper only.** Stories 5.1 and 5.3 are deferred with
+`kds_display_enabled = false`, so FR19 and FR20 are out of the demo, not out of the product.
 
 **Requirements Covered:**
 - FR14 (KOT generation for kitchen items)
@@ -345,9 +351,9 @@ _Actionable requirements from the UX Design Specification:_
 - FR19 (KDS display when display mode enabled per station)
 - FR20 (kitchen/bar staff mark ticket in-progress or completed on KDS)
 - UX-DR10 (KOTTicket component — table, seats, items, type label, in-progress/completed states)
-- NFR-P1 (order submission + ticket print/display within 3 seconds on LAN)
-- NFR-I1 (supports USB and TCP/IP printer modes, configurable per deployment)
-- NFR-I2 (printer timeout or failure triggers immediate visible alert; `printer:alert` Socket.io event)
+- NFR-P1 (submission answers within 1 second; ticket delivery measured separately as NFR-P1b)
+- NFR-I1 (TCP; USB deferred to Story 10.3 with the rest of station configuration)
+- NFR-I2 (a failed ticket is retried, then alerted on — never silently dropped)
 
 ---
 
@@ -1427,6 +1433,57 @@ So that the kitchen and bar receive their tickets the moment I tap submit — no
 
 **Goal:** Implement the full ticket generation and delivery pipeline — KOT, KOT-P, and BOT tickets printed to ESC/POS thermal printers via TCP and displayed on KDS screens. Printer failures surface immediately; no ticket is ever silently dropped.
 
+### Story 5.0: Implement Durable Print Queue
+
+As the system,
+I want ticket print jobs persisted transactionally and delivered by a retrying worker,
+So that a printer outage never results in a lost ticket or a manual reprint burden on staff.
+
+**Added 2026-10-02** (`sprint-change-proposal-2026-08-21.md` Change E1, applied by
+`sprint-change-proposal-2026-10-02.md`). The ACs below describe what was BUILT, which diverges from
+Change E1's schema in two recorded ways: the ticket is stored as `jsonb` rather than `BYTEA`, because
+Story 5.2 owns the bytes; and a job names its `production_destination` rather than a `station_id`,
+because `station_configs` holds no rows.
+
+**Acceptance Criteria:**
+
+**Given** an order is submitted
+**When** it commits
+**Then** print jobs for every destination present are inserted in the same transaction; if the job
+insert fails, the order commit fails with it — an order can never exist without its tickets queued
+
+**Given** a print job is pending
+**When** the worker picks it up
+**Then** its status moves to `printing` and delivery is attempted to that destination's printer
+
+**Given** delivery fails
+**When** the worker retries
+**Then** the waits are 1s, 2s, 5s, 15s, 30s and `attempts` increments on each claim
+
+**Given** the printer is disconnected for an extended period
+**When** it reconnects
+**Then** all pending jobs flush automatically in creation order, with no manual action and no restart
+
+**Given** a job exceeds the retry limit
+**When** it is dead-lettered
+**Then** an alert fires and the job remains in the table, recoverable
+
+**Given** a worker crashes mid-print
+**When** it restarts
+**Then** a job stuck in `printing` is recovered, and the recovery is recorded on the job so that a
+duplicate ticket has an explanation
+
+**Given** one station's printer is failing
+**When** later tickets arrive for that same station
+**Then** they wait behind it rather than overtaking it — a kitchen must not receive round 3 before
+round 2 (decided 2026-09-25)
+
+**Given** the HTTP order-submission response
+**When** measured
+**Then** it does not block on printer I/O
+
+---
+
 ### Story 5.1: Build KOTTicket Component
 
 As a developer,
@@ -1468,8 +1525,8 @@ So that the KDS screen has a tested, accessible ticket card ready to compose.
 ### Story 5.2: Implement ESC/POS Ticket Generation & TCP Printing
 
 As the system,
-I want to generate correctly formatted ESC/POS ticket bytes and send them to the configured thermal printer via TCP immediately upon order submission,
-So that kitchen and bar staff have a physical ticket in hand within 3 seconds of the waiter tapping Submit.
+I want to generate correctly formatted ESC/POS ticket bytes and deliver them to the configured thermal printer over TCP through the print queue,
+So that kitchen and bar staff have a physical ticket in hand seconds after the waiter taps Submit — and still get it after a printer outage, without anyone reprinting by hand.
 
 **Acceptance Criteria:**
 
@@ -1481,29 +1538,36 @@ So that kitchen and bar staff have a physical ticket in hand within 3 seconds of
 **When** the ESC/POS byte sequence is assembled
 **Then** the printed ticket contains: ticket type label (KOT / KOT-P / BOT) in large bold text at top; table identifier; seat slot sub-headers with their assigned items; item name and quantity per line; modifier text (if any) on the line immediately below the item; submitted timestamp; a paper cut command at the end
 
-**Given** the station configuration has `output_mode: "print"` for the target printer
-**When** the ESC/POS bytes are ready
-**Then** a TCP connection is opened to `PRINTER_IP:9100` using Node.js `net` module; the bytes are written to the socket; the connection is closed after the write completes or times out
+**Given** a queued print job for a station with a printer configured
+**When** the worker delivers it
+**Then** a TCP connection is opened to `PRINTER_IP:PRINTER_PORT` using Node's `net` module; the ESC/POS
+bytes are written; the write is confirmed flushed; and the socket is closed
 
-**Given** the TCP connection to the printer does not respond within 5 seconds
-**When** the timeout fires
-**Then** the connection attempt is aborted; a `printer:alert` Socket.io event is emitted to all connected clients with `{ printerName, ticketType, tableId, error: "TIMEOUT" }`; the ticket data is not silently discarded — the alert includes enough context to reprint manually
+**Given** the printer refuses the connection, is unreachable, or accepts but does not drain the write
+**When** the per-attempt timeout (5 seconds) expires or the socket errors
+**Then** the attempt REJECTS with the cause named, and the job returns to the queue for its next attempt
+on Story 5.0's ladder. A job is never marked printed on an attempt that did not demonstrably send
 
-**Given** the TCP connection to the printer fails (connection refused, network unreachable)
-**When** the error is caught
-**Then** a `printer:alert` Socket.io event is emitted with `{ printerName, ticketType, tableId, error: "CONNECTION_FAILED" }`; the application continues operating; other destinations' tickets are still sent regardless of one printer's failure
+**Given** a job that is retrying, or one that has been dead-lettered
+**When** staff are at any POS screen
+**Then** a banner distinguishes **queued and retrying** (informational — the system will recover) from
+**stopped** (needs attention); a ticket that recovers clears its own banner; neither auto-dismisses.
+Manual reprint is NOT the recovery mechanism
 
-**Given** a `printer:alert` event is received by any connected client
-**When** the client displays the alert
-**Then** a persistent, visible error banner appears (not an auto-dismissing toast) indicating which printer failed and for which table; the banner remains until dismissed by a staff member
+**Given** no printer is configured for a station (`PRINTER_IP` blank)
+**When** a job is delivered
+**Then** the ticket is logged and the job completes — the pipeline is verifiable without hardware
 
-**Given** a station configured with `connection_mode: "usb"`
-**When** the system sends a ticket to that station
-**Then** the USB print path is invoked instead of TCP; `PRINTER_IP` is ignored for USB-mode stations; the printer receives the same ESC/POS byte sequence as TCP mode
-
-**Given** the full order submission flow including ticket printing
+**Given** the full submission flow
 **When** measured under normal LAN conditions
-**Then** from the waiter tapping Submit to the printer receiving all bytes is under 3 seconds (NFR-P1)
+**Then** submission-to-response is under 1 second (NFR-P1). Ticket delivery is measured separately
+(NFR-P1b) and may take as long as the retry ladder requires
+
+> **Rewritten 2026-10-02** (`sprint-change-proposal-2026-08-21.md` Change E2, applied by
+> `sprint-change-proposal-2026-10-02.md`). The ticket CONTENT criteria above are unchanged. What was
+> removed: the synchronous TCP call on submission, its inline 5-second budget as a user-facing limit,
+> `printer:alert` meaning "reprint manually", and the USB path — deferred to Story 10.3 with the rest of
+> station configuration.
 
 ---
 
@@ -2210,6 +2274,12 @@ So that I can control exactly who can access the system and what each person is 
 ---
 
 ### Story 10.3: Implement Zone, Table & Station Configuration
+
+> **Inherited from Epic 5 (2026-10-02):** station configuration must add `output_mode`
+> (`print` / `kds`) and `connection_mode` (`tcp` / `usb`) to `station_configs`, add `pizza_kitchen` to
+> the station type enum so it can express every `production_destination`, and seed one station per
+> destination. Until it does, `resolveTransport` sends every destination to the single `PRINTER_IP`,
+> and the USB path from NFR-I1 does not exist.
 
 As an owner,
 I want to configure the restaurant's zone names, table layout, and per-station ticket output mode,

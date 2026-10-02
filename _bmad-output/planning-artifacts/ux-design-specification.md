@@ -898,8 +898,28 @@ State-driven bottom action bar. Replaces tab bar entirely.
 
 Send Order is always full-width `brand-700` — the single unmissable primary action.
 
+#### `PrinterAlertBanner`
+
+*Added 2026-10-02 (`sprint-change-proposal-2026-08-21.md` Change U3, built in Story 5.2).*
+
+Global, for signed-in staff, on every screen — a printer fails while someone is mid-order, and whichever
+screen they happen to be on should not decide whether they find out. Three states, and the distinction
+between the first two is the point:
+
+| State | Tone | Says | Asks for |
+|---|---|---|---|
+| Retrying | `status-occupied` amber | "The kitchen printer is not responding · still trying (attempt 2)" | Nothing — the queue will recover |
+| Stopped | `status-alert` red | "The kitchen ticket has not printed · gave up after 6 attempts — check the printer, the ticket is still queued" | Attention |
+| Recovered | — | clears that ticket's banner | — |
+
+Neither visible state auto-dismisses: a toast that vanishes while a waiter is carrying plates has told
+nobody anything. Capped at three visible with a count of the rest and one **Dismiss all**, because a
+ten-minute outage dead-letters every round in turn. **Manual reprint is not the recovery mechanism** —
+the earlier "printer failed, reprint manually" banner no longer describes how this works.
+
 #### `KOTTicket`
-Server-side print template — produces ESC/POS byte sequence via Node.js print service. Not a visual component.
+Server-side print template — produces ESC/POS byte sequence via the print worker (`src/server/print/`).
+Not a visual component.
 
 | Type | Header | Content |
 |---|---|---|
