@@ -539,9 +539,36 @@ export const bills = pgTable('bills', {
   serviceChargeBp: integer('service_charge_bp').notNull(),
   taxBp:           integer('tax_bp').notNull(),
 
+  /**
+   * The seat this bill covers, for a per-seat bill (Story 6.4, FR25).
+   *
+   * NULL for a consolidated bill, which covers whatever is unbilled on the
+   * whole session. The partial unique index below is what makes a seat
+   * billable exactly once; it is deliberately NOT a plain unique index,
+   * because every consolidated bill would otherwise have to share the one
+   * NULL slot.
+   */
+  seatSlotId: uuid('seat_slot_id').references(() => seatSlots.id),
+
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_bills_session_id').on(t.sessionId),
+  /**
+   * One bill per seat, decided by the database (Story 6.4, AC-6 and AC-9).
+   *
+   * `WHERE seat_slot_id IS NOT NULL` is load-bearing in intent rather than in
+   * effect: PostgreSQL already treats NULLs as distinct, so consolidated bills
+   * would not collide either way — but the partial form says out loud that
+   * only seat bills are constrained, which is what a reader checks.
+   *
+   * Same shape as `idx_one_open_session_per_table` above, which is the proven
+   * precedent for a partial unique index in this project.
+   *
+   * It is raised by the `bills` INSERT, not the `bill_lines` one, so the
+   * service catches it around that statement — see `generateSeatBill`.
+   */
+  uniqueIndex('idx_bills_seat_slot').on(t.seatSlotId).where(sql`${t.seatSlotId} IS NOT NULL`),
+  index('idx_bills_session_seat').on(t.sessionId, t.seatSlotId),
 ])
 
 /**

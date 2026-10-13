@@ -1,6 +1,6 @@
 # Story 6.4: Implement Per-Seat-Slot Independent Billing
 
-Status: ready-for-dev
+Status: review
 
 - **Epic:** 6 — Bill Settlement & Payment Recording (second story of the demo path)
 - **Story ID:** 6.4
@@ -135,97 +135,97 @@ Every monetary field is an integer in paisa. No strings, no floats.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Make the billing guards SEAT-AWARE** (AC-2, AC-3, AC-5) — *do this first*
-  - [ ] `order.service.ts`: `SessionAlreadyBilledError` currently fires when `findOpenBill` finds ANY
+- [x] **Task 1 — Make the billing guards SEAT-AWARE** (AC-2, AC-3, AC-5) — *do this first*
+  - [x] `order.service.ts`: `SessionAlreadyBilledError` currently fires when `findOpenBill` finds ANY
         bill on the session. Replace with a per-seat check — refuse only the seats that are billed, and
         keep refusing everything when a CONSOLIDATED bill exists.
-  - [ ] **The contract, concretely** (do not invent a different one): add
+  - [x] **The contract, concretely** (do not invent a different one): add
         `SeatAlreadyBilledError(seatSlotId, seatLabel, billId)`; KEEP `SessionAlreadyBilledError` for
         the consolidated case. `orders/route.ts` maps the new one to
         `409 { code: 'SEAT_ALREADY_BILLED', seatId, seatLabel, billId }`, beside the existing
         `SESSION_ALREADY_BILLED` mapping.
-  - [ ] **The client must have a branch for it.** `order-screen.tsx`'s send handler is a
+  - [x] **The client must have a branch for it.** `order-screen.tsx`'s send handler is a
         `switch (error.code)` that handles only `ITEM_UNAVAILABLE` and `PRICE_CHANGED` —
         `SESSION_ALREADY_BILLED` already falls through to a generic message today. Without a
         `case 'SEAT_ALREADY_BILLED'`, AC-3's "naming the seat" does not happen.
-  - [ ] `bill.service.ts`: `findOpenBill` is the wrong question now. Split it:
+  - [x] `bill.service.ts`: `findOpenBill` is the wrong question now. Split it:
         `findConsolidatedBill(tx, sessionId)` and `findSeatBill(tx, sessionId, seatId)`, plus
         `billedSeatIds(tx, sessionId)` for the guard above.
-  - [ ] `generateConsolidatedBill` must bill the REMAINDER (AC-5), not refuse outright. Refuse only
+  - [x] `generateConsolidatedBill` must bill the REMAINDER (AC-5), not refuse outright. Refuse only
         when a consolidated bill already exists, or nothing is unbilled.
-  - [ ] **Update `verify-bills.ts` case R1** — it currently asserts `SESSION_ALREADY_BILLED` for any
+  - [x] **Update `verify-bills.ts` case R1** — it currently asserts `SESSION_ALREADY_BILLED` for any
         round on a billed session, which this story deliberately makes wrong.
 
-- [ ] **Task 2 — Schema** (AC-1, AC-6)
-  - [ ] Migration 0020: `bills.seat_slot_id uuid NULL REFERENCES seat_slots(id)`. Nullable — a
+- [x] **Task 2 — Schema** (AC-1, AC-6)
+  - [x] Migration 0020: `bills.seat_slot_id uuid NULL REFERENCES seat_slots(id)`. Nullable — a
         consolidated bill has no seat.
-  - [ ] **Partial unique index**: `UNIQUE (seat_slot_id) WHERE seat_slot_id IS NOT NULL`. This is AC-6
+  - [x] **Partial unique index**: `UNIQUE (seat_slot_id) WHERE seat_slot_id IS NOT NULL`. This is AC-6
         and AC-9 in one line, decided by the database. Name it, and catch it BY NAME.
-  - [ ] Index `bills(session_id, seat_slot_id)`.
-  - [ ] No status column anywhere. No change to `seat_slots`. See Conflict 2.
-  - [ ] `pnpm db:generate`, check `meta/_journal.json` orders by `when`, then apply.
+  - [x] Index `bills(session_id, seat_slot_id)`.
+  - [x] No status column anywhere. No change to `seat_slots`. See Conflict 2.
+  - [x] `pnpm db:generate`, check `meta/_journal.json` orders by `when`, then apply.
 
-- [ ] **Task 3 — The service** (AC-1, AC-4, AC-7, AC-8, AC-10, AC-11)
-  - [ ] `collectBillable` gains an optional seat filter and an **unbilled-only** filter. Both
+- [x] **Task 3 — The service** (AC-1, AC-4, AC-7, AC-8, AC-10, AC-11)
+  - [x] `collectBillable` gains an optional seat filter and an **unbilled-only** filter. Both
         `generateConsolidatedBill` and the new `generateSeatBill` go through it.
-  - [ ] `generateSeatBill(tx, { sessionId, seatId, staffId })` — lock the session, verify the seat is
+  - [x] `generateSeatBill(tx, { sessionId, seatId, staffId })` — lock the session, verify the seat is
         on it (AC-8), collect that seat's UNBILLED events, refuse if empty (AC-7), insert.
-  - [ ] Reuse `computeBillTotals` unchanged (AC-10). Reuse every 6.2 guard: unpriced item, comps
+  - [x] Reuse `computeBillTotals` unchanged (AC-10). Reuse every 6.2 guard: unpriced item, comps
         exceeding the order, integer overflow.
-  - [ ] **Catch the new seat index on the RIGHT STATEMENT.** In `generateConsolidatedBill` the `bills`
+  - [x] **Catch the new seat index on the RIGHT STATEMENT.** In `generateConsolidatedBill` the `bills`
         INSERT sits OUTSIDE the `try { … } catch` — only the `bill_lines` / `bill_comps` inserts are
         wrapped. `idx_bills_seat_slot` is an index on `bills`, so its 23505 is raised by the `bills`
         INSERT and would escape to the route as an undifferentiated 500, not the 409 AC-6 and AC-9
         require. `generateSeatBill` must wrap its own `bills` INSERT and map
         `isUniqueViolation(error, 'idx_bills_seat_slot')` → `SeatAlreadyBilledError`, keeping the
         existing lines/comps catch separate.
-  - [ ] Re-raise 6.2's guards unchanged from the seat path: `UnpricedItemError`,
+  - [x] Re-raise 6.2's guards unchanged from the seat path: `UnpricedItemError`,
         `CompsExceedOrderError`, `BillTooLargeError`, `MissingTenantConfigError`. **Scope the unpriced
         check to the COLLECTED set**, not the whole session — one unpriced item on seat 4 must not
         block billing seat 1.
-  - [ ] Select `seat_label`, never `seat_note` (AC-11b).
+  - [x] Select `seat_label`, never `seat_note` (AC-11b).
 
-- [ ] **Task 4 — The route** (AC-1, AC-6, AC-7, AC-8, AC-13)
-  - [ ] `POST /api/sessions/[sessionId]/seats/[seatId]/bill` — note the path the epic specifies, and
+- [x] **Task 4 — The route** (AC-1, AC-6, AC-7, AC-8, AC-13)
+  - [x] `POST /api/sessions/[sessionId]/seats/[seatId]/bill` — note the path the epic specifies, and
         that a `seats/[seatId]` segment already exists for Story 4.3's seat routes.
-  - [ ] zod `safeParse` on both params; the re-auth seam, the `x-staff-id` UUID check and the guarded
+  - [x] zod `safeParse` on both params; the re-auth seam, the `x-staff-id` UUID check and the guarded
         catch-block re-read all exist in the 6.2 bills route — **copy the shape, do not re-derive it**.
-  - [ ] Status codes: 201 · 400 · 401 · 403 · 404 no such session/seat · 409 `SEAT_ALREADY_BILLED` ·
+  - [x] Status codes: 201 · 400 · 401 · 403 · 404 no such session/seat · 409 `SEAT_ALREADY_BILLED` ·
         422 `SEAT_HAS_NO_ITEMS` · 500.
-  - [ ] **RBAC is INHERITED, not written.** `permissions.ts` covers the `/api/sessions` prefix
+  - [x] **RBAC is INHERITED, not written.** `permissions.ts` covers the `/api/sessions` prefix
         (owner + waiter) and `proxy.ts` enforces it, so the 403 above needs no code in the handler —
         the sibling routes say so in comments and write no role check. The handler validates
         `x-staff-id` is a UUID (400) and nothing else. Verify as Kumar anyway; do not assume.
-  - [ ] **Fix the consolidated 409's fallback re-read while you are here.** It selects
+  - [x] **Fix the consolidated 409's fallback re-read while you are here.** It selects
         `bills WHERE session_id = $1 ORDER BY created_at ASC LIMIT 1`, and 6.2's review added that
         `ORDER BY` with the comment "wrong the moment 6.4's per-seat bills land". With seat bills the
         oldest row is usually a SEAT bill, so a consolidated 409 hands the client a seat bill's id.
         Filter it to `type = 'consolidated'`, and update the client's `BILL_ALREADY_OPEN` branch so it
         no longer reads any bill id as "the session is settled".
 
-- [ ] **Task 5 — The screen** (AC-12)
-  - [ ] The `['bill', sessionId]` query returns ONE bill. A session now holds several — change it to
+- [x] **Task 5 — The screen** (AC-12)
+  - [x] The `['bill', sessionId]` query returns ONE bill. A session now holds several — change it to
         `bills[]` and update `loadSessionBill` → `loadSessionBills`. **There are exactly two callers**:
         `bills/route.ts` and `src/app/orders/[sessionId]/page.tsx`, which computes `initialBill` and
         passes it as a prop to seed the query. Rename that prop too (`initialBill` → `initialBills`).
         Missing the page breaks the build — or, patched carelessly, leaves the FIRST PAINT deriving
         `settling` from a single bill again, which is the exact refresh hole 6.2's review closed.
-  - [ ] `stripState` currently settles on `bill !== null`. It must settle only when **nothing is left
+  - [x] `stripState` currently settles on `bill !== null`. It must settle only when **nothing is left
         to bill**. A table with one seat billed and three seats ordering is NOT settling.
-  - [ ] `SeatSelector`: mark a billed seat and offer "Bill This Seat" on the selected unbilled one.
-  - [ ] Refusals get the same treatment as Send's: name what happened, leave the screen usable.
+  - [x] `SeatSelector`: mark a billed seat and offer "Bill This Seat" on the selected unbilled one.
+  - [x] Refusals get the same treatment as Send's: name what happened, leave the screen usable.
 
-- [ ] **Task 6 — Verify** (AC: all)
-  - [ ] Extend `src/server/services/verify-bills.ts`. Matrix below.
-  - [ ] **`makeSession` creates exactly ONE seat, hard-coded `'S1'`.** Half this matrix needs three or
+- [x] **Task 6 — Verify** (AC: all)
+  - [x] Extend `src/server/services/verify-bills.ts`. Matrix below.
+  - [x] **`makeSession` creates exactly ONE seat, hard-coded `'S1'`.** Half this matrix needs three or
         four. Extend it to `makeSession(kind, { withTable, seats })` returning `seatIds: string[]` with
         labels `S1…Sn` — `idx_seat_slots_session_label` is `UNIQUE (session_id, seat_label)`, so the
         labels must differ.
-  - [ ] **Extend the cleanup registry BEFORE writing case 2.** See Trap 7 — this one bites silently.
-  - [ ] **The concurrent double-tap, the ordering-after-one-seat-is-billed case, and the remainder
+  - [x] **Extend the cleanup registry BEFORE writing case 2.** See Trap 7 — this one bites silently.
+  - [x] **The concurrent double-tap, the ordering-after-one-seat-is-billed case, and the remainder
         bill are not optional.** They are AC-9, AC-2 and AC-5, and the first two are the exact shapes
         that 6.2's review found broken.
-  - [ ] Every new case must be able to FAIL. 6.2 shipped four that could not — see Trap 5.
+  - [x] Every new case must be able to FAIL. 6.2 shipped four that could not — see Trap 5.
 
 ---
 
@@ -471,11 +471,126 @@ routes and the schema are the same either way.
 
 ### Agent Model Used
 
+claude-opus-5
+
 ### Debug Log References
+
+`src/server/services/verify-bills.ts` — **98/98 passing** against the running dev server and the live
+database, up from 60 at the end of Story 6.2.
+
+```
+pnpm exec tsx --env-file=.env src/server/services/verify-bills.ts
+```
+
+**Trap 7 was real, and the fix is proven by the run completing.** `cleanup()` sits in a `finally` and
+`98/98 passed` prints only after it returns, so a foreign-key violation on `DELETE FROM order_sessions`
+would have surfaced as a thrown error instead of a pass line. It did not.
+
+**The post-run database check is now DONE (2026-10-13, after Docker Desktop was restarted).** It
+could not be run immediately after the suite because the Docker engine stopped
+(`open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified`). Result:
+
+```
+bills 1 · bill_lines 10 · disabled_triggers 0 · config 1000/0/false
+rounds_today 0 · print_jobs_today 0 · sessions_today 0
+```
+
+`disabled_triggers 0` is the one that matters — no run died holding an append-only trigger off.
+`rounds_today 0` and `print_jobs_today 0` are the direct evidence that Trap 7's registry fix works:
+cases S2 and S3 send rounds through the real route, and nothing they wrote survived. The remaining
+`bills 1 / bill_lines 10` is the manual bill from 2026-10-02, unchanged. Two `order_events` dated today
+also survive; they belong to sessions opened 2026-10-02 and were written at 03:16, before any run in
+this session, so they are pre-existing data rather than residue.
+
+Three cases failed during development and all three were the SCRIPT asserting superseded behaviour,
+not the code:
+
+- **R1** asserted that ANY bill on a session refused ANY round. True for a consolidated bill, and
+  exactly what this story makes false for a seat bill. Narrowed to the consolidated case; S2 now covers
+  the other half.
+- **R4** asserted the singular `{ bill }` shape from the GET endpoint, which is now
+  `{ bills, hasUnbilled }`.
+- **R4 again**, after my first correction: I asserted `hasUnbilled === true` on a session queried
+  BEFORE anything was ordered. The endpoint was right and the assertion was wrong — nothing ordered
+  means nothing to bill.
 
 ### Completion Notes List
 
+Written from the run output above, not from memory.
+
+**The conflict this story existed to resolve.** Story 6.2's review closed a real hole with a
+session-wide refusal in `submitRound`; AC-2 here required it to be seat-scoped. `findOpenBill` is now
+three functions — `findConsolidatedBill`, `findSeatBill`, `billedSeats` — and the guard refuses a round
+only when it touches a billed seat, or when a consolidated bill has swept everything. **Case S2 is the
+proof**: seat 1 billed, a round for seat 2 returns 201, a round for seat 1 returns 409 naming "S1".
+
+**One builder, not two.** `generateConsolidatedBill` and `generateSeatBill` are thin wrappers over a
+shared `buildBill`, which is parameterised by `seatId | null`. AC-10 demanded one arithmetic
+implementation and the cheapest way to guarantee that was to leave only one code path.
+
+**The validator's finding #2 was correct and would have been a silent 500.** The `bills` INSERT sat
+outside Story 6.2's try/catch — fine while `bills` carried no unique index, and wrong the moment
+`idx_bills_seat_slot` existed, because that index raises its 23505 on exactly that statement. It now
+has its own try/catch mapping to `SeatBillAlreadyExistsError`. Case S7 is what proves it: two
+simultaneous taps on one seat give one 201 and one 409, not a 500.
+
+**A consolidated bill now covers the REMAINDER** (Decision 1). `collectBillable` filters to events no
+`bill_lines` row claims — there is deliberately no `billed` flag on `order_events`, which would be a
+second source of truth next to the unique index. S5 bills two of four seats then takes a consolidated
+bill over the other two; S11 proves an event with a NULL `seat_slot_id`, which no seat bill can reach,
+is picked up by that remainder.
+
+**`settling` means "nothing left to bill", not "a bill exists".** Those became different statements in
+this story, and `bill !== null` would have frozen the screen for three guests still eating. The
+predicate is `hasUnbilledItems`, computed on the server and exported so Story 6.5 imports it rather
+than writing a second version — see `deferred-work.md` on why 6.5's auto-close condition is
+`everyBillSettled AND NOT hasUnbilled`. S14 walks a three-seat table through all three states.
+
+**Both deferred-work items addressed to this story by name are implemented**, having been missed in the
+story's first draft and caught by the validator:
+- The seat NOTE reaches no bill. S12 sets a note to "bald man", bills the seat, and greps the whole
+  response and the stored `bill_lines` rows for it.
+- "Bill This Seat" is gated on `usesSeats`, so it does not appear for Bean Bags, Sun Beds, Rooftop or
+  counter sales. The ROUTE still works if called — this is a UI gate, not a security one, and S13
+  bills a counter seat deliberately.
+
+**Deviation from the stated task order.** Task 1 is marked "do this first", but `billedSeats` and
+`findSeatBill` cannot exist without `bills.seat_slot_id`, which Task 2 adds. Task 2 ran first.
+
+**Also fixed, because this story is the moment it broke:** the consolidated 409's fallback re-read was
+`ORDER BY created_at LIMIT 1` over all of a session's bills. 6.2's review added that ordering with the
+comment "wrong the moment 6.4's per-seat bills land" — on a part-settled table the oldest row is
+usually a seat bill, so a consolidated 409 handed the client a seat bill's id. Now filtered to
+`seat_slot_id IS NULL`. S5's last check asserts it.
+
+**Not done, and not in scope:** no payment is recorded, no seat or session is closed, and nothing
+auto-closes a table. Story 6.5 owns all of that. A bill is not a payment.
+
 ### File List
+
+New:
+- `src/server/db/migrations/0020_nice_vision.sql`
+- `src/server/db/migrations/meta/0020_snapshot.json`
+- `src/app/api/sessions/[sessionId]/seats/[seatId]/bill/route.ts`
+
+Modified:
+- `src/server/db/schema.ts` — `bills.seatSlotId`, `idx_bills_seat_slot` (partial unique),
+  `idx_bills_session_seat`
+- `src/server/db/migrations/meta/_journal.json`
+- `src/server/services/bill.service.ts` — `findOpenBill` split into three; `collectBillable` gains seat
+  and unbilled filters; `buildBill` + `generateSeatBill`; `loadSessionBill` → `loadSessionBills`;
+  `hasUnbilledItems`; four new typed errors; the `bills` INSERT wrapped
+- `src/server/services/order.service.ts` — `SeatAlreadyBilledError`, the guard narrowed
+- `src/app/api/sessions/[sessionId]/orders/route.ts` — 409 `SEAT_ALREADY_BILLED`
+- `src/app/api/sessions/[sessionId]/bills/route.ts` — GET returns the list plus `hasUnbilled`; the
+  409 re-read scoped to consolidated
+- `src/app/orders/[sessionId]/page.tsx` — `initialBills` / `initialHasUnbilled`
+- `src/components/pos/order-screen.tsx` — plural bill query, the `settling` predicate, the seat-bill
+  mutation, "Bill This Seat", the `SEAT_ALREADY_BILLED` send branch
+- `src/components/pos/seat-selector.tsx` — billed seats struck through and announced
+- `src/types/bills.ts` — `seatSlotId`, `seatLabel`
+- `src/server/services/verify-bills.ts` — R1 and R4 updated; 15 new case groups; `sendRound` helper;
+  multi-seat fixture; `print_jobs` / `order_rounds` added to the cleanup
 
 ### Change Log
 
@@ -502,3 +617,14 @@ routes and the schema are the same either way.
   not track, so it would have failed with a foreign-key violation and leaked every session of the run
   — Trap 7. The draft also shipped four matrix cases that could not fail, under a trap warning against
   exactly that; they are replaced with five that name the production change that would turn them red.
+- 2026-10-13: Implemented. All six tasks complete; **98/98 verification checks pass** (60 before this
+  story). The conflict the story was written around is resolved and proved by case S2: with seat 1
+  billed, a round for seat 2 is accepted and a round for seat 1 is refused by name. The validator's
+  warning about the `bills` INSERT sitting outside Story 6.2's try/catch was correct — the new partial
+  unique index raises its 23505 on exactly that statement, so AC-6 and AC-9 would have been 500s; S7
+  now proves they are 409s. Trap 7 was also correct: case S2 is the first accepted send in the script's
+  history, and the cleanup registry needed `print_jobs` and `order_rounds` before it could survive one.
+  Task 2 ran before Task 1 out of necessity — `billedSeats` cannot exist without the column Task 2 adds.
+  The post-run database check was blocked at the time by Docker Desktop's engine stopping; it was run
+  once Docker was back and is recorded in the Debug Log. Nothing leaked and no trigger was left
+  disabled — `rounds_today 0`, `print_jobs_today 0`, `disabled_triggers 0`.

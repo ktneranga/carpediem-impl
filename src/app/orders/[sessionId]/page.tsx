@@ -5,7 +5,7 @@ import { dishCount } from '@/server/orders/item-count'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { loadSubmittedRounds } from '@/server/orders/submitted-rounds'
-import { loadSessionBill } from '@/server/services/bill.service'
+import { hasUnbilledItems, loadSessionBills } from '@/server/services/bill.service'
 import {
   orderEvents,
   orderSessions,
@@ -157,8 +157,12 @@ export default async function OrderPage({
 
   // Read here, not in the client, so an already-billed order paints `settling`
   // immediately instead of flashing a live "Add More Items" button while the
-  // query resolves (code review 2026-10-13).
-  const initialBill = await loadSessionBill(db, session.sessionId)
+  // query resolves (code review 2026-10-13). Plural since Story 6.4 — a
+  // session can hold one bill per seat plus a consolidated remainder.
+  const [initialBills, initialHasUnbilled] = await Promise.all([
+    loadSessionBills(db, session.sessionId),
+    hasUnbilledItems(db, session.sessionId),
+  ])
 
   return (
     <OrderScreen
@@ -178,7 +182,8 @@ export default async function OrderPage({
       seats={seats}
       submittedRounds={submittedRounds}
       taxRatePercent={config?.taxRatePercent ?? 0}
-      initialBill={initialBill}
+      initialBills={initialBills}
+      initialHasUnbilled={initialHasUnbilled}
     />
   )
 }

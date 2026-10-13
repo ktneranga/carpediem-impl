@@ -12,6 +12,7 @@ import {
   ItemUnavailableError,
   PriceChangedError,
   SeatNotOnSessionError,
+  SeatAlreadyBilledError,
   SessionAlreadyBilledError,
   SubmissionIdReusedError,
   submitRound,
@@ -198,6 +199,17 @@ export async function POST(
       submitRound(tx, { sessionId, staffId, submissionId, lines }),
     )
   } catch (error) {
+    if (error instanceof SeatAlreadyBilledError) {
+      // NOT the session-wide refusal. Per-seat billing exists so the rest of
+      // the table keeps ordering, so this names the one seat that is closed
+      // and says nothing about the others.
+      return fail(
+        'SEAT_ALREADY_BILLED',
+        `${error.seatLabel} has already been billed. Move that item to another seat, or start a new order.`,
+        409,
+        { seatId: error.seatSlotId, seatLabel: error.seatLabel, billId: error.billId },
+      )
+    }
     if (error instanceof SessionAlreadyBilledError) {
       return fail(
         'SESSION_ALREADY_BILLED',

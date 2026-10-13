@@ -95,15 +95,25 @@ export type OrderScreenProps = {
    */
   taxRatePercent: number
   /**
-   * The bill this session already has, read on the server (code review
-   * 2026-10-13).
+   * The bills this session already has, read on the server.
    *
-   * Seeds the `['bill', sessionId]` query so an already-billed order renders
-   * `settling` on the FIRST paint. Without it the screen flashes `submitted`
-   * — with a live "Add More Items" — for the length of one fetch, which is
-   * exactly the window the review found a waiter using.
+   * Seeds the `['bills', sessionId]` query so a billed order renders its real
+   * state on the FIRST paint. Without it the screen flashes `submitted` — with
+   * a live "Add More Items" — for the length of one fetch, which is exactly
+   * the window Story 6.2's review found a waiter using.
+   *
+   * Plural since Story 6.4: one bill per billed seat, plus a consolidated
+   * remainder if one was generated.
    */
-  initialBill: BillDetail | null
+  initialBills: BillDetail[]
+  /**
+   * Whether anything on this session is still unbilled.
+   *
+   * Computed on the SERVER, not derived here. "Is this table finished?" is
+   * `no unbilled items`, and a client-side version of that question is what
+   * the 6.2 review found broken.
+   */
+  initialHasUnbilled: boolean
 }
 
 /** FR9's destinations as a waiter says them, for the bottom bar. */
@@ -273,6 +283,42 @@ class BillRefusedError extends Error {
   }
 }
 
+/** `POST /api/sessions/:id/seats/:seatId/bill` — Story 6.4. */
+async function billSeat(sessionId: string, seatId: string): Promise<BillDetail> {
+  const response = await fetch(`/api/sessions/${sessionId}/seats/${seatId}/bill`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  })
+
+  if (response.status === 401) {
+    const challenge = await response.json().catch(() => null)
+    if (challenge?.error?.code === 'REAUTH_REQUIRED' || challenge?.error?.code === 'REAUTH_FAILED') {
+      throw new BillRefusedError(
+        challenge.error.code,
+        challenge.error.message ?? 'This bill needs a PIN.',
+        null,
+      )
+    }
+    throw new SessionExpiredError('Session expired')
+  }
+  if (response.status === 403) throw new ForbiddenError('Role not permitted')
+
+  const payload = await response.json().catch(() => null)
+  if (response.ok && payload?.success) return payload.data as BillDetail
+
+  const error = payload?.error ?? {}
+  if (error.code === 'SESSION_ALREADY_CLOSED') throw new SessionGoneError('Already closed')
+  if (typeof error.code === 'string' && response.status < 500) {
+    throw new BillRefusedError(
+      error.code,
+      error.message ?? 'This seat was not billed.',
+      typeof error.billId === 'string' && error.billId !== '' ? error.billId : null,
+    )
+  }
+  throw new Error('This seat was not billed.')
+}
+
 /** `POST /api/sessions/:id/bills` — Story 6.2. */
 async function generateBill(sessionId: string): Promise<BillDetail> {
   const response = await fetch(`/api/sessions/${sessionId}/bills`, {
@@ -334,7 +380,8 @@ export function OrderScreen({
   staffName,
   zoneName,
   taxRatePercent,
-  initialBill,
+  initialBills,
+  initialHasUnbilled,
   tableLabel,
   capacity,
   coverCount,
@@ -350,6 +397,20 @@ export function OrderScreen({
   // Seats only in the Tables zone (Teran, 2026-09-16). Elsewhere every dish
   // goes to the order's automatic Seat 1 and the seat section is hidden.
   const usesSeats = zoneUsesSeats(zoneName)
+
+  /**
+   * Has this seat had anything SENT to the kitchen?
+   *
+   * Matched on the seat LABEL, which is what `SubmittedItemRow` carries. Only
+   * decides whether to OFFER the action — the server is the authority on
+   * whether the seat has anything left to bill, and answers
+   * `422 SEAT_HAS_NO_ITEMS` if not.
+   */
+  function seatHasSentItems(seatLabel: string): boolean {
+    return submittedRounds.some((round) =>
+      round.items.some((item) => item.seatLabel === seatLabel),
+    )
+  }
   const router = useRouter()
   const queryClient = useQueryClient()
   const minuteTick = useMinuteTick()
@@ -558,7 +619,7 @@ export function OrderScreen({
    */
   const [addingMore, setAddingMore] = useState(false)
 
-  const billQueryKey = ['bill', sessionId] as const
+  const billQueryKey = ['bills', sessionId] as const
 
   /**
    * The bill this session has, from the SERVER (code review 2026-10-13).
@@ -574,15 +635,23 @@ export function OrderScreen({
    * already-billed order, and refetched on window focus — the tablet a waiter
    * returns to is the one most likely to be stale.
    */
-  const { data: bill = null } = useQuery({
+  const { data: billState } = useQuery({
     queryKey: billQueryKey,
     queryFn: () =>
-      seatRequest<{ bill: BillDetail | null }>(`/api/sessions/${sessionId}/bills`).then(
-        (payload) => payload.bill,
+      seatRequest<{ bills: BillDetail[]; hasUnbilled: boolean }>(
+        `/api/sessions/${sessionId}/bills`,
       ),
-    initialData: initialBill,
+    initialData: { bills: initialBills, hasUnbilled: initialHasUnbilled },
     refetchOnWindowFocus: true,
   })
+
+  const sessionBills = billState.bills
+  /** Seat ids that already have a bill of their own — for the seat chips. */
+  const billedSeatIds = new Set(
+    sessionBills.map((b) => b.seatSlotId).filter((id): id is string => id !== null),
+  )
+  /** A consolidated bill sweeps everything, so it closes every seat at once. */
+  const hasConsolidatedBill = sessionBills.some((b) => b.seatSlotId === null)
 
   const { data: submittedRounds, error: ordersError } = useQuery({
     queryKey: ['orders', sessionId],
@@ -780,6 +849,20 @@ export function OrderScreen({
         // hunting a long round for the one line that is flagged.
         const dish = refusedDishName(error.detail)
         switch (error.code) {
+          case 'SEAT_ALREADY_BILLED':
+            // The server names the seat; say which one. Without this branch it
+            // fell through to a generic "not sent" and the waiter had no idea
+            // which of six seats was closed.
+            void queryClient.invalidateQueries({ queryKey: billQueryKey })
+            setSendNote({ text: error.message, forLines: lines })
+            return
+          case 'SESSION_ALREADY_BILLED':
+            void queryClient.invalidateQueries({ queryKey: billQueryKey })
+            setSendNote({
+              text: 'This order has been billed. Nothing more can be added to it.',
+              forLines: null,
+            })
+            return
           case 'ITEM_UNAVAILABLE':
             void queryClient.invalidateQueries({ queryKey: menuQueryOptions.queryKey })
             setSendNote({
@@ -847,9 +930,12 @@ export function OrderScreen({
     mutationFn: () => generateBill(sessionId),
     onMutate: () => setSendNote(null),
     onSuccess: (generated) => {
-      // Straight into the cache the strip reads, so the transition is
-      // immediate and the next refetch confirms rather than corrects it.
-      queryClient.setQueryData(billQueryKey, generated)
+      // Refetch rather than patching the cache by hand: a consolidated bill
+      // changes BOTH the list and `hasUnbilled`, and the server already knows
+      // both. Patching one and guessing the other is how a screen ends up
+      // disagreeing with the database.
+      void queryClient.invalidateQueries({ queryKey: billQueryKey })
+      void generated
       // Nothing staged can be sent now; drop it rather than strand it.
       clearRound()
       // The round history is unchanged by billing, but the session's state is
@@ -900,6 +986,52 @@ export function OrderScreen({
     },
   })
 
+  /**
+   * Bill This Seat (Story 6.4).
+   *
+   * Deliberately NOT merged with `billMutation`: the two refuse for different
+   * reasons and say different things. A shared handler would have to branch on
+   * every code anyway, and the 6.2 review's lesson was that collapsing two
+   * causes into one message is how a waiter is told the wrong thing.
+   */
+  const seatBillMutation = useMutation({
+    mutationFn: (seatId: string) => billSeat(sessionId, seatId),
+    onMutate: () => setSeatNotice(null),
+    onSuccess: () => {
+      // Refetch: a seat bill changes the list AND possibly `hasUnbilled` (it
+      // may have been the last unbilled seat). The server knows both.
+      void queryClient.invalidateQueries({ queryKey: billQueryKey })
+      void queryClient.invalidateQueries({ queryKey: ['orders', sessionId] })
+      void queryClient.invalidateQueries({ queryKey: ['tables'] })
+    },
+    onError: (error) => {
+      if (error instanceof SessionExpiredError) {
+        window.location.assign('/login')
+        return
+      }
+      if (error instanceof ForbiddenError) {
+        setSeatNotice('Your role cannot generate bills.')
+        return
+      }
+      if (error instanceof SessionGoneError) {
+        setClosedDuringSend(true)
+        return
+      }
+      if (error instanceof BillRefusedError) {
+        if (error.code === 'SEAT_ALREADY_BILLED') {
+          // Not a failure — the outcome the waiter wanted. Refetch so the
+          // chip shows it.
+          void queryClient.invalidateQueries({ queryKey: billQueryKey })
+          setSeatNotice('This seat already has a bill.')
+          return
+        }
+        setSeatNotice(error.message)
+        return
+      }
+      setSeatNotice('Could not bill this seat. Try again.')
+    },
+  })
+
   function clearRound() {
     clear()
     setConfirmingClear(false)
@@ -912,13 +1044,22 @@ export function OrderScreen({
   // `empty`. `addingMore` is cleared again by the next stage or by Clear, so
   // the strip can return to `submitted`; it used to be a one-way latch.
   //
-  // Billing is checked FIRST and overrides everything, including staged lines.
-  // Once a bill exists the round on screen can no longer be sent: the server
-  // refuses it with `SESSION_ALREADY_BILLED` (order.service.ts), because an
-  // item added after the bill could never appear on any bill.
+  // ── `settling` means NOTHING IS LEFT TO BILL, not "a bill exists" ─────────
+  // Story 6.4 makes those two different statements. A table with one seat paid
+  // and three still eating HAS a bill and is emphatically not settling, and
+  // the first version of this check — `bill !== null` — would have frozen the
+  // screen for the other three guests.
   //
-  // Anything still staged when that happens is discarded by the effect below
-  // rather than left on screen — `settling` renders no Send AND no Clear, so
+  // `hasUnbilled` comes from the server (`hasUnbilledItems`), the same
+  // predicate Story 6.5 needs for auto-close. It is not re-derived here.
+  //
+  // Per-seat progress is shown by the seat chips, not by a new strip state
+  // (Teran's open question, option 1). The strip stays on `submitted` while
+  // anything remains billable, and its "Generate Bill" means "bill whatever is
+  // left" — which is exactly what the route now does.
+  //
+  // Anything still staged when a bill lands is discarded by the effect below
+  // rather than left on screen: `settling` renders no Send AND no Clear, so
   // stranded lines had no way out and came back after a reload.
   // Anything staged when the bill appeared can never be sent — the server
   // refuses it — and `settling` draws no Clear, so the lines had no way out
@@ -932,11 +1073,11 @@ export function OrderScreen({
   // screen LOADING against a session that was billed elsewhere — where there
   // is no event to hang it on.
   useEffect(() => {
-    if (bill !== null) clearStagedRound(sessionId)
-  }, [bill, sessionId])
+    if (!billState.hasUnbilled && sessionBills.length > 0) clearStagedRound(sessionId)
+  }, [billState.hasUnbilled, sessionBills.length, sessionId])
 
   const stripState: OrderActionStripState =
-    bill !== null
+    !billState.hasUnbilled && sessionBills.length > 0
       ? 'settling'
       : lines.length > 0
         ? 'items-added'
@@ -1150,6 +1291,11 @@ export function OrderScreen({
             <SeatSelector
               seats={seats}
               activeSeatId={activeSeatId}
+              // A consolidated bill sweeps every unbilled item, so it closes
+              // every seat at once even though no seat has a bill of its own.
+              billedSeatIds={
+                hasConsolidatedBill ? new Set(seats.map((seat) => seat.id)) : billedSeatIds
+              }
               stagedCountBySeat={stagedCountBySeat}
               editingSeatId={isEditingSeat ? editingSeatId : null}
               adding={addSeatMutation.isPending}
@@ -1165,6 +1311,37 @@ export function OrderScreen({
               }}
               onAddSeat={() => addSeatMutation.mutate()}
             />
+
+            {/* ── Bill This Seat (Story 6.4, AC-12) ──────────────────────────
+                Only where seats MEAN something. Bean Bags, Sun Beds, Rooftop
+                and counter sales hide the seat section entirely and every item
+                lands on Seat 1, so "split by seat" there is a control that can
+                only confuse — `deferred-work.md` assigns that call to this
+                story by name.
+
+                Hidden rather than disabled once the seat is billed: the action
+                no longer applies, and a greyed button invites the waiter to
+                wonder what would un-grey it (the rule the action strip follows
+                for Submit). */}
+            {usesSeats && activeSeat && !hasConsolidatedBill && !billedSeatIds.has(activeSeat.id)
+              && seatHasSentItems(activeSeat.seatLabel) ? (
+              <button
+                type="button"
+                disabled={seatBillMutation.isPending}
+                onClick={() => seatBillMutation.mutate(activeSeat.id)}
+                className={cn(
+                  'h-touch-waiter w-full rounded-waiter border-2 border-brand-500 bg-white',
+                  'text-fs-18 font-bold text-brand-700 shadow-el-1',
+                  'transition-transform duration-80 ease-standard active:scale-[0.97]',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                  'disabled:opacity-60',
+                )}
+              >
+                {seatBillMutation.isPending
+                  ? 'Billing…'
+                  : `Bill ${activeSeat.seatLabel}`}
+              </button>
+            ) : null}
           </section>
 
           {/* The note editor and seat notices, uncapped. `empty:hidden` drops

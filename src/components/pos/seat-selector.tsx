@@ -43,12 +43,22 @@ export function SeatSelector({
   stagedCountBySeat,
   editingSeatId = null,
   adding = false,
+  billedSeatIds,
   onSelect,
   onEditSeat,
   onAddSeat,
 }: {
   seats: SeatSlot[]
   activeSeatId: string | null
+  /**
+   * Seats that already have a bill of their own (Story 6.4).
+   *
+   * A billed seat has paid and, usually, left. It is shown struck through and
+   * greyed rather than removed, because the waiter needs to see that Seat 2
+   * WAS here and is settled — a seat that simply vanished reads as a mistake.
+   * It stays selectable: its items are still worth looking at.
+   */
+  billedSeatIds?: Set<string>
   /** Staged dishes per seat id. Absent means none. */
   stagedCountBySeat: Map<string, number>
   /** The seat whose note panel is open, so its button can say so. */
@@ -79,9 +89,13 @@ export function SeatSelector({
             const isActive = seat.id === activeSeatId
             const isEditing = seat.id === editingSeatId
             const count = stagedCountBySeat.get(seat.id) ?? 0
+            const isBilled = billedSeatIds?.has(seat.id) ?? false
             // The note is what the waiter recognises; the number is the fallback.
             const shown = seat.seatNote ?? seat.seatLabel
-            const name = seat.seatNote ? `${seat.seatLabel}, ${seat.seatNote}` : seat.seatLabel
+            const spoken = seat.seatNote ? `${seat.seatLabel}, ${seat.seatNote}` : seat.seatLabel
+            // The billed state must reach a screen reader too — struck-through
+            // text alone says nothing out loud.
+            const name = isBilled ? `${spoken}, billed` : spoken
 
             return (
               <div key={seat.id} className="relative min-w-0">
@@ -98,12 +112,15 @@ export function SeatSelector({
                     isActive
                       ? 'border-2 border-brand-500 bg-brand-050 shadow-el-1'
                       : 'border border-slate-200 bg-white shadow-el-1',
+                    // Settled: dimmed, but still legible and still tappable.
+                    isBilled && !isActive && 'bg-slate-50 opacity-70',
                   )}
                 >
                   <span
                     className={cn(
                       'max-w-full truncate text-fs-18 font-bold',
                       isActive ? 'text-brand-700' : 'text-slate-600',
+                      isBilled && 'line-through',
                     )}
                   >
                     {shown}
@@ -116,7 +133,11 @@ export function SeatSelector({
                       isActive ? 'text-brand-700' : 'text-slate-600',
                     )}
                   >
-                    {count === 0 ? 'empty' : `${count} item${count === 1 ? '' : 's'}`}
+                    {isBilled
+                      ? 'billed'
+                      : count === 0
+                        ? 'empty'
+                        : `${count} item${count === 1 ? '' : 's'}`}
                   </span>
                 </button>
 

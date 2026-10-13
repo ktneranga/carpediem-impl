@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { bills, orderSessions, staff, tenantConfig } from '@/server/db/schema'
@@ -11,7 +11,8 @@ import {
   CompAlreadyBilledError,
   CompsExceedOrderError,
   generateConsolidatedBill,
-  loadSessionBill,
+  hasUnbilledItems,
+  loadSessionBills,
   MissingTenantConfigError,
   NothingToBillError,
   UnpricedItemError,
@@ -193,10 +194,12 @@ export async function POST(
           const [winner] = await db
             .select({ id: bills.id })
             .from(bills)
-            .where(eq(bills.sessionId, sessionId))
-            // Oldest first, matching `findOpenBill`. Without it Postgres
-            // returns whichever row it likes, which is harmless at one bill per
-            // session and wrong the moment 6.4's per-seat bills land.
+            // CONSOLIDATED only. Oldest first was correct at one bill per
+            // session and wrong the moment 6.4's seat bills landed: the oldest
+            // row on a part-settled table is usually a SEAT bill, so this
+            // handed the client a seat bill's id for a consolidated 409. The
+            // 6.2 review predicted this in a comment; 6.4 is the moment.
+            .where(and(eq(bills.sessionId, sessionId), isNull(bills.seatSlotId)))
             .orderBy(asc(bills.createdAt))
             .limit(1)
           billId = winner?.id ?? ''
@@ -249,7 +252,7 @@ export async function POST(
 }
 
 /**
- * The bill this session has, or `null` (code review 2026-10-13).
+ * Every bill on this session, and whether anything is still unbilled.
  *
  * ── Why the order screen needs this ─────────────────────────────────────────
  * `settling` used to live in a `useState` set by the generate mutation. It was
@@ -273,8 +276,20 @@ export async function GET(
   }
 
   try {
-    const bill = await loadSessionBill(db, parsedSessionId.data)
-    return NextResponse.json({ success: true, data: { bill } }, { status: 200 })
+    const sessionId = parsedSessionId.data
+    const [billList, unbilled] = await Promise.all([
+      loadSessionBills(db, sessionId),
+      hasUnbilledItems(db, sessionId),
+    ])
+    // `hasUnbilled` travels with the bills because the screen needs BOTH to
+    // decide `settling`: a table with one seat billed and three still ordering
+    // has bills and is not settling. Sending only the list would make the
+    // client re-derive that, and a client-side derivation of "is this table
+    // finished" is what Story 6.2's review found broken.
+    return NextResponse.json(
+      { success: true, data: { bills: billList, hasUnbilled: unbilled } },
+      { status: 200 },
+    )
   } catch (error) {
     console.error('[api/sessions/:sessionId/bills] Failed to read bill:', error)
     return fail('INTERNAL_ERROR', 'Could not load the bill', 500)

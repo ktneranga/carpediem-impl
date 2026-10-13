@@ -53,6 +53,16 @@ export type BillDetail = BillTotals & {
   billId: string
   sessionId: string
   type: 'consolidated' | 'seat'
+  /** The seat this bill covers, or null for a consolidated bill (Story 6.4). */
+  seatSlotId: string | null
+  /**
+   * That seat's label, taken from the SNAPSHOTTED `bill_lines.seat_label` —
+   * never from a live `seat_slots` join, which migration 0019 removed.
+   *
+   * The seat NOTE ("red shirt", "bald man") must never appear here or anywhere
+   * else on a guest-facing bill. Teran's decision, 2026-09-12.
+   */
+  seatLabel: string | null
   createdAt: string
   lines: BillLineDetail[]
   comps: BillCompDetail[]

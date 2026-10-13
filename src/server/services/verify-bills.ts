@@ -30,9 +30,21 @@ const check = (name: string, ok: boolean, detail = '') => {
 // ── Cleanup registry ─────────────────────────────────────────────────────────
 const mine = {
   bills: [] as string[],
+  // Story 6.4's matrix sends rounds through the REAL route and expects them to
+  // succeed. Every earlier case either wrote events directly with `addItem`
+  // (which registers them here) or expected the send to be refused, so until
+  // now nothing else was ever written. An accepted round also writes
+  // `order_rounds` and `print_jobs`, both of which hold NOT NULL foreign keys
+  // to the session — so without these two the final `DELETE FROM
+  // order_sessions` raises a foreign-key violation, aborts the cleanup, and
+  // leaks every session of the run. That is exactly how an earlier run left 9
+  // bills and 18 open sessions behind.
+  //
+  // `rounds` was already declared here in Story 6.2 and never read by
+  // `cleanup()` — a registry entry that tracked nothing. It is used now.
+  rounds: [] as string[],
   comps: [] as string[],
   events: [] as string[],
-  rounds: [] as string[],
   seats: [] as string[],
   sessionTables: [] as string[],
   sessions: [] as string[],
@@ -73,8 +85,13 @@ async function staffId(role: string): Promise<string> {
 /** A session with a seat, optionally attached to a free table. */
 async function makeSession(
   kind: 'table' | 'counter',
-  { withTable }: { withTable: boolean },
-): Promise<{ sessionId: string; seatId: string; tableId: string | null }> {
+  { withTable, seats = 1 }: { withTable: boolean; seats?: number },
+): Promise<{
+  sessionId: string
+  seatId: string
+  seatIds: string[]
+  tableId: string | null
+}> {
   const tid = await tenantId()
   const waiter = await staffId('waiter')
   const [session] = await sql(
@@ -83,11 +100,17 @@ async function makeSession(
   )
   mine.sessions.push(session.id)
 
-  const [seat] = await sql(
-    `INSERT INTO seat_slots (session_id, seat_label) VALUES ($1, 'S1') RETURNING id`,
-    [session.id],
-  )
-  mine.seats.push(seat.id)
+  // Labels must differ: idx_seat_slots_session_label is UNIQUE(session_id,
+  // seat_label).
+  const seatIds: string[] = []
+  for (let n = 1; n <= seats; n += 1) {
+    const [seat] = await sql(
+      `INSERT INTO seat_slots (session_id, seat_label) VALUES ($1, $2) RETURNING id`,
+      [session.id, `S${n}`],
+    )
+    mine.seats.push(seat.id)
+    seatIds.push(seat.id)
+  }
 
   let tableId: string | null = null
   if (withTable) {
@@ -125,7 +148,34 @@ async function makeSession(
     mine.sessionTables.push(`${session.id}|${tableId}`)
   }
 
-  return { sessionId: session.id, seatId: seat.id, tableId }
+  return { sessionId: session.id, seatId: seatIds[0]!, seatIds, tableId }
+}
+
+/** Sends a round through the REAL route, registering what it writes. */
+async function sendRound(
+  cookie: string,
+  sessionId: string,
+  lines: { seatId: string; quantity?: number }[],
+): Promise<Json> {
+  const [item] = await sql(`SELECT id, price_paisa FROM menu_items WHERE is_available LIMIT 1`)
+  const submissionId = crypto.randomUUID()
+  const response = await api(cookie, `/api/sessions/${sessionId}/orders`, {
+    method: 'POST',
+    body: JSON.stringify({
+      submissionId,
+      lines: lines.map((line) => ({
+        menuItemId: item.id,
+        seatSlotId: line.seatId,
+        quantity: line.quantity ?? 1,
+        modifierText: '',
+        quotedPricePaisa: item.price_paisa,
+      })),
+    }),
+  })
+  // Registered whether or not it succeeded — a partial write is exactly the
+  // case the cleanup must survive.
+  mine.rounds.push(submissionId)
+  return response
 }
 
 /** One ITEM_ADDED event at an explicit price, bypassing the send route. */
@@ -557,11 +607,15 @@ async function run() {
 
   // ══ Code review 2026-10-13 — the findings that had no coverage ═══════════
 
-  // ── R1. A round sent AFTER the bill is refused (the biggest finding) ──────
-  // All three review layers put this first and the 15-case matrix had nothing
-  // on it: cases 5 and 6 test the BILLING side of the window, never the
-  // ORDERING side. Before the fix this returned 201 and the items could never
-  // reach any bill.
+  // ── R1. A round after a CONSOLIDATED bill is refused ─────────────────────
+  // Story 6.2's review found this: a round on a billed session committed,
+  // printed, and could then never appear on any bill.
+  //
+  // UPDATED for Story 6.4. It used to assert that ANY bill on the session
+  // refused ANY round. That is still right for a consolidated bill, which
+  // sweeps everything — but wrong for a seat bill, which must leave the other
+  // seats ordering (case S2 below). Narrowing the guard without narrowing this
+  // case would have left it green while the behaviour changed underneath.
   {
     const { sessionId, seatId } = await makeSession('table', { withTable: true })
     await addItem(sessionId, seatId, 1, 100_000)
@@ -591,7 +645,7 @@ async function run() {
     const after = (await sql(
       `SELECT count(*)::int AS n FROM order_events WHERE session_id = $1`, [sessionId]))[0].n
 
-    check('R1 a round on a billed session is REFUSED',
+    check('R1 a round after a CONSOLIDATED bill is REFUSED',
       send.status === 409 && send.body?.error?.code === 'SESSION_ALREADY_BILLED',
       `${send.status} ${send.body?.error?.code}`)
     check('R1 and nothing was written', before === after, `${before} -> ${after}`)
@@ -650,13 +704,23 @@ async function run() {
       method: 'POST', body: JSON.stringify({ type: 'consolidated' }),
     }))
     const loaded = await api(waiterCookie, `/api/sessions/${sessionId}/bills`)
-    check('R4 an unbilled session reports no bill',
-      empty.status === 200 && empty.body?.data?.bill === null,
-      `${empty.status} ${JSON.stringify(empty.body?.data?.bill)}`)
+    // UPDATED for Story 6.4: the endpoint returns a LIST plus `hasUnbilled`,
+    // because a session can hold one bill per seat and "the session's bill" is
+    // a question with no answer. The singular form would have quietly reported
+    // the oldest — usually a seat bill — as though it were the whole table's.
+    // This read happens BEFORE anything is ordered, so `hasUnbilled` is false
+    // because there is nothing at all — not because it is all billed. S14
+    // covers the ordered-but-unbilled case.
+    check('R4 a session with nothing on it: no bills, nothing to bill',
+      empty.status === 200 && empty.body?.data?.bills?.length === 0 &&
+        empty.body?.data?.hasUnbilled === false,
+      `${empty.status} ${JSON.stringify(empty.body?.data)}`)
     check('R4 a billed session reports its bill, so a reload stays settling',
-      loaded.body?.data?.bill?.billId === created.body?.data?.billId)
+      loaded.body?.data?.bills?.[0]?.billId === created.body?.data?.billId &&
+        loaded.body?.data?.hasUnbilled === false,
+      JSON.stringify(loaded.body?.data?.hasUnbilled))
     check('R4 and it carries the lines',
-      (loaded.body?.data?.bill?.lines ?? []).length === 1)
+      (loaded.body?.data?.bills?.[0]?.lines ?? []).length === 1)
   }
 
   // ── R5. x-staff-id shape, and the bill_comps trigger ──────────────────────
@@ -721,6 +785,327 @@ async function run() {
     }
   }
 
+  // ══ Story 6.4 — per-seat independent billing ═════════════════════════════
+
+  // ── S1. One seat of three ────────────────────────────────────────────────
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 3 })
+    await addItem(sessionId, seatIds[0]!, 2, 100_000)
+    await addItem(sessionId, seatIds[1]!, 1, 250_000)
+    await addItem(sessionId, seatIds[2]!, 1, 75_000)
+
+    const response = track(await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' }))
+    const d = response.body?.data
+    check('S1 201 created', response.status === 201, String(response.status))
+    check('S1 type is seat and it names the seat',
+      d?.type === 'seat' && d?.seatSlotId === seatIds[0] && d?.seatLabel === 'S1',
+      `${d?.type} ${d?.seatLabel}`)
+    check('S1 only that seat is on it',
+      d?.lines?.length === 1 && d?.subtotalPaisa === 200_000,
+      `${d?.lines?.length} lines, subtotal ${d?.subtotalPaisa}`)
+    check('S1 service charge on the SEAT subtotal',
+      d?.serviceChargePaisa === Math.round((200_000 * rateBp) / 10_000),
+      String(d?.serviceChargePaisa))
+  }
+
+  // ── S2. THE REGRESSION. The rest of the table carries on (AC-2) ──────────
+  // This is the case the whole story exists for, and the one that would have
+  // failed against the guard as Story 6.2 left it.
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 3 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    await addItem(sessionId, seatIds[1]!, 1, 100_000)
+    const billed = track(await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' }))
+    check('S2 setup: seat 1 billed', billed.status === 201, String(billed.status))
+
+    const other = await sendRound(waiterCookie, sessionId, [{ seatId: seatIds[1]! }])
+    check('S2 a round for ANOTHER seat is ACCEPTED',
+      other.status === 201, `${other.status} ${other.body?.error?.code}`)
+
+    const same = await sendRound(waiterCookie, sessionId, [{ seatId: seatIds[0]! }])
+    check('S2 a round for the BILLED seat is refused (AC-3)',
+      same.status === 409 && same.body?.error?.code === 'SEAT_ALREADY_BILLED',
+      `${same.status} ${same.body?.error?.code}`)
+    check('S2 the refusal names the seat, not a uuid',
+      same.body?.error?.seatLabel === 'S1', String(same.body?.error?.seatLabel))
+  }
+
+  // ── S3. A mixed round is refused WHOLE (Trap 1) ──────────────────────────
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 2 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    track(await api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`,
+      { method: 'POST', body: '{}' }))
+
+    const before = (await sql(
+      `SELECT count(*)::int AS n FROM order_events WHERE session_id = $1`, [sessionId]))[0].n
+    const mixed = await sendRound(waiterCookie, sessionId,
+      [{ seatId: seatIds[1]! }, { seatId: seatIds[0]! }])
+    const after = (await sql(
+      `SELECT count(*)::int AS n FROM order_events WHERE session_id = $1`, [sessionId]))[0].n
+    check('S3 a round touching a billed seat is refused',
+      mixed.status === 409 && mixed.body?.error?.code === 'SEAT_ALREADY_BILLED',
+      `${mixed.status} ${mixed.body?.error?.code}`)
+    check('S3 and the OTHER seat\'s line was not written either',
+      before === after, `${before} -> ${after}`)
+  }
+
+  // ── S4. Second seat billed; no overlap (AC-4) ────────────────────────────
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 2 })
+    const e1 = await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    const e2 = await addItem(sessionId, seatIds[1]!, 1, 200_000)
+    const b1 = track(await api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`,
+      { method: 'POST', body: '{}' }))
+    const b2 = track(await api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatIds[1]}/bill`,
+      { method: 'POST', body: '{}' }))
+    const claimed = await sql(
+      `SELECT order_event_id FROM bill_lines WHERE bill_id = ANY($1::uuid[]) ORDER BY 1`,
+      [[b1.body?.data?.billId, b2.body?.data?.billId]])
+    check('S4 both seats billed', b1.status === 201 && b2.status === 201)
+    check('S4 no event on both bills; union is both events',
+      claimed.length === 2 && new Set(claimed.map((r: any) => r.order_event_id)).size === 2 &&
+        [e1, e2].every((id) => claimed.some((r: any) => r.order_event_id === id)),
+      JSON.stringify(claimed.map((r: any) => r.order_event_id)))
+  }
+
+  // ── S5. The REMAINDER bill (AC-5) ────────────────────────────────────────
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 4 })
+    for (const seatId of seatIds) await addItem(sessionId, seatId, 1, 100_000)
+    track(await api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`,
+      { method: 'POST', body: '{}' }))
+    track(await api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatIds[1]}/bill`,
+      { method: 'POST', body: '{}' }))
+
+    const remainder = track(await api(waiterCookie, `/api/sessions/${sessionId}/bills`, {
+      method: 'POST', body: JSON.stringify({ type: 'consolidated' }),
+    }))
+    const d = remainder.body?.data
+    check('S5 a consolidated bill after 2 seat bills is ACCEPTED',
+      remainder.status === 201, `${remainder.status} ${remainder.body?.error?.code}`)
+    check('S5 it covers ONLY the 2 unbilled seats',
+      d?.lines?.length === 2 && d?.subtotalPaisa === 200_000,
+      `${d?.lines?.length} lines, subtotal ${d?.subtotalPaisa}`)
+
+    const again = await api(waiterCookie, `/api/sessions/${sessionId}/bills`, {
+      method: 'POST', body: JSON.stringify({ type: 'consolidated' }),
+    })
+    check('S5 a second consolidated bill is refused',
+      again.status === 409 && again.body?.error?.code === 'BILL_ALREADY_OPEN',
+      `${again.status} ${again.body?.error?.code}`)
+    check('S5 and the 409 names the CONSOLIDATED bill, not the oldest seat bill',
+      again.body?.error?.billId === d?.billId,
+      `${again.body?.error?.billId} vs ${d?.billId}`)
+  }
+
+  // ── S6. Nothing left to bill (AC-5 tail, AC-7) ───────────────────────────
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 2 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    await addItem(sessionId, seatIds[1]!, 1, 100_000)
+    track(await api(waiterCookie, `/api/sessions/${sessionId}/bills`, {
+      method: 'POST', body: JSON.stringify({ type: 'consolidated' }),
+    }))
+    const nothing = await api(waiterCookie, `/api/sessions/${sessionId}/bills`, {
+      method: 'POST', body: JSON.stringify({ type: 'consolidated' }),
+    })
+    const seatAfter = await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' })
+    check('S6 a second consolidated bill is 409',
+      nothing.status === 409, String(nothing.status))
+    check('S6 a seat already swept by a consolidated bill is 422 SEAT_HAS_NO_ITEMS',
+      seatAfter.status === 422 && seatAfter.body?.error?.code === 'SEAT_HAS_NO_ITEMS',
+      `${seatAfter.status} ${seatAfter.body?.error?.code}`)
+  }
+
+  // ── S7. The same seat twice, and two tablets at once (AC-6, AC-9) ────────
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 2 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    const first = track(await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' }))
+    const second = await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' })
+    check('S7 the same seat twice is 409 SEAT_ALREADY_BILLED',
+      second.status === 409 && second.body?.error?.code === 'SEAT_ALREADY_BILLED',
+      `${second.status} ${second.body?.error?.code}`)
+    check('S7 the 409 names the bill',
+      second.body?.error?.billId === first.body?.data?.billId)
+  }
+
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 2 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    const [a, b] = await Promise.all([
+      api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`,
+        { method: 'POST', body: '{}' }),
+      api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`,
+        { method: 'POST', body: '{}' }),
+    ])
+    track(a); track(b)
+    const count = (await sql(
+      `SELECT count(*)::int AS n FROM bills WHERE seat_slot_id = $1`, [seatIds[0]]))[0].n
+    const statuses = [a.status, b.status].sort()
+    check('S7 two simultaneous taps on ONE seat: exactly one bill',
+      count === 1, `${count} bills`)
+    check('S7 one 201, one 409', statuses[0] === 201 && statuses[1] === 409,
+      JSON.stringify(statuses))
+  }
+
+  // ── S8. Concurrent bills on DIFFERENT seats must BOTH succeed ────────────
+  // The session lock serialises them; it must not turn AC-2 into a failure.
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 2 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    await addItem(sessionId, seatIds[1]!, 1, 100_000)
+    const [a, b] = await Promise.all([
+      api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`,
+        { method: 'POST', body: '{}' }),
+      api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatIds[1]}/bill`,
+        { method: 'POST', body: '{}' }),
+    ])
+    track(a); track(b)
+    check('S8 two seats billed concurrently BOTH succeed',
+      a.status === 201 && b.status === 201, JSON.stringify([a.status, b.status]))
+  }
+
+  // ── S9. Empty seat, foreign seat (AC-7, AC-8) ────────────────────────────
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 2 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    const empty = await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[1]}/bill`, { method: 'POST', body: '{}' })
+
+    const other = await makeSession('table', { withTable: true, seats: 1 })
+    const foreign = await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${other.seatId}/bill`, { method: 'POST', body: '{}' })
+
+    check('S9 a seat with no items is 422 SEAT_HAS_NO_ITEMS',
+      empty.status === 422 && empty.body?.error?.code === 'SEAT_HAS_NO_ITEMS',
+      `${empty.status} ${empty.body?.error?.code}`)
+    check('S9 a seat from another session is 404, not a bill and not a 500',
+      foreign.status === 404 && foreign.body?.error?.code === 'SEAT_NOT_ON_SESSION',
+      `${foreign.status} ${foreign.body?.error?.code}`)
+  }
+
+  // ── S10. One seat's unpriced item must not block another seat ────────────
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 2 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    const broken = await addItem(sessionId, seatIds[1]!, 1, 100_000)
+    await sql(`ALTER TABLE order_events DISABLE TRIGGER immutable_order_events`)
+    try {
+      await sql(`UPDATE order_events SET unit_price_paisa = NULL WHERE id = $1`, [broken])
+    } finally {
+      await sql(`ALTER TABLE order_events ENABLE TRIGGER immutable_order_events`)
+    }
+    const good = track(await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' }))
+    const bad = await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[1]}/bill`, { method: 'POST', body: '{}' })
+    check('S10 the healthy seat still bills',
+      good.status === 201, `${good.status} ${good.body?.error?.code}`)
+    check('S10 the unpriced seat is 422 ITEM_NOT_PRICED',
+      bad.status === 422 && bad.body?.error?.code === 'ITEM_NOT_PRICED',
+      `${bad.status} ${bad.body?.error?.code}`)
+  }
+
+  // ── S11. A NULL-seat event is picked up by the remainder (Trap 2) ────────
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 2 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    const orphan = await addItem(sessionId, seatIds[1]!, 1, 50_000)
+    await sql(`ALTER TABLE order_events DISABLE TRIGGER immutable_order_events`)
+    try {
+      await sql(`UPDATE order_events SET seat_slot_id = NULL WHERE id = $1`, [orphan])
+    } finally {
+      await sql(`ALTER TABLE order_events ENABLE TRIGGER immutable_order_events`)
+    }
+    track(await api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`,
+      { method: 'POST', body: '{}' }))
+    const remainder = track(await api(waiterCookie, `/api/sessions/${sessionId}/bills`, {
+      method: 'POST', body: JSON.stringify({ type: 'consolidated' }),
+    }))
+    check('S11 the remainder bill covers an event with NO seat',
+      remainder.status === 201 && remainder.body?.data?.subtotalPaisa === 50_000,
+      `${remainder.status} subtotal ${remainder.body?.data?.subtotalPaisa}`)
+  }
+
+  // ── S12. The seat NOTE must not reach the bill (AC-11b) ──────────────────
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 1 })
+    await sql(`UPDATE seat_slots SET seat_note = 'bald man' WHERE id = $1`, [seatIds[0]])
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    const response = track(await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' }))
+    const asText = JSON.stringify(response.body)
+    const stored = await sql(
+      `SELECT * FROM bill_lines WHERE bill_id = $1`, [response.body?.data?.billId])
+    check('S12 the seat note appears NOWHERE in the response',
+      !asText.includes('bald man'), asText.slice(0, 160))
+    check('S12 nor anywhere in the stored bill lines',
+      !JSON.stringify(stored).includes('bald man'))
+    check('S12 but the seat LABEL does', response.body?.data?.seatLabel === 'S1')
+  }
+
+  // ── S13. A counter sale with no table: no service charge ─────────────────
+  {
+    const { sessionId, seatIds } = await makeSession('counter', { withTable: false, seats: 1 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    const response = track(await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' }))
+    check('S13 seat bill on a table-less counter sale: NO service charge',
+      response.body?.data?.serviceChargePaisa === 0 &&
+        response.body?.data?.serviceChargeBp === 0,
+      String(response.body?.data?.serviceChargePaisa))
+  }
+
+  // ── S14. The list endpoint reports every bill (Task 5) ───────────────────
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 3 })
+    for (const seatId of seatIds) await addItem(sessionId, seatId, 1, 100_000)
+    const before = await api(waiterCookie, `/api/sessions/${sessionId}/bills`)
+    track(await api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`,
+      { method: 'POST', body: '{}' }))
+    track(await api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatIds[1]}/bill`,
+      { method: 'POST', body: '{}' }))
+    const mid = await api(waiterCookie, `/api/sessions/${sessionId}/bills`)
+    track(await api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatIds[2]}/bill`,
+      { method: 'POST', body: '{}' }))
+    const done = await api(waiterCookie, `/api/sessions/${sessionId}/bills`)
+
+    check('S14 before: no bills, something to bill',
+      before.body?.data?.bills?.length === 0 && before.body?.data?.hasUnbilled === true)
+    check('S14 two seats billed: 2 bills, STILL something to bill',
+      mid.body?.data?.bills?.length === 2 && mid.body?.data?.hasUnbilled === true,
+      `${mid.body?.data?.bills?.length} bills, hasUnbilled ${mid.body?.data?.hasUnbilled}`)
+    check('S14 all seats billed: 3 bills, nothing left — THIS is settling',
+      done.body?.data?.bills?.length === 3 && done.body?.data?.hasUnbilled === false,
+      `${done.body?.data?.bills?.length} bills, hasUnbilled ${done.body?.data?.hasUnbilled}`)
+  }
+
+  // ── S15. Kitchen is refused; the trigger holds ───────────────────────────
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 1 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    const kumar = await api(kitchenCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' })
+    check('S15 kitchen 403 on the seat-bill route', kumar.status === 403, String(kumar.status))
+
+    const mine2 = track(await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' }))
+    await sql(`UPDATE order_sessions SET closed_at = now() WHERE id = $1`, [sessionId])
+    const closed = await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' })
+    check('S15 setup billed', mine2.status === 201, String(mine2.status))
+    check('S15 a closed session is 409 SESSION_ALREADY_CLOSED',
+      closed.status === 409 && closed.body?.error?.code === 'SESSION_ALREADY_CLOSED',
+      `${closed.status} ${closed.body?.error?.code}`)
+  }
+
   // ── Cleanup ───────────────────────────────────────────────────────────────
 }
 
@@ -733,6 +1118,7 @@ async function cleanup() {
   // append-only guarantee — the thing this whole story rests on — silently off
   // on a shared database, with nothing in the code to suggest it had happened.
   const GUARDED = [
+    ['order_rounds', 'immutable_order_rounds'],
     ['bill_lines', 'immutable_bill_lines'],
     ['bill_comps', 'immutable_bill_comps'],
     ['bills', 'immutable_bills'],
@@ -753,8 +1139,12 @@ async function cleanup() {
     if (mine.comps.length) {
       await sql(`DELETE FROM comp_records WHERE id = ANY($1::uuid[])`, [mine.comps])
     }
-    if (mine.events.length) {
-      await sql(`DELETE FROM order_events WHERE id = ANY($1::uuid[])`, [mine.events])
+    // By SESSION, not by tracked id: an accepted round writes events this
+    // script never saw. Children first — print_jobs references order_rounds.
+    if (mine.sessions.length) {
+      await sql(`DELETE FROM print_jobs WHERE session_id = ANY($1::uuid[])`, [mine.sessions])
+      await sql(`DELETE FROM order_rounds WHERE session_id = ANY($1::uuid[])`, [mine.sessions])
+      await sql(`DELETE FROM order_events WHERE session_id = ANY($1::uuid[])`, [mine.sessions])
     }
   } finally {
     // Restored whatever happened above. A failure to re-enable is louder than

@@ -103,7 +103,7 @@ development_status:
   6-1-build-splitbillcanvas-component: backlog  # DEFERRED post-demo — drag-to-split; 6-4 per-seat covers real splitting
   6-2-implement-consolidated-bill-generation: done
   6-3-implement-mid-settlement-person-split: backlog  # DEFERRED post-demo — depends on 6-1
-  6-4-implement-per-seat-slot-independent-billing: ready-for-dev
+  6-4-implement-per-seat-slot-independent-billing: review
   6-5-implement-payment-recording-and-session-auto-close: backlog
   epic-6-retrospective: optional
 

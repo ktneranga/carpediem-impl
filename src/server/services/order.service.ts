@@ -15,7 +15,7 @@ import {
   zones,
 } from '@/server/db/schema'
 import { lockOpenSession } from '@/server/services/table-session.service'
-import { findOpenBill } from '@/server/services/bill.service'
+import { billedSeats, findConsolidatedBill } from '@/server/services/bill.service'
 import { buildTicketPayloads } from '@/server/print/ticket'
 import { zoneUsesSeats } from '@/lib/design'
 import type {
@@ -83,6 +83,27 @@ export class SubmissionIdReusedError extends Error {}
 export class SessionAlreadyBilledError extends Error {
   constructor(readonly billId: string) {
     super('Session already billed')
+  }
+}
+
+/**
+ * ONE SEAT has been billed, and this round touches it (Story 6.4, AC-3).
+ *
+ * The narrower half of the rule above. Per-seat billing exists so a guest can
+ * pay and leave while the rest of the table keeps ordering, so a seat bill
+ * must close exactly one seat and nothing else — the session-wide refusal
+ * would have made AC-2 impossible.
+ *
+ * Carries the seat LABEL as well as the id: the waiter is holding a tablet and
+ * needs to be told "Seat 2 has already been billed", not a uuid.
+ */
+export class SeatAlreadyBilledError extends Error {
+  constructor(
+    readonly seatSlotId: string,
+    readonly seatLabel: string,
+    readonly billId: string,
+  ) {
+    super('Seat already billed')
   }
 }
 
@@ -198,8 +219,29 @@ export async function submitRound(
   // committed BEFORE the bill must still return its original answer — the
   // waiter's tablet retrying a lost response has not added anything, and
   // failing it would strand a round the kitchen already cooked.
-  const existingBill = await findOpenBill(tx, sessionId)
-  if (existingBill) throw new SessionAlreadyBilledError(existingBill.id)
+  // A CONSOLIDATED bill covers everything unbilled on the session, so once one
+  // exists nothing more may be added anywhere.
+  const consolidated = await findConsolidatedBill(tx, sessionId)
+  if (consolidated) throw new SessionAlreadyBilledError(consolidated.id)
+
+  // A SEAT bill closes exactly one seat. Story 6.4 exists so the other seats
+  // carry on ordering, so this refuses the round only if it touches a seat
+  // that has been billed. The first version of this guard asked
+  // `findOpenBill(sessionId)` and refused every round on the table — correct
+  // when a session could hold one bill, and wrong the moment it could hold
+  // several.
+  const billed = await billedSeats(tx, sessionId)
+  if (billed.size > 0) {
+    // In LINE order, so the error names the first seat the waiter would see —
+    // the same rule the dish and seat checks below follow.
+    for (const line of lines) {
+      const hit = billed.get(line.seatSlotId)
+      // The whole round is refused, not just the offending line. A round is
+      // atomic (Story 4.5) and the kitchen ticket assumes it; accepting the
+      // rest would print a ticket for half an order.
+      if (hit) throw new SeatAlreadyBilledError(line.seatSlotId, hit.seatLabel, hit.billId)
+    }
+  }
 
   // 4 — seats
   const seatIds = [...new Set(lines.map((line) => line.seatSlotId))]
