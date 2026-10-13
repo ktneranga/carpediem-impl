@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-03
-last_updated: 2026-10-02
+last_updated: 2026-10-13
 project: carpe-diem-restaurant
 project_key: NOKEY
 tracking_system: file-system
@@ -101,9 +101,9 @@ development_status:
   # ── Epic 6: Bill Settlement & Payment Recording ───────────────────────────
   epic-6: in-progress
   6-1-build-splitbillcanvas-component: backlog  # DEFERRED post-demo — drag-to-split; 6-4 per-seat covers real splitting
-  6-2-implement-consolidated-bill-generation: ready-for-dev
+  6-2-implement-consolidated-bill-generation: done
   6-3-implement-mid-settlement-person-split: backlog  # DEFERRED post-demo — depends on 6-1
-  6-4-implement-per-seat-slot-independent-billing: backlog
+  6-4-implement-per-seat-slot-independent-billing: ready-for-dev
   6-5-implement-payment-recording-and-session-auto-close: backlog
   epic-6-retrospective: optional
 

@@ -5,6 +5,7 @@ import { dishCount } from '@/server/orders/item-count'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { loadSubmittedRounds } from '@/server/orders/submitted-rounds'
+import { loadSessionBill } from '@/server/services/bill.service'
 import {
   orderEvents,
   orderSessions,
@@ -154,6 +155,11 @@ export default async function OrderPage({
   // and a later refetch cannot disagree about order or grouping.
   const submittedRounds = await loadSubmittedRounds(session.sessionId)
 
+  // Read here, not in the client, so an already-billed order paints `settling`
+  // immediately instead of flashing a live "Add More Items" button while the
+  // query resolves (code review 2026-10-13).
+  const initialBill = await loadSessionBill(db, session.sessionId)
+
   return (
     <OrderScreen
       // Keyed by session. Every piece of screen state — the selected seat, an
@@ -172,6 +178,7 @@ export default async function OrderPage({
       seats={seats}
       submittedRounds={submittedRounds}
       taxRatePercent={config?.taxRatePercent ?? 0}
+      initialBill={initialBill}
     />
   )
 }

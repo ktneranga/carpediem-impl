@@ -15,6 +15,7 @@ import {
   zones,
 } from '@/server/db/schema'
 import { lockOpenSession } from '@/server/services/table-session.service'
+import { findOpenBill } from '@/server/services/bill.service'
 import { buildTicketPayloads } from '@/server/print/ticket'
 import { zoneUsesSeats } from '@/lib/design'
 import type {
@@ -57,6 +58,33 @@ export class SeatNotOnSessionError extends Error {
 
 /** The submission id already belongs to a round on a DIFFERENT session. */
 export class SubmissionIdReusedError extends Error {}
+
+/**
+ * The session already has a bill, so nothing more may be added to it.
+ *
+ * ── Why this is a SERVER rule (code review 2026-10-13) ───────────────────────
+ * Story 6.2 moved the order screen to a `settling` state once a bill exists,
+ * and that was the only guard: a React `useState`. It died on a page refresh,
+ * it never existed on a second tablet, and the API accepted the round either
+ * way. The consequence was not a cosmetic one — the round committed, the
+ * ticket printed, the kitchen cooked it, and then `generateConsolidatedBill`
+ * refused a second bill, so those `ITEM_ADDED` rows could never be covered by
+ * any bill. The guest ate food that appeared on no bill and in no total, and
+ * nothing in the system flagged it.
+ *
+ * `UNIQUE (order_event_id)` does not help here: it prevents the same item
+ * being billed TWICE, not an item being billed NEVER.
+ *
+ * Teran chose the refusing side of the trade (2026-10-13): a guest who orders
+ * after seeing the bill cannot be served until supplementary billing exists,
+ * which Story 6.5 owns. Refusing loudly beats serving food nobody is charged
+ * for.
+ */
+export class SessionAlreadyBilledError extends Error {
+  constructor(readonly billId: string) {
+    super('Session already billed')
+  }
+}
 
 /** What a send commits, and what the route needs to announce it. */
 export type SubmittedRound = SubmitRoundResponse & {
@@ -159,6 +187,19 @@ export async function submitRound(
   // 3
   const racing = await findRound(tx, submissionId)
   if (racing) return replayOf(racing, sessionId)
+
+  // 3b — nothing may be added to a session that has been billed.
+  //
+  // Under the session lock, so it cannot race a bill being generated: either
+  // this round commits first and the bill includes it, or the bill commits
+  // first and this is refused. `generateConsolidatedBill` takes the same lock.
+  //
+  // AFTER the replay checks, deliberately. A retry of a round that was
+  // committed BEFORE the bill must still return its original answer — the
+  // waiter's tablet retrying a lost response has not added anything, and
+  // failing it would strand a round the kitchen already cooked.
+  const existingBill = await findOpenBill(tx, sessionId)
+  if (existingBill) throw new SessionAlreadyBilledError(existingBill.id)
 
   // 4 — seats
   const seatIds = [...new Set(lines.map((line) => line.seatSlotId))]

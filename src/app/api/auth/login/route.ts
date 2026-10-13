@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { and, eq } from 'drizzle-orm'
 import bcrypt from 'bcryptjs'
+// Shared, so a second PIN-checking route cannot retype it wrongly — which is
+// exactly what Story 6.2's bill route did (a 59-character hash that bcrypt
+// refused to process at all, defeating the timing equalisation).
+import { DUMMY_PIN_HASH as DUMMY_HASH } from '@/server/auth/dummy-pin-hash'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { staff, tenants } from '@/server/db/schema'
@@ -22,7 +26,7 @@ const loginSchema = z.object({
  * is not instantly distinguishable from a wrong-PIN response. Cost factor 10,
  * matching architecture.md:205.
  */
-const DUMMY_HASH = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy'
+
 
 export async function POST(request: Request) {
   let body: unknown

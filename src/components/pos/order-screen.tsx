@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MenuBrowser } from '@/components/pos/menu-browser'
@@ -25,6 +25,7 @@ import {
   useStagedRound,
 } from '@/components/pos/use-staged-round'
 import type { MenuItemRow } from '@/app/api/menu/route'
+import type { BillDetail } from '@/types/bills'
 import {
   MAX_LINE_QUANTITY,
   MAX_ROUND_LINES,
@@ -93,6 +94,16 @@ export type OrderScreenProps = {
    * `OrderSummary`.
    */
   taxRatePercent: number
+  /**
+   * The bill this session already has, read on the server (code review
+   * 2026-10-13).
+   *
+   * Seeds the `['bill', sessionId]` query so an already-billed order renders
+   * `settling` on the FIRST paint. Without it the screen flashes `submitted`
+   * — with a live "Add More Items" — for the length of one fetch, which is
+   * exactly the window the review found a waiter using.
+   */
+  initialBill: BillDetail | null
 }
 
 /** FR9's destinations as a waiter says them, for the bottom bar. */
@@ -247,6 +258,63 @@ async function closeTable(input: { sessionId: string; reason: 'abandoned' | 'wal
 }
 
 /**
+ * A bill the server refused for a reason the waiter can act on.
+ *
+ * Carries the code and `billId` where the server sent one, so "this order
+ * already has a bill" can eventually open that bill rather than only saying so.
+ */
+class BillRefusedError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly billId: string | null,
+  ) {
+    super(message)
+  }
+}
+
+/** `POST /api/sessions/:id/bills` — Story 6.2. */
+async function generateBill(sessionId: string): Promise<BillDetail> {
+  const response = await fetch(`/api/sessions/${sessionId}/bills`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'consolidated' }),
+  })
+
+  if (response.status === 401) {
+    // 401 means two different things on this route. An expired session is
+    // fixed by signing in; a re-auth challenge is not, and redirecting to the
+    // PIN pad for one would throw away the order screen to ask for a PIN the
+    // screen itself should be asking for. Story 2.4 owns that prompt.
+    const challenge = await response.json().catch(() => null)
+    if (challenge?.error?.code === 'REAUTH_REQUIRED' || challenge?.error?.code === 'REAUTH_FAILED') {
+      throw new BillRefusedError(
+        challenge.error.code,
+        challenge.error.message ?? 'This bill needs a PIN.',
+        null,
+      )
+    }
+    throw new SessionExpiredError('Session expired')
+  }
+  if (response.status === 403) throw new ForbiddenError('Role not permitted')
+
+  const payload = await response.json().catch(() => null)
+
+  if (response.ok && payload?.success) return payload.data as BillDetail
+
+  const error = payload?.error ?? {}
+  if (error.code === 'SESSION_ALREADY_CLOSED') throw new SessionGoneError('Already closed')
+  if (typeof error.code === 'string' && response.status < 500) {
+    throw new BillRefusedError(
+      error.code,
+      error.message ?? 'The bill was not generated.',
+      typeof error.billId === 'string' && error.billId !== '' ? error.billId : null,
+    )
+  }
+  throw new Error('The bill was not generated.')
+}
+
+/**
  * Order entry — menu on the left, the order on the right, one bar at the foot.
  *
  * ── Layout, from Teran's 2026-09-16 design ───────────────────────────────────
@@ -266,6 +334,7 @@ export function OrderScreen({
   staffName,
   zoneName,
   taxRatePercent,
+  initialBill,
   tableLabel,
   capacity,
   coverCount,
@@ -488,6 +557,32 @@ export function OrderScreen({
    * on the client is a number two tablets can choose identically.
    */
   const [addingMore, setAddingMore] = useState(false)
+
+  const billQueryKey = ['bill', sessionId] as const
+
+  /**
+   * The bill this session has, from the SERVER (code review 2026-10-13).
+   *
+   * This was two `useState` flags set by the generate mutation. Both died on a
+   * page refresh and neither existed on a second tablet, so the screen
+   * re-offered "Add More Items" on an order that was already billed — and the
+   * round that followed could never be put on any bill, because a session gets
+   * one. The server refuses such a round now, but a button that only fails
+   * when pressed is not an answer; the screen has to know before it draws.
+   *
+   * Seeded from the server render so there is no flash of `submitted` on an
+   * already-billed order, and refetched on window focus — the tablet a waiter
+   * returns to is the one most likely to be stale.
+   */
+  const { data: bill = null } = useQuery({
+    queryKey: billQueryKey,
+    queryFn: () =>
+      seatRequest<{ bill: BillDetail | null }>(`/api/sessions/${sessionId}/bills`).then(
+        (payload) => payload.bill,
+      ),
+    initialData: initialBill,
+    refetchOnWindowFocus: true,
+  })
 
   const { data: submittedRounds, error: ordersError } = useQuery({
     queryKey: ['orders', sessionId],
@@ -740,6 +835,71 @@ export function OrderScreen({
     },
   })
 
+  /**
+   * Generate Bill (Story 6.2, AC-7).
+   *
+   * A refusal gets the same treatment as Send's: name what happened and leave
+   * the screen usable. The one exception is BILL_ALREADY_OPEN — the order IS
+   * billed, so the strip moves to `settling` anyway. Leaving it on `submitted`
+   * would offer a button that can only fail again.
+   */
+  const billMutation = useMutation({
+    mutationFn: () => generateBill(sessionId),
+    onMutate: () => setSendNote(null),
+    onSuccess: (generated) => {
+      // Straight into the cache the strip reads, so the transition is
+      // immediate and the next refetch confirms rather than corrects it.
+      queryClient.setQueryData(billQueryKey, generated)
+      // Nothing staged can be sent now; drop it rather than strand it.
+      clearRound()
+      // The round history is unchanged by billing, but the session's state is
+      // not, and the next thing a waiter does is settle. Refetch so anything
+      // derived from the order is current when they get there.
+      void queryClient.invalidateQueries({ queryKey: ['orders', sessionId] })
+      void queryClient.invalidateQueries({ queryKey: ['tables'] })
+      void queryClient.invalidateQueries({ queryKey: COUNTER_QUERY_KEY })
+    },
+    onError: (error) => {
+      if (error instanceof SessionExpiredError) {
+        window.location.assign('/login')
+        return
+      }
+      if (error instanceof ForbiddenError) {
+        setSendNote({ text: 'Your role cannot generate bills.', forLines: null })
+        return
+      }
+      if (error instanceof SessionGoneError) {
+        setClosedDuringSend(true)
+        return
+      }
+      if (error instanceof BillRefusedError) {
+        if (error.code === 'BILL_ALREADY_OPEN') {
+          // The order IS billed — the outcome the waiter wanted — so settle.
+          // Refetch rather than guessing: the 409 carries only an id, and the
+          // query returns the whole document, which is what the strip and 6.4
+          // both need. This also recovers the case where a 201 committed but
+          // its response never arrived, where the retry lands here.
+          //
+          // The message no longer says "on another device". It is equally this
+          // device double-tapping, or this device retrying an unparseable 201,
+          // and naming the wrong cause during an end-of-night dispute is worse
+          // than naming none.
+          void queryClient.invalidateQueries({ queryKey: billQueryKey })
+          clearRound()
+          setSendNote({ text: 'This order already has a bill.', forLines: null })
+          return
+        }
+        if (error.code === 'NOTHING_TO_BILL') {
+          setSendNote({ text: 'Nothing has been ordered yet, so there is no bill.', forLines: null })
+          return
+        }
+        setSendNote({ text: error.message, forLines: null })
+        return
+      }
+      setSendNote({ text: 'Could not generate the bill. Try again.', forLines: null })
+    },
+  })
+
   function clearRound() {
     clear()
     setConfirmingClear(false)
@@ -751,12 +911,38 @@ export function OrderScreen({
   // More Items, which asks for an empty round → `empty`. Nothing at all →
   // `empty`. `addingMore` is cleared again by the next stage or by Clear, so
   // the strip can return to `submitted`; it used to be a one-way latch.
+  //
+  // Billing is checked FIRST and overrides everything, including staged lines.
+  // Once a bill exists the round on screen can no longer be sent: the server
+  // refuses it with `SESSION_ALREADY_BILLED` (order.service.ts), because an
+  // item added after the bill could never appear on any bill.
+  //
+  // Anything still staged when that happens is discarded by the effect below
+  // rather than left on screen — `settling` renders no Send AND no Clear, so
+  // stranded lines had no way out and came back after a reload.
+  // Anything staged when the bill appeared can never be sent — the server
+  // refuses it — and `settling` draws no Clear, so the lines had no way out
+  // and came back from localStorage after a reload, ready to be sent against
+  // the next sitting at this table.
+  //
+  // This clears the MIRROR, not React state: calling the state setters from an
+  // effect cascades a render, and the two places a bill actually appears
+  // during a sitting (the mutation succeeding, and the 409) call `clearRound()`
+  // in their handlers where it belongs. This covers the remaining case — the
+  // screen LOADING against a session that was billed elsewhere — where there
+  // is no event to hang it on.
+  useEffect(() => {
+    if (bill !== null) clearStagedRound(sessionId)
+  }, [bill, sessionId])
+
   const stripState: OrderActionStripState =
-    lines.length > 0
-      ? 'items-added'
-      : submittedRounds.length > 0 && !addingMore
-        ? 'submitted'
-        : 'empty'
+    bill !== null
+      ? 'settling'
+      : lines.length > 0
+        ? 'items-added'
+        : submittedRounds.length > 0 && !addingMore
+          ? 'submitted'
+          : 'empty'
 
   // Bigger than one send may be. The server's schema refuses the round WHOLE —
   // every line of it — so the screen stops it here and says which limit was
@@ -1297,9 +1483,9 @@ export function OrderScreen({
       {/* The bar. Its state is `stripState` above — four facts, including the
           Add More Items override.
 
-          Send is live (Story 4.5). Bill & split (Epic 6) and Hold (no
-          requirement) are still absent: `onGenerateBill` stays undefined and
-          the strip renders no button for an undefined handler.
+          Send and Generate Bill are both live (Stories 4.5, 6.2). Split (6.1)
+          and Hold (no requirement) are still absent, and the strip renders no
+          button for an undefined handler.
 
           While any staged line has a problem the Send button stays but is
           disabled, and the bar says why — the server would refuse the round,
@@ -1308,7 +1494,7 @@ export function OrderScreen({
         state={stripState}
         stagedCount={stagedItemCount}
         destinationSummary={destinationSummary}
-        busy={sendMutation.isPending}
+        busy={sendMutation.isPending || billMutation.isPending}
         sendBlocked={stagedProblems.size > 0 || overLimit}
         note={
           stagedProblems.size > 0
@@ -1320,6 +1506,7 @@ export function OrderScreen({
               : (sendNoteText ?? undefined)
         }
         onSubmitOrder={lines.length > 0 ? () => sendMutation.mutate() : undefined}
+        onGenerateBill={() => billMutation.mutate()}
         onClear={
           lines.length === 0
             ? undefined

@@ -12,6 +12,7 @@ import {
   ItemUnavailableError,
   PriceChangedError,
   SeatNotOnSessionError,
+  SessionAlreadyBilledError,
   SubmissionIdReusedError,
   submitRound,
 } from '@/server/services/order.service'
@@ -197,6 +198,14 @@ export async function POST(
       submitRound(tx, { sessionId, staffId, submissionId, lines }),
     )
   } catch (error) {
+    if (error instanceof SessionAlreadyBilledError) {
+      return fail(
+        'SESSION_ALREADY_BILLED',
+        'This order has been billed. Nothing more can be added to it.',
+        409,
+        { billId: error.billId },
+      )
+    }
     if (error instanceof SessionAlreadyClosedError) {
       return fail('SESSION_ALREADY_CLOSED', 'This order is not open', 409)
     }

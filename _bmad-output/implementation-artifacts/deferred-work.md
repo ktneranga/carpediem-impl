@@ -199,3 +199,33 @@
 - **One printer serves all three production destinations** [`src/server/print/transport.ts`, Story 10.3] - `resolveTransport` sends kitchen, pizza kitchen and bar to the same `PRINTER_IP`, because `station_configs` has no rows and no `connection_mode` column, and `station_configs.type` has no `pizza_kitchen`. The queue's head-of-line ordering keeps each destination's tickets in order independently, but they share one piece of hardware, so a jam anywhere stops everything. Story 10.3 owns station configuration; the USB path belongs with it.
 - **Six attempts x 5s holds a station's queue for ~83 seconds** [`src/server/print/worker.ts`] - the retry ladder is 53 seconds of waiting plus six attempts of up to five seconds each blocking on a dead socket. Whether that is the right ceiling before a ticket is given up on, and whether a dead station should stop blocking sooner, is a service call rather than a coding one. The comments now state the real figure.
 - **The code page, the cut command and the column count are unproven** [`src/server/print/escpos.ts`] - CP437 is assumed, `GS V 66` partial cut is assumed supported, and 48 columns assumes 80mm paper at Font A. Each is one constant. They can only be settled against the printer that is actually bought.
+
+## Deferred from: code review of story-6.2 (2026-10-13)
+
+- **A billed session can still be closed as a walkout.** `closeSession` and both close routes have no
+  reference to `bills`. Closing a billed session releases the table and strands an immutable bill with
+  no payment, no cancellation and nothing pointing at it. Reachable today. Story 6.5 owns the
+  settlement-and-close interaction and should close this path at the same time.
+- **The bill does not net out `ITEM_VOIDED`, `ITEM_REMOVED` or `ITEM_COMPED`.** All three are live
+  values in `orderEventTypeEnum`; `collectBillable` filters to `ITEM_ADDED` only, which reads as
+  complete. The day anything writes a void, a voided dish is charged to the guest on an immutable row.
+  Epic 7 owns voids — net them in `collectBillable` when it does.
+- **`REAUTH_REQUIRED` is a client dead end.** With `financial_action_reauth` true the strip shows
+  "Enter your PIN to generate this bill" with no field to enter one, so billing becomes impossible from
+  the tablet. The flag is false for the demo, so this is armed rather than firing. Story 2.4 owns the
+  prompt.
+- **`GET /api/bills/:billId` has no tenant or per-bill scoping.** Any owner or waiter resolves any bill
+  UUID. Consistent with every other route and with the single-restaurant deployment, and declared in
+  6.2's record — but it is the first route returning a complete financial document, so it is the one
+  worth revisiting if multi-tenancy ever becomes real.
+
+## Deferred from: story-6.4 creation (2026-10-13)
+
+- **Story 6.5's auto-close predicate is "every bill settled AND nothing left to bill"** [Epic 6 — Story
+  6.5] - A hazard Story 6.4 CREATES. Before per-seat billing, "all bills settled" and "the table is
+  finished" were the same statement. After it, a session can have every bill settled and still have
+  unbilled items: seats 1 and 2 paid and left, seats 3 and 4 still eating. Epic 6.5's criterion reads
+  "the last open bill in a session is marked settled" — implemented literally, that auto-closes a table
+  mid-service and releases it on the floor plan while four guests are still being served. The same
+  predicate is what 6.4's `stripState` needs to decide `settling`, so it is defined once in
+  `bill.service.ts` and exported; 6.5 must import it rather than write a second version.

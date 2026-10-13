@@ -113,6 +113,16 @@ export const printJobStatusEnum = pgEnum('print_job_status', [
   'dead',
 ])
 
+/**
+ * What a bill covers (Story 6.2).
+ *
+ * `consolidated` is the whole session. `seat` is Story 6.4 — one seat settling
+ * independently while the rest of the table keeps ordering. A `person` split
+ * (Story 6.3, drag-to-assign) is deferred post-demo and is NOT in this enum:
+ * adding a value nothing writes would be a promise the code does not keep.
+ */
+export const billTypeEnum = pgEnum('bill_type', ['consolidated', 'seat'])
+
 // ── Foundation ────────────────────────────────────────────────────────────────
 
 export const tenants = pgTable('tenants', {
@@ -491,6 +501,112 @@ export const orderRounds = pgTable('order_rounds', {
   uniqueIndex('idx_order_rounds_session_round').on(t.sessionId, t.roundNumber),
 ])
 
+/**
+ * A bill — what was presented to a guest (Story 6.2, FR21/FR27).
+ *
+ * ── A SNAPSHOT, not a view ───────────────────────────────────────────────────
+ * The money is stored, not recomputed on read, and the RATES it was computed
+ * with are stored beside it. A bill is handed to someone; if the menu price or
+ * the service rate changes an hour later, the piece of paper in their hand does
+ * not, and neither does this row. It is also the only way the bill can explain
+ * its own arithmetic a week later in a dispute (Epic 7).
+ *
+ * ── Append-only, like every other financial fact ─────────────────────────────
+ * Migration 0018 puts the same trigger on this table as `order_events`,
+ * `order_rounds` and `payment_records` carry. There is deliberately no `status`
+ * column: "open" means payments recorded against it sum to less than its total,
+ * which Story 6.5 can answer once `payment_records` gains a `bill_id`. A
+ * mutable status would be a second source of truth about whether money is owed.
+ *
+ * Contrast `print_jobs`, which IS mutable — that one is working state, this one
+ * is a fact.
+ */
+export const bills = pgTable('bills', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  tenantId:  uuid('tenant_id').notNull().references(() => tenants.id),
+  sessionId: uuid('session_id').notNull().references(() => orderSessions.id),
+  /** Who generated it. With re-auth on, whoever gave the fresh PIN (NFR-S3). */
+  staffId:   uuid('staff_id').notNull().references(() => staff.id),
+  type:      billTypeEnum('type').notNull(),
+
+  // ── The money, all integer paisa, each rounded once ───────────────────────
+  subtotalPaisa:      integer('subtotal_paisa').notNull(),
+  serviceChargePaisa: integer('service_charge_paisa').notNull(),
+  taxPaisa:           integer('tax_paisa').notNull(),
+  totalPaisa:         integer('total_paisa').notNull(),
+
+  /** The rates APPLIED, so the bill stays readable after they change. */
+  serviceChargeBp: integer('service_charge_bp').notNull(),
+  taxBp:           integer('tax_bp').notNull(),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_bills_session_id').on(t.sessionId),
+])
+
+/**
+ * Which order events a bill covers (Story 6.2).
+ *
+ * ── Recorded, not derived, and that is the point ─────────────────────────────
+ * A consolidated bill COULD be derived — "every event on the session" — but a
+ * per-seat bill (6.4) and a person split (6.3) cannot, and nothing derived
+ * could stop two bills covering the same item.
+ *
+ * `UNIQUE (order_event_id)` is therefore the no-double-billing invariant for
+ * every bill type at once. It is also what decides the race when two waiters
+ * tap Generate Bill at the same instant: the second transaction tries to claim
+ * the same events and takes a 23505. The database decides it — not a
+ * read-then-write check that merely looks atomic.
+ */
+export const billLines = pgTable('bill_lines', {
+  id:     uuid('id').primaryKey().defaultRandom(),
+  billId: uuid('bill_id').notNull().references(() => bills.id),
+  /** The event this line bills. At most one bill may claim it, ever. */
+  orderEventId: uuid('order_event_id').notNull().references(() => orderEvents.id),
+  /** quantity × unit_price_paisa, as quoted on the event. */
+  amountPaisa:  integer('amount_paisa').notNull(),
+
+  // ── The ITEMISATION is snapshotted too (code review 2026-10-13) ──────────
+  // These were originally read by joining `menu_items` and `seat_slots` at
+  // render time, which made the bill's MONEY immutable and its WORDS mutable:
+  // renaming a dish retroactively renamed it on every historical bill, and
+  // deleting one rendered a real charge as "Unknown item". FR27 asks a bill to
+  // itemise what was bought, and Epic 7 shows bills to a customer in a dispute
+  // — neither survives a join to a table the owner edits daily.
+  //
+  // Denormalised on purpose. `order_events` already carries the price for the
+  // same reason; this is the rest of the same snapshot.
+  /** The dish name AS BILLED. Never re-read from `menu_items`. */
+  name:         text('name').notNull(),
+  /** The seat label as billed. Null for an event with no seat (a counter sale). */
+  seatLabel:    text('seat_label'),
+  /** The modifier text as billed — "no ice", "extra spicy". */
+  modifierText: text('modifier_text'),
+}, (t) => [
+  uniqueIndex('idx_bill_lines_order_event').on(t.orderEventId),
+  index('idx_bill_lines_bill_id').on(t.billId),
+])
+
+/**
+ * A comp applied to a bill (Story 6.2, FR27).
+ *
+ * Separate from `bill_lines` because a comp is not an order event — it is a
+ * reduction authorised by a manager, with its own reason and authoriser
+ * (`comp_records`). Nothing writes comps until Epic 7; this exists so a bill
+ * generated after they do renders them as negative lines without a migration,
+ * and so the subtotal arithmetic has one shape from the start.
+ */
+export const billComps = pgTable('bill_comps', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  billId:       uuid('bill_id').notNull().references(() => bills.id),
+  compRecordId: uuid('comp_record_id').notNull().references(() => compRecords.id),
+  /** NEGATIVE paisa — it reduces the subtotal. */
+  amountPaisa:  integer('amount_paisa').notNull(),
+}, (t) => [
+  uniqueIndex('idx_bill_comps_comp_record').on(t.compRecordId),
+  index('idx_bill_comps_bill_id').on(t.billId),
+])
+
 export const paymentRecords = pgTable('payment_records', {
   id:               uuid('id').primaryKey().defaultRandom(),
   sessionId:        uuid('session_id').notNull().references(() => orderSessions.id),
@@ -645,6 +761,19 @@ export const tenantConfig = pgTable('tenant_config', {
   brandColor:     text('brand_color').notNull().default('#2288B4'),
   currencyCode:   text('currency_code').notNull().default('LKR'),
   taxRatePercent: integer('tax_rate_percent').notNull().default(0),
+  /**
+   * The service charge, in BASIS POINTS — 1000 is 10.00% (Story 6.2).
+   *
+   * Basis points and not a percent, unlike `tax_rate_percent` above, which is
+   * an integer and therefore cannot express Sri Lanka's SSCL at 2.5%. Shipping
+   * that limitation a second time would be a choice rather than an
+   * inheritance; converting `tax_rate_percent` to basis points is three files
+   * and no data, and is worth doing the next time tax is touched.
+   *
+   * Set from the back-office dashboard (Story 10.5 owns that screen). The
+   * column lives here because a bill cannot be computed without a rate.
+   */
+  serviceChargeBp: integer('service_charge_bp').notNull().default(0),
 
   // ── Auth feature flags (prd.md:304-310) ───────────────────────────────────
   // NOTE: NFR-S6 states a 30-minute idle timeout while the PRD's flag table
@@ -652,7 +781,17 @@ export const tenantConfig = pgTable('tenant_config', {
   // Carpe Diem's row is explicitly 5. The NFR-S6 mismatch is recorded for the PRD.
   authMode:              authModeEnum('auth_mode').notNull().default('session_short'),
   sessionTimeoutMinutes: integer('session_timeout_minutes').notNull().default(5),
-  financialActionReauth: boolean('financial_action_reauth').notNull().default(true),
+  /**
+   * Require a fresh PIN on bill and payment actions (NFR-S3).
+   *
+   * Defaults FALSE, changed from `true` in migration 0019. A `true` default
+   * meant any tenant_config row created after Story 6.2 came up demanding a
+   * PIN that nothing can collect — Story 2.4 owns that prompt and is deferred
+   * post-demo — so the route would refuse every bill with no way forward. A
+   * default that promises a protection no screen can satisfy is worse than
+   * one that is off and honest about it. Turn it on with 2.4.
+   */
+  financialActionReauth: boolean('financial_action_reauth').notNull().default(false),
 
   updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
