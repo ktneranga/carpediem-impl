@@ -79,7 +79,7 @@ export function ZoneChipBar({
 
   // brand-700, not brand-500: white text on brand-500 is 3.9:1 and fails AA at
   // these sizes — the same trap the --*-band tokens exist to avoid.
-  const activeTab = 'border-brand-700 bg-brand-700 shadow-el-2 inset-shadow-top'
+  const activeTab = 'border-brand-800 bg-brand-800 shadow-el-2 inset-shadow-top'
   const inactiveTab = 'border-slate-200 bg-white shadow-el-1'
 
   const AllIcon = ALL_ZONES_ICON

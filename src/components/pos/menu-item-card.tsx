@@ -110,7 +110,7 @@ export function MenuItemCard({
             aria-hidden="true"
             className={cn(
               'flex size-6 shrink-0 items-center justify-center rounded-pill',
-              'bg-brand-700 text-fs-12 font-extrabold tabular-nums text-white',
+              'bg-brand-800 text-fs-12 font-extrabold tabular-nums text-white',
             )}
           >
             {stagedCount}

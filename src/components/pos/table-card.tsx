@@ -198,7 +198,7 @@ export function TableCard({
                   : stale
                     ? 'border-unavailable-edge'
                     : status === 'occupied'
-                      ? 'border-occupied-chip'
+                      ? 'border-occupied-line'
                       : 'border-slate-200',
               ),
       )}

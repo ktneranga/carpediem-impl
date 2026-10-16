@@ -147,7 +147,7 @@ export function StagedRoundList({
                 'flex flex-col gap-sp-2 rounded-control border px-sp-3 py-sp-2',
                 problem
                   ? 'border-2 border-unavailable-edge bg-unavailable-body'
-                  : 'border-unsent-edge bg-unsent-body',
+                  : 'border-occupied-line bg-unsent-body',
               )}
             >
               <div className="flex items-center gap-sp-2">
@@ -247,7 +247,7 @@ export function StagedRoundList({
                       type="button"
                       onClick={() => onAcceptPrice(line.menuItemId, problem.currentPricePaisa)}
                       className={cn(
-                        'h-touch-kitchen self-start rounded-control bg-brand-700 px-sp-4',
+                        'h-touch-kitchen self-start rounded-control bg-brand-800 px-sp-4',
                         'text-fs-14 font-bold whitespace-nowrap text-white',
                         'transition-transform duration-80 ease-standard active:scale-[0.97]',
                         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',

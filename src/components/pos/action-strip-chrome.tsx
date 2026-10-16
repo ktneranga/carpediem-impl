@@ -115,7 +115,7 @@ export function ActionStripShell({
  */
 export const primaryButtonClass = cn(
   'h-touch-waiter min-w-40 rounded-waiter px-sp-5 text-fs-16 font-bold tracking-title',
-  'bg-brand-700 text-white shadow-el-2 inset-shadow-top',
+  'bg-brand-800 text-white shadow-el-2 inset-shadow-top',
   'transition-[transform,box-shadow] duration-80 ease-standard',
   'active:scale-[0.97] active:bg-brand-500 active:shadow-pressed',
   'disabled:opacity-40 disabled:active:scale-100',
@@ -142,7 +142,7 @@ export const secondaryButtonClass = cn(
  */
 export const commitButtonClass = cn(
   'h-touch-waiter w-full rounded-waiter px-sp-5 text-fs-18 font-extrabold tracking-title',
-  'bg-brand-700 text-white shadow-el-2 inset-shadow-top',
+  'bg-brand-800 text-white shadow-el-2 inset-shadow-top',
   'transition-[transform,box-shadow] duration-80 ease-standard',
   'active:scale-[0.99] active:shadow-pressed',
   'disabled:opacity-40 disabled:active:scale-100',
@@ -170,7 +170,7 @@ export const commitButtonClass = cn(
  */
 export const sendButtonClass = cn(
   'h-touch-waiter min-w-64 rounded-waiter px-sp-6 text-fs-18 font-extrabold tracking-title',
-  'bg-brand-700 text-white shadow-el-2 inset-shadow-top',
+  'bg-brand-800 text-white shadow-el-2 inset-shadow-top',
   'transition-[transform,box-shadow] duration-80 ease-standard',
   'active:scale-[0.97] active:bg-brand-500 active:shadow-pressed',
   'disabled:opacity-40 disabled:active:scale-100',

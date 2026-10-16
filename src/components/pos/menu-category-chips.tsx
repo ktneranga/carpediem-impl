@@ -63,7 +63,7 @@ export function MenuCategoryChips({
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
               // `brand-700`, not `brand-500`: white on 500 is 3.9:1 and fails AA.
               isActive
-                ? 'border-brand-700 bg-brand-700 text-white shadow-el-2'
+                ? 'border-brand-700 bg-brand-800 text-white shadow-el-2'
                 : 'border-slate-200 bg-white text-slate-600 shadow-el-1',
             )}
           >
