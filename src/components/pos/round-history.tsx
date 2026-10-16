@@ -1,5 +1,7 @@
 'use client'
 
+import { Check } from 'lucide-react'
+
 import type { SubmittedRoundRow } from '@/types/orders'
 import { clockTime, lkrFromPaisa, quantity as formatQuantity } from '@/lib/format'
 
@@ -47,10 +49,14 @@ export function RoundHistory({
         return (
           <div
             key={round.roundNumber}
-            className="flex flex-col gap-sp-2 rounded-waiter border border-slate-200 bg-slate-100 p-sp-3"
+            className="flex flex-col gap-sp-2 border-t border-slate-200 pt-sp-3"
           >
             <div className="flex items-baseline justify-between gap-sp-3">
-              <h2 className="text-fs-14 font-bold text-slate-600">
+              {/* The tick is the point of the heading: this round is GONE to
+                  the kitchen and cannot be changed, which is what separates
+                  it from the amber block above. Small caps, as drawn. */}
+              <h2 className="flex items-center gap-sp-1 text-fs-12 font-bold tracking-micro text-open-ink uppercase">
+                <Check aria-hidden="true" strokeWidth={3} className="size-3.5 shrink-0" />
                 Round {round.roundNumber}
                 {sentAt ? (
                   // The time is formatted in the RENDERING environment's

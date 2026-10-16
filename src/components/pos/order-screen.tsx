@@ -1440,6 +1440,7 @@ export function OrderScreen({
     // `slate-100` is the system's app background.
     <div className="flex min-h-dvh flex-col bg-slate-100 md:h-dvh">
       <OrderHeader
+        zoneName={zoneName}
         tableLabel={displayLabel}
         contextLine={contextLine}
         // "SEAT 1 SELECTED — TAPS LAND HERE" only means something where the
@@ -1492,7 +1493,15 @@ export function OrderScreen({
               bills" both sound reasonable to someone who has not thought about
               it yet. */}
           <section className="flex shrink-0 flex-col gap-sp-2 border-b border-slate-200 p-sp-4">
-            <div role="group" aria-label="How this order is billed" className="flex gap-sp-2">
+            {/* ONE segmented control in a tinted trough, not two separate
+                buttons: the design treats these as two states of a single
+                choice, and the selected one is a raised white card inside the
+                group. Two bordered buttons read as two independent actions. */}
+            <div
+              role="group"
+              aria-label="How this order is billed"
+              className="flex gap-sp-1 rounded-waiter bg-slate-100 p-sp-1"
+            >
               {([
                 { mode: 'one' as const, icon: Receipt, label: 'One bill' },
                 { mode: 'separate' as const, icon: Users, label: 'Separate bills' },
@@ -1506,13 +1515,13 @@ export function OrderScreen({
                     disabled={billModeMutation.isPending}
                     onClick={() => requestBillMode(mode)}
                     className={cn(
-                      'flex h-touch-kitchen flex-1 items-center justify-center gap-sp-2 rounded-waiter border',
+                      'flex h-touch-kitchen flex-1 items-center justify-center gap-sp-2 rounded-control',
                       'text-fs-16 font-bold transition-[transform,box-shadow] duration-120 ease-standard',
-                      'active:scale-[0.97] active:shadow-pressed disabled:opacity-60',
-                      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                      'active:scale-[0.97] disabled:opacity-60',
+                      'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',
                       active
-                        ? 'border-brand-500 bg-brand-050 text-brand-700 shadow-el-1'
-                        : 'border-slate-200 bg-white text-slate-600',
+                        ? 'bg-white text-brand-800 shadow-el-1'
+                        : 'text-slate-600',
                     )}
                   >
                     <Icon aria-hidden="true" strokeWidth={2.2} className="size-5 shrink-0" />

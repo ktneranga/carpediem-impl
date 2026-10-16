@@ -325,7 +325,12 @@ export function MenuBrowser({
                       tablet; the cards are shorter now and the design asks for
                       five, so the floor drops to 150px and `auto-fill` still
                       protects small screens. */}
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-sp-3">
+                  {/* 112px minimum: measured off the design, where the menu
+                      pane is ~610px inside its padding and holds five cards
+                      with 12px gaps (5x112 + 4x12 = 608). `minmax(150px)` gave
+                      four. `auto-fill` still collapses gracefully on a
+                      narrower screen. */}
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-sp-3">
                     {category.items.map((item) => (
                       <MenuItemCard
                         key={item.id}

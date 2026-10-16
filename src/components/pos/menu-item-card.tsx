@@ -66,7 +66,7 @@ export function MenuItemCard({
           : `${item.name}, off today`
       }
       className={cn(
-        'relative flex min-h-28 flex-col justify-between gap-sp-2 rounded-waiter border p-sp-3 text-left',
+        'relative flex min-h-25 flex-col justify-between gap-sp-2 rounded-waiter border p-sp-3 text-left',
         'transition-[transform,box-shadow] duration-120 ease-standard',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
         item.available
@@ -81,13 +81,13 @@ export function MenuItemCard({
     >
       <span className="flex items-start justify-between gap-sp-2">
         {item.available ? (
-          // Which station this goes to, in that station's colour. The waiter
-          // reads it to predict the Send button's wording.
+          // Which station this goes to, in that station's colour — plain
+          // text beside its glyph, no chip and no border. A bordered pill
+          // made the busiest element on a 112px card the one that was not
+          // the dish.
           <span
             className={cn(
-              'flex items-center gap-sp-1 rounded-chip border px-sp-2 py-0.5',
-              'text-fs-12 font-bold tracking-micro uppercase',
-              'border-current/25',
+              'flex items-center gap-sp-1 text-fs-12 font-bold tracking-micro uppercase',
               route.ink,
             )}
           >
@@ -99,7 +99,7 @@ export function MenuItemCard({
             {route.short}
           </span>
         ) : (
-          <span className="flex items-center gap-sp-1 rounded-chip border border-slate-200 px-sp-2 py-0.5 text-fs-12 font-bold tracking-micro text-slate-400 uppercase">
+          <span className="flex items-center gap-sp-1 text-fs-12 font-bold tracking-micro text-slate-400 uppercase">
             <Ban aria-hidden="true" strokeWidth={2.5} className="size-3.5 shrink-0" />
             Off today
           </span>
