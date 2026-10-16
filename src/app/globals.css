@@ -42,6 +42,17 @@
      Sits between brand-900 and brand-700. 8.6:1 on white, so white text
      clears AA at every size we use. */
   --color-brand-800: #12556F;
+  /* ── Verified against the 2026-10-16 screenshots ─────────────────────────
+     The palette here was checked by COUNTING PIXELS in all eight designs,
+     not by eye. Every screen without a modal is 86-90% exact against these
+     tokens and 95-97% once antialiasing is allowed for, so the remainder is
+     text edges and shadows rather than colours this file is missing.
+
+     The three payment-panel screens measure 33% exact, which is not a gap:
+     a dimmed backdrop is a TRANSPARENCY. Solving the blend from two known
+     surfaces gives alpha 0.500 on all three channels and #0F1729 - slate-900
+     at 50%, one unit off in blue from rounding. Full-screen overlays use
+     `bg-slate-900/50`, and that is measured rather than guessed. */
   --color-brand-700: #1A6A8C;
   --color-brand-500: #2288B4;   /* primary */
   --color-brand-300: #6EC1E4;
