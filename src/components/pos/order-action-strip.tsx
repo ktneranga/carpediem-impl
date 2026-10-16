@@ -1,10 +1,13 @@
 'use client'
 
+import { useState } from 'react'
+
 import {
   ActionStripShell,
   primaryButtonClass,
   secondaryButtonClass,
   sendButtonClass,
+  MoreMenu,
 } from '@/components/pos/action-strip-chrome'
 
 /**
@@ -69,6 +72,17 @@ export type OrderActionStripProps = {
   sendBlocked?: boolean
   busy?: boolean
   onSubmitOrder?: () => void
+  /**
+   * Items for the "More" menu (2026-10-16 design).
+   *
+   * The destructive actions live here rather than on the row: "Clear unsent
+   * items" throws away a round the waiter has just typed, and "Close table —
+   * walkout" ends the sitting. Both were one tap from Send, at the same size.
+   *
+   * Passed as data rather than as buttons so the strip keeps deciding its own
+   * layout — the same reason `onClear` is a callback and not a node.
+   */
+  moreItems?: { label: string; onClick: () => void; danger?: boolean }[]
   onClear?: () => void
   onAddMoreItems?: () => void
   onGenerateBill?: () => void
@@ -82,10 +96,12 @@ export function OrderActionStrip({
   sendBlocked = false,
   busy = false,
   onSubmitOrder,
+  moreItems = [],
   onClear,
   onAddMoreItems,
   onGenerateBill,
 }: OrderActionStripProps) {
+  const [moreOpen, setMoreOpen] = useState(false)
   // Terminal. No buttons at all — not disabled ones, which invite a tap and
   // teach nothing — and a muted shell so it reads as finished rather than as an
   // order waiting for input.
@@ -187,6 +203,14 @@ export function OrderActionStrip({
           note ?? (destinationSummary ? `→ ${destinationSummary}` : 'Nothing has gone to the kitchen yet.')
         }
       >
+        {moreItems.length > 0 ? (
+          <MoreMenu
+            busy={busy}
+            open={moreOpen}
+            onOpenChange={setMoreOpen}
+            items={moreItems}
+          />
+        ) : null}
         {onClear ? (
           <button
             type="button"

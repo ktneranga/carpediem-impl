@@ -1995,13 +1995,26 @@ export function OrderScreen({
         }
         onSubmitOrder={lines.length > 0 ? () => sendMutation.mutate() : undefined}
         onGenerateBill={() => billMutation.mutate()}
-        onClear={
-          lines.length === 0
-            ? undefined
-            : lines.length === 1
-              ? clearRound
-              : () => setConfirmingClear(true)
-        }
+        // Clear left the main row for the More menu (2026-10-16 design): it
+        // throws away a round the waiter has just typed and sat one tap from
+        // Send at the same size.
+        moreItems={[
+          ...(lines.length > 0
+            ? [
+                {
+                  label: `Clear ${stagedItemCount} unsent item${stagedItemCount === 1 ? '' : 's'}`,
+                  onClick: () =>
+                    lines.length === 1 ? clearRound() : setConfirmingClear(true),
+                  danger: true,
+                },
+              ]
+            : []),
+          {
+            label: isWalkout ? 'Close table — walkout' : 'Close table',
+            onClick: () => setConfirmingWalkout(true),
+            danger: true,
+          },
+        ]}
         onAddMoreItems={
           // Opening a round writes nothing: the round NUMBER is decided inside
           // Story 4.5's submit transaction.

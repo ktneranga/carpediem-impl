@@ -58,7 +58,10 @@ export function RoundHistory({
                   // client's value is the right one; the warning is suppressed
                   // for this text only, rather than letting a mismatch discard
                   // the server tree.
-                  <span className="font-semibold text-slate-600" suppressHydrationWarning>
+                  <span
+                    className="font-semibold tracking-micro text-open-ink uppercase"
+                    suppressHydrationWarning
+                  >
                     {' '}
                     · sent {clockTime(sentAt)}
                   </span>

@@ -1,34 +1,35 @@
 'use client'
 
-import type { MenuItemRow } from '@/app/api/menu/route'
-import { routeForDestination } from '@/lib/design'
+import { createElement } from 'react'
+import { Ban, SlidersHorizontal } from 'lucide-react'
+import { routeForDestination, routeIcon } from '@/lib/design'
 import { lkrFromPaisa } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import type { MenuItemRow } from '@/app/api/menu/route'
 
 /**
- * One dish on the order screen's menu grid.
+ * One dish on the menu grid.
  *
- * ── Built on the design system, not beside it ────────────────────────────────
- * - Corner: `rounded-waiter` (14px), the system's radius for "waiter buttons
- *   and menu cards"; `rounded-card` (20px) is the TABLE card's.
- * - Colour: the staged band is the dish's route colour from `ROUTES` — Kitchen
- *   blue, Pizza orange, Bar violet. The eyebrow uses the route's INK, which is
- *   the route colour for Pizza and Bar but `brand-700` for Kitchen, because
- *   Kitchen blue is 4.00:1 on white and fails AA at 12px.
- * - Greys: only the system's five, and never `slate-400` for text that
- *   carries meaning — it is 2.56:1 on white.
- * - Touch: the footer is the 56px `touch-kitchen` token, the floor for every
- *   waiter control.
+ * ── The 2026-10-16 design ────────────────────────────────────────────────────
+ * Tapping ANYWHERE on the card adds one. The separate "Add" and "Opts" buttons
+ * are gone: on a five-column grid they were two 44px targets inside a card the
+ * waiter was already aiming at, and the common action — one of this dish —
+ * deserved the whole card rather than a third of it.
  *
- * ── Text-first, no photograph ────────────────────────────────────────────────
- * Teran's 2026-09-16 design is text-only for density. `menu_items.image_url`
- * is still stored and still returned by `/api/menu`; restoring photos is a
- * change to this file alone.
+ * Modifiers moved to a small icon button in the corner. It stops the tap from
+ * reaching the card (`stopPropagation`), because "add one" and "add one with
+ * no ice" are different intentions and the second must not also do the first.
  *
- * ── Two controls, deliberately unequal ───────────────────────────────────────
- * `Add` is wide and `Opts` is narrow because one of them is the answer almost
- * every time. NFR-P6 allows two taps for a modifier; it does not ask for two
- * taps for a plain dish.
+ * ── The card does NOT fill when staged ──────────────────────────────────────
+ * It gains a count badge and nothing else. The previous version turned the
+ * whole card dark blue, which read as "selected" on a grid where nothing is
+ * selectable, and made the price harder to read on exactly the dishes the
+ * waiter was working with.
+ *
+ * ── Unavailable is GREY, not red ─────────────────────────────────────────────
+ * Red is this system's colour for "needs attention". A dish being off today is
+ * ordinary. It is dimmed, not tappable, and the grid sorts it to the end of its
+ * category so it stops occupying a position the waiter's hand has learned.
  */
 export function MenuItemCard({
   item,
@@ -40,141 +41,133 @@ export function MenuItemCard({
   /**
    * How many of this dish the SELECTED SEAT already has in the staged round.
    *
-   * Shown as a badge, and it turns `Add` into `Add another` — which is what the
-   * tap does: the same dish for the same seat raises that line's quantity.
-   * Scoped to the selected seat so the badge answers "does THIS guest have it".
+   * Scoped to the selected seat so the badge answers "does THIS guest have
+   * it", not "is it anywhere on the table".
    */
   stagedCount?: number
-  /** Stages the item as-is on the selected seat. One tap. */
+  /** Stages the item as-is on the selected seat. One tap, anywhere on the card. */
   onAdd?: (item: MenuItemRow) => void
   /** Opens the modifier sheet. Tap 1 of the 2 NFR-P6 allows. */
   onOpenModifiers?: (item: MenuItemRow) => void
 }) {
   const route = routeForDestination(item.productionDestination)
-  const isStaged = stagedCount > 0
-  const price = lkrFromPaisa(item.pricePaisa)
-  // The footer exists when there is something to say: an action to offer, or
-  // the fact that the dish is off. A card with no staging context and an
-  // available dish shows no footer — it used to say "Unavailable", because the
-  // branch tested "orderable here" instead of "available".
-  const showFooter = !item.available || Boolean(onAdd) || Boolean(onOpenModifiers)
+  const orderable = item.available && Boolean(onAdd)
 
   return (
-    <article
+    <button
+      type="button"
+      disabled={!orderable}
+      onClick={orderable ? () => onAdd?.(item) : undefined}
+      aria-label={
+        item.available
+          ? `${item.name}, ${lkrFromPaisa(item.pricePaisa)}, to ${route.label}${
+              stagedCount > 0 ? `, ${stagedCount} on this seat` : ''
+            }`
+          : `${item.name}, off today`
+      }
       className={cn(
-        'relative flex flex-col overflow-hidden rounded-waiter border border-slate-200 bg-white',
-        isStaged ? 'shadow-el-2' : 'shadow-el-1',
+        'relative flex min-h-28 flex-col justify-between gap-sp-2 rounded-waiter border p-sp-3 text-left',
+        'transition-[transform,box-shadow] duration-120 ease-standard',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+        item.available
+          ? 'border-slate-200 bg-white shadow-el-1 active:scale-[0.97] active:shadow-pressed'
+          : // Grey and flat. Not red: a dish being off is ordinary, and red is
+            // reserved for things that need acting on.
+            'cursor-not-allowed border-dashed border-slate-200 bg-slate-50',
+        // A staged dish keeps its white card and gains a badge. The brand ring
+        // is the lightest possible "you have some of these".
+        stagedCount > 0 && item.available && 'border-brand-300',
       )}
     >
-      {/* The staged band, in the dish's route colour. `overflow-hidden` on the
-          card lets it meet the 14px corner cleanly — the table card's band uses
-          the same technique. */}
-      {isStaged ? (
-        <span aria-hidden="true" className={cn('h-1.5 w-full shrink-0', route.band)} />
-      ) : null}
+      <span className="flex items-start justify-between gap-sp-2">
+        {item.available ? (
+          // Which station this goes to, in that station's colour. The waiter
+          // reads it to predict the Send button's wording.
+          <span
+            className={cn(
+              'flex items-center gap-sp-1 rounded-chip border px-sp-2 py-0.5',
+              'text-fs-12 font-bold tracking-micro uppercase',
+              'border-current/25',
+              route.ink,
+            )}
+          >
+            {createElement(routeIcon(item.productionDestination), {
+              'aria-hidden': 'true',
+              strokeWidth: 2.5,
+              className: 'size-3.5 shrink-0',
+            })}
+            {route.short}
+          </span>
+        ) : (
+          <span className="flex items-center gap-sp-1 rounded-chip border border-slate-200 px-sp-2 py-0.5 text-fs-12 font-bold tracking-micro text-slate-400 uppercase">
+            <Ban aria-hidden="true" strokeWidth={2.5} className="size-3.5 shrink-0" />
+            Off today
+          </span>
+        )}
 
-      {isStaged ? (
-        // The digit is decoration; the words are for assistive tech. An
-        // `aria-label` on a bare span is not reliably exposed.
+        {stagedCount > 0 ? (
+          <span
+            aria-hidden="true"
+            className={cn(
+              'flex size-6 shrink-0 items-center justify-center rounded-pill',
+              'bg-brand-700 text-fs-12 font-extrabold tabular-nums text-white',
+            )}
+          >
+            {stagedCount}
+          </span>
+        ) : null}
+      </span>
+
+      <span className="flex flex-col gap-0.5">
         <span
           className={cn(
-            'absolute top-sp-4 right-sp-3 flex size-8 items-center justify-center rounded-pill',
-            'bg-brand-700 text-fs-14 font-bold tabular-nums text-white',
-          )}
-        >
-          <span aria-hidden="true">{stagedCount}</span>
-          <span className="sr-only">{stagedCount} for the selected seat</span>
-        </span>
-      ) : null}
-
-      {/* When staged, the body reserves 48px on the right. The badge is 32px
-          wide and sits 12px in, so it covers the rightmost 44px — neither the
-          eyebrow nor a long name may run under it. */}
-      <div
-        className={cn(
-          'flex flex-1 flex-col gap-sp-1 pt-sp-4 pb-sp-3 pl-sp-4',
-          isStaged ? 'pr-sp-7' : 'pr-sp-4',
-        )}
-      >
-        {/* Where it is made — or, for an 86'd dish, the unavailable ink and
-            words, so the state never rests on colour. */}
-        <p
-          className={cn(
-            'text-fs-12 font-bold tracking-micro uppercase',
-            item.available ? route.ink : 'text-unavailable-ink',
-          )}
-        >
-          {item.available ? route.short : 'Off today'}
-        </p>
-
-        <h3
-          className={cn(
-            'text-fs-18 font-bold',
-            // An 86'd dish stays READABLE — slate-600 is 7.57:1 — and is struck
-            // through, which says "not today" without making the name a guess.
-            item.available ? 'text-slate-900' : 'text-slate-600 line-through',
+            'line-clamp-2 text-fs-16 font-bold',
+            item.available ? 'text-slate-900' : 'text-slate-400',
           )}
         >
           {item.name}
-        </h3>
+        </span>
+        <span className="flex items-end justify-between gap-sp-2">
+          <span
+            className={cn(
+              'text-fs-14 font-semibold tabular-nums',
+              item.available ? 'text-slate-600' : 'text-slate-400',
+            )}
+          >
+            {lkrFromPaisa(item.pricePaisa)}
+          </span>
 
-        {/* `lkrFromPaisa`, not `lkr(paisa / 100)` — `lkr` rounds, and a menu
-            price is already exact. */}
-        <p className="mt-auto pt-sp-1 text-fs-16 font-semibold tabular-nums text-slate-600">
-          {price}
-        </p>
-      </div>
-
-      {/* One footer row, split unequally. For an unavailable dish the left half
-          is a static word in the system's unavailable tones — never a disabled
-          button, which invites a tap and teaches nothing. */}
-      {showFooter ? (
-        <div className="flex h-touch-kitchen shrink-0 border-t border-slate-200">
-          {!item.available ? (
-            <span className="flex flex-1 items-center justify-center bg-unavailable-chip text-fs-16 font-bold text-unavailable-ink">
-              Unavailable
+          {/* Modifiers. A nested interactive element inside a button is invalid
+              HTML, so this is a span with a button role — it carries the same
+              keyboard behaviour and does not nest. */}
+          {orderable && onOpenModifiers ? (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label={`Options for ${item.name}`}
+              onClick={(event) => {
+                // "Add one" and "add one with no ice" are different intentions.
+                event.stopPropagation()
+                onOpenModifiers(item)
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return
+                event.preventDefault()
+                event.stopPropagation()
+                onOpenModifiers(item)
+              }}
+              className={cn(
+                'flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-control',
+                'text-slate-400 transition-colors duration-80 ease-standard',
+                'hover:bg-slate-100 hover:text-slate-600 active:bg-slate-200',
+                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+              )}
+            >
+              <SlidersHorizontal aria-hidden="true" strokeWidth={2.2} className="size-4" />
             </span>
-          ) : onAdd ? (
-            <button
-              type="button"
-              onClick={() => onAdd(item)}
-              aria-label={
-                isStaged ? `Add another ${item.name}, ${price}` : `Add ${item.name}, ${price}`
-              }
-              className={cn(
-                'flex-1 text-fs-16 font-bold',
-                'transition-[transform,background-color] duration-80 ease-standard',
-                'active:scale-[0.98]',
-                'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',
-                // `brand-050` is the system's tint. (`brand-50` is not a token;
-                // an earlier version of this card used it and rendered no fill.)
-                isStaged ? 'bg-brand-700 text-white' : 'bg-brand-050 text-brand-700',
-              )}
-            >
-              {isStaged ? 'Add another' : 'Add'}
-            </button>
-          ) : (
-            <span className="flex-1" />
-          )}
-
-          {onOpenModifiers && item.available ? (
-            <button
-              type="button"
-              onClick={() => onOpenModifiers(item)}
-              aria-label={`Add ${item.name} with a note or a quantity`}
-              className={cn(
-                'w-20 shrink-0 border-l border-slate-200 bg-white',
-                'text-fs-14 font-semibold text-slate-600',
-                'transition-[transform,background-color] duration-80 ease-standard',
-                'active:scale-[0.98] active:bg-slate-100',
-                'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',
-              )}
-            >
-              Opts
-            </button>
           ) : null}
-        </div>
-      ) : null}
-    </article>
+        </span>
+      </span>
+    </button>
   )
 }
