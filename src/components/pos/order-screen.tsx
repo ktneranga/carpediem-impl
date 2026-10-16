@@ -93,7 +93,12 @@ export type OrderScreenProps = {
    * summary shows no tax row at all. There is no service-charge column — see
    * `OrderSummary`.
    */
-  taxRatePercent: number
+  /** Tax rate in BASIS POINTS, converted by the page from the integer percent. */
+  taxBp: number
+  /** Service rate in basis points. 1000 = 10.00%. */
+  serviceChargeBp: number
+  /** Whether the session has tables attached, which is what earns the charge. */
+  hasTableService: boolean
   /**
    * Whether this order tracks PEOPLE (Teran, 2026-10-16).
    *
@@ -411,7 +416,9 @@ export function OrderScreen({
   sessionId,
   staffName,
   zoneName,
-  taxRatePercent,
+  taxBp,
+  serviceChargeBp,
+  hasTableService,
   initialBillMode,
   initialBills,
   initialHasUnbilled,
@@ -506,6 +513,45 @@ export function OrderScreen({
   // seat instead of leaving the row with nothing active. Story 4.2's review
   // replaced the same shape on the category chips for the same reason: an
   // effect that writes state after render is a frame of wrong UI.
+  const billQueryKey = ['bills', sessionId] as const
+
+  /**
+   * The bill this session has, from the SERVER (code review 2026-10-13).
+   *
+   * This was two `useState` flags set by the generate mutation. Both died on a
+   * page refresh and neither existed on a second tablet, so the screen
+   * re-offered "Add More Items" on an order that was already billed — and the
+   * round that followed could never be put on any bill, because a session gets
+   * one. The server refuses such a round now, but a button that only fails
+   * when pressed is not an answer; the screen has to know before it draws.
+   *
+   * Seeded from the server render so there is no flash of `submitted` on an
+   * already-billed order, and refetched on window focus — the tablet a waiter
+   * returns to is the one most likely to be stale.
+   */
+  const { data: billState, error: billStateError } = useQuery({
+    queryKey: billQueryKey,
+    queryFn: () =>
+      seatRequest<{ bills: BillDetail[]; hasUnbilled: boolean }>(
+        `/api/sessions/${sessionId}/bills`,
+      ),
+    initialData: { bills: initialBills, hasUnbilled: initialHasUnbilled },
+    refetchOnWindowFocus: true,
+  })
+
+  const sessionBills = billState.bills
+  /** Seat ids that already have a bill of their own — for the seat chips. */
+  const billedSeatIds = new Set(
+    sessionBills.map((b) => b.seatSlotId).filter((id): id is string => id !== null),
+  )
+  /** A consolidated bill sweeps everything, so it closes every seat at once. */
+  const hasConsolidatedBill = sessionBills.some((b) => b.seatSlotId === null)
+
+  /** Can anything still be added to this seat? */
+  function seatIsBilled(seatId: string): boolean {
+    return hasConsolidatedBill || billedSeatIds.has(seatId)
+  }
+
   // The fallback skips BILLED seats. It used to take `seats[0]`, so reloading
   // a table whose Seat 1 had paid announced "SEAT 1 SELECTED - TAPS LAND HERE"
   // and every tap staged onto a seat the server would refuse — losing the
@@ -677,45 +723,6 @@ export function OrderScreen({
    * on the client is a number two tablets can choose identically.
    */
   const [addingMore, setAddingMore] = useState(false)
-
-  const billQueryKey = ['bills', sessionId] as const
-
-  /**
-   * The bill this session has, from the SERVER (code review 2026-10-13).
-   *
-   * This was two `useState` flags set by the generate mutation. Both died on a
-   * page refresh and neither existed on a second tablet, so the screen
-   * re-offered "Add More Items" on an order that was already billed — and the
-   * round that followed could never be put on any bill, because a session gets
-   * one. The server refuses such a round now, but a button that only fails
-   * when pressed is not an answer; the screen has to know before it draws.
-   *
-   * Seeded from the server render so there is no flash of `submitted` on an
-   * already-billed order, and refetched on window focus — the tablet a waiter
-   * returns to is the one most likely to be stale.
-   */
-  const { data: billState, error: billStateError } = useQuery({
-    queryKey: billQueryKey,
-    queryFn: () =>
-      seatRequest<{ bills: BillDetail[]; hasUnbilled: boolean }>(
-        `/api/sessions/${sessionId}/bills`,
-      ),
-    initialData: { bills: initialBills, hasUnbilled: initialHasUnbilled },
-    refetchOnWindowFocus: true,
-  })
-
-  const sessionBills = billState.bills
-  /** Seat ids that already have a bill of their own — for the seat chips. */
-  const billedSeatIds = new Set(
-    sessionBills.map((b) => b.seatSlotId).filter((id): id is string => id !== null),
-  )
-  /** A consolidated bill sweeps everything, so it closes every seat at once. */
-  const hasConsolidatedBill = sessionBills.some((b) => b.seatSlotId === null)
-
-  /** Can anything still be added to this seat? */
-  function seatIsBilled(seatId: string): boolean {
-    return hasConsolidatedBill || billedSeatIds.has(seatId)
-  }
 
   const { data: submittedRounds, error: ordersError } = useQuery({
     queryKey: ['orders', sessionId],
@@ -1289,7 +1296,33 @@ export function OrderScreen({
 
   // ── Derived for the new layout ────────────────────────────────────────────
   // Counted by QUANTITY — "Devilled Cashew × 2" is two dishes, not one line.
+  /**
+   * Dishes per seat, SENT AND UNSENT (fixed 2026-10-16).
+   *
+   * It counted staged lines only, so a seat whose three dishes were already
+   * in the kitchen read "empty" — the exact opposite of what the chip is for.
+   * The chip answers "who have I not served yet", and a guest whose food has
+   * been sent has very much been served.
+   *
+   * Sent items are matched by seat LABEL, which is what `SubmittedItemRow`
+   * carries; staged lines carry the seat id.
+   */
+  const sentCountBySeatLabel = new Map<string, number>()
+  for (const round of submittedRounds) {
+    for (const item of round.items) {
+      if (!item.seatLabel) continue
+      sentCountBySeatLabel.set(
+        item.seatLabel,
+        (sentCountBySeatLabel.get(item.seatLabel) ?? 0) + item.quantity,
+      )
+    }
+  }
+
   const stagedCountBySeat = new Map<string, number>()
+  for (const seat of seats) {
+    const sent = sentCountBySeatLabel.get(seat.seatLabel) ?? 0
+    if (sent > 0) stagedCountBySeat.set(seat.id, sent)
+  }
   const stagedCountByItem = new Map<string, number>()
   for (const line of lines) {
     stagedCountBySeat.set(
@@ -1309,7 +1342,31 @@ export function OrderScreen({
     }
   }
   const stagedItemCount = lines.reduce((total, line) => total + line.quantity, 0)
-  const subtotalPaisa = lines.reduce((total, line) => total + line.pricePaisa * line.quantity, 0)
+  /**
+   * The staged round — what has NOT been sent.
+   *
+   * This used to be the whole of the panel's "subtotal", which meant a waiter
+   * reading the total to a guest after two rounds was reading the third
+   * round's price. It is now one of two halves; see `sentPaisa`.
+   */
+  const unsentPaisa = lines.reduce((total, line) => total + line.pricePaisa * line.quantity, 0)
+
+  /**
+   * What is already in the kitchen, priced from the committed events.
+   *
+   * `unitPricePaisa` is the price AS QUOTED when the round was sent, which is
+   * the same figure the bill will use — a mid-service re-price must not move
+   * either of them.
+   */
+  const sentPaisa = submittedRounds.reduce(
+    (roundTotal, round) =>
+      roundTotal +
+      round.items.reduce(
+        (itemTotal, item) => itemTotal + (item.unitPricePaisa ?? 0) * item.quantity,
+        0,
+      ),
+    0,
+  )
 
   // "Kitchen", "Kitchen & Bar", "Kitchen, Pizza & Bar" — in FR9's order, so the
   // phrase is stable while items are added rather than reshuffling.
@@ -1837,9 +1894,11 @@ export function OrderScreen({
           ) : null}
 
           <OrderSummary
-            lineCount={lines.length}
-            subtotalPaisa={subtotalPaisa}
-            taxRatePercent={taxRatePercent}
+            sentPaisa={sentPaisa}
+            unsentPaisa={unsentPaisa}
+            serviceChargeBp={serviceChargeBp}
+            taxBp={taxBp}
+            hasTableService={hasTableService}
           />
         </aside>
       </div>
