@@ -40,8 +40,13 @@ const mine = {
   // leaks every session of the run. That is exactly how an earlier run left 9
   // bills and 18 open sessions behind.
   //
-  // `rounds` was already declared here in Story 6.2 and never read by
-  // `cleanup()` — a registry entry that tracked nothing. It is used now.
+  // `rounds` and `events` are written but NOT read: `cleanup()` deletes
+  // `print_jobs`, `order_rounds` and `order_events` by `session_id`, which is
+  // strictly broader and catches the rows an accepted round writes that no
+  // registry ever saw. They are kept because a future case may need to delete
+  // one without dropping its whole session. Story 6.4's first version claimed
+  // here that `rounds` "is used now"; it was not, and saying so in a comment
+  // about registries that track nothing was the defect it described.
   rounds: [] as string[],
   comps: [] as string[],
   events: [] as string[],
@@ -579,11 +584,16 @@ async function run() {
 
     const tid = await tenantId()
     const waiter = await staffId('waiter')
+    // `consolidated`, not `seat`: migration 0021 now enforces
+    // `(type = 'seat') = (seat_slot_id IS NOT NULL)`, and this row has no seat.
+    // The old version wrote exactly the counterexample that constraint exists
+    // to forbid, and three predicates would have read it as the session's
+    // consolidated bill.
     const [rival] = await sql(
       `INSERT INTO bills (tenant_id, session_id, staff_id, type, subtotal_paisa,
                           service_charge_paisa, tax_paisa, total_paisa,
                           service_charge_bp, tax_bp)
-       VALUES ($1, $2, $3, 'seat', 0, 0, 0, 0, 0, 0) RETURNING id`,
+       VALUES ($1, $2, $3, 'consolidated', 0, 0, 0, 0, 0, 0) RETURNING id`,
       [tid, sessionId, waiter],
     )
     mine.bills.push(rival.id)
@@ -807,6 +817,17 @@ async function run() {
     check('S1 service charge on the SEAT subtotal',
       d?.serviceChargePaisa === Math.round((200_000 * rateBp) / 10_000),
       String(d?.serviceChargePaisa))
+    // The assertion above divides exactly at any plausible rate, so round,
+    // floor and ceil all agree and it cannot catch a rounding defect. Seat 3
+    // holds 75,000 at 1000 bp = 7,500 exactly... so use seat 2's 250,000 and a
+    // rate that does not divide: assert against the whole-bill rounding of an
+    // inexact figure.
+    const seat2 = track(await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[1]}/bill`, { method: 'POST', body: '{}' }))
+    const exact = (250_000 * rateBp) / 10_000
+    check('S1b an inexact service charge rounds, and rounds the right way',
+      seat2.body?.data?.serviceChargePaisa === Math.round(exact),
+      `${seat2.body?.data?.serviceChargePaisa} vs round(${exact})`)
   }
 
   // ── S2. THE REGRESSION. The rest of the table carries on (AC-2) ──────────
@@ -957,6 +978,12 @@ async function run() {
 
   // ── S8. Concurrent bills on DIFFERENT seats must BOTH succeed ────────────
   // The session lock serialises them; it must not turn AC-2 into a failure.
+  //
+  // HONEST LABEL: no change to today's production code turns this red, so by
+  // Trap 5's own test it is not a regression test. It is a SENTINEL against a
+  // future table-level or tenant-level lock, which is a real temptation once
+  // Story 6.5 starts asking "is this whole session settled?". Kept
+  // deliberately, named for what it is.
   {
     const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 2 })
     await addItem(sessionId, seatIds[0]!, 1, 100_000)
@@ -1104,6 +1131,221 @@ async function run() {
     check('S15 a closed session is 409 SESSION_ALREADY_CLOSED',
       closed.status === 409 && closed.body?.error?.code === 'SESSION_ALREADY_CLOSED',
       `${closed.status} ${closed.body?.error?.code}`)
+  }
+
+  // ══ Code review 2026-10-15 — the gaps the three layers found ════════════
+
+  // ── C1. idx_bills_seat_slot, tested DIRECTLY (P3) ────────────────────────
+  // S7 asserts one 201 and one 409 on simultaneous taps, and passes with the
+  // whole `bills` INSERT try/catch DELETED: `lockOpenSession` serialises the
+  // two requests so the loser returns from `findSeatBill` and never reaches
+  // the INSERT. Story 6.2 hit the same masking and solved it with a direct
+  // insert; 6.4 claimed S7 covered it and added no equivalent.
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 1 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    const first = track(await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' }))
+    check('C1 setup billed', first.status === 201, String(first.status))
+
+    const tid = await tenantId()
+    const waiter = await staffId('waiter')
+    let code: string | null = null
+    let constraint: string | null = null
+    try {
+      await sql(
+        `INSERT INTO bills (tenant_id, session_id, staff_id, seat_slot_id, type,
+                            subtotal_paisa, service_charge_paisa, tax_paisa,
+                            total_paisa, service_charge_bp, tax_bp)
+         VALUES ($1, $2, $3, $4, 'seat', 0, 0, 0, 0, 0, 0)`,
+        [tid, sessionId, waiter, seatIds[0]],
+      )
+    } catch (error: any) {
+      code = error?.code ?? null
+      constraint = error?.constraint ?? null
+    }
+    check('C1 the database refuses a SECOND bill for the same seat', code === '23505',
+      String(code))
+    check('C1 and by the index name the service catches',
+      constraint === 'idx_bills_seat_slot', String(constraint))
+  }
+
+  // ── C2. Matrix row 7: everything billed by SEAT, then consolidated (P12) ─
+  // S6 reaches 409 BILL_ALREADY_OPEN because it takes a consolidated bill
+  // first. The path the matrix names was never exercised.
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 2 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    await addItem(sessionId, seatIds[1]!, 1, 100_000)
+    for (const seatId of seatIds) {
+      track(await api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatId}/bill`,
+        { method: 'POST', body: '{}' }))
+    }
+    const nothing = await api(waiterCookie, `/api/sessions/${sessionId}/bills`, {
+      method: 'POST', body: JSON.stringify({ type: 'consolidated' }),
+    })
+    check('C2 all seats billed, then consolidated -> 422 NOTHING_TO_BILL',
+      nothing.status === 422 && nothing.body?.error?.code === 'NOTHING_TO_BILL',
+      `${nothing.status} ${nothing.body?.error?.code}`)
+    check('C2 and the message does not claim nothing was ordered',
+      !/nothing on it yet|Nothing has been ordered/i.test(nothing.body?.error?.message ?? ''),
+      String(nothing.body?.error?.message))
+  }
+
+  // ── C3. Matrix row 16: a comp on a seat's item (P13) ────────────────────
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 2 })
+    const seat1Event = await addItem(sessionId, seatIds[0]!, 1, 200_000)
+    await addItem(sessionId, seatIds[1]!, 1, 200_000)
+    const waiter = await staffId('waiter')
+    const owner = await staffId('owner')
+    const [comp] = await sql(
+      `INSERT INTO comp_records (session_id, order_event_id, staff_id, authorized_by_staff_id, amount_paisa, reason)
+       VALUES ($1, $2, $3, $4, 50000, 'Seat 1 only') RETURNING id`,
+      [sessionId, seat1Event, waiter, owner],
+    )
+    mine.comps.push(comp.id)
+
+    const billed2 = track(await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[1]}/bill`, { method: 'POST', body: '{}' }))
+    const billed1 = track(await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' }))
+
+    check('C3 the OTHER seat does not pick up seat 1\'s comp',
+      billed2.body?.data?.comps?.length === 0 &&
+        billed2.body?.data?.subtotalPaisa === 200_000,
+      `${billed2.body?.data?.comps?.length} comps, subtotal ${billed2.body?.data?.subtotalPaisa}`)
+    check('C3 the comped seat shows it as a negative line with its reason',
+      billed1.body?.data?.comps?.[0]?.amountPaisa === -50_000 &&
+        billed1.body?.data?.comps?.[0]?.reason === 'Seat 1 only' &&
+        billed1.body?.data?.subtotalPaisa === 150_000,
+      JSON.stringify(billed1.body?.data?.comps))
+  }
+
+  // ── C4. AC-11's READ path on a seat bill (P14) ──────────────────────────
+  // Every GET /api/bills/:billId in the suite predates 6.4 and uses a
+  // consolidated bill. S1 asserts seatLabel on the POST response, which is a
+  // different code path entirely.
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 1 })
+    await sql(`UPDATE seat_slots SET seat_note = 'red shirt' WHERE id = $1`, [seatIds[0]])
+    await addItem(sessionId, seatIds[0]!, 2, 150_000)
+    const created = track(await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' }))
+    const billId = created.body?.data?.billId
+
+    const [itemRow] = await sql(`SELECT id, name FROM menu_items LIMIT 1`)
+    await sql(`UPDATE menu_items SET name = 'RENAMED BY C4' WHERE id = $1`, [itemRow.id])
+    const read = await api(waiterCookie, `/api/bills/${billId}`)
+    await sql(`UPDATE menu_items SET name = $2 WHERE id = $1`, [itemRow.id, itemRow.name])
+
+    const d = read.body?.data
+    check('C4 GET on a SEAT bill returns it with its seat identity',
+      read.status === 200 && d?.type === 'seat' && d?.seatSlotId === seatIds[0] &&
+        d?.seatLabel === 'S1',
+      `${read.status} ${d?.type} ${d?.seatLabel}`)
+    check('C4 its lines are the SNAPSHOT, not a live menu_items join',
+      d?.lines?.[0]?.name !== 'RENAMED BY C4' && d?.lines?.[0]?.quantity === 2,
+      String(d?.lines?.[0]?.name))
+    check('C4 and the seat NOTE is nowhere in the read response',
+      !JSON.stringify(read.body).includes('red shirt'))
+  }
+
+  // ── C5. A consolidated bill reports NO seat label (P4) ──────────────────
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 2 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    await addItem(sessionId, seatIds[1]!, 1, 100_000)
+    const created = track(await api(waiterCookie, `/api/sessions/${sessionId}/bills`, {
+      method: 'POST', body: JSON.stringify({ type: 'consolidated' }),
+    }))
+    const read = await api(waiterCookie, `/api/bills/${created.body?.data?.billId}`)
+    check('C5 POST of a consolidated bill reports seatLabel null',
+      created.body?.data?.seatLabel === null && created.body?.data?.seatSlotId === null,
+      JSON.stringify(created.body?.data?.seatLabel))
+    check('C5 and POST agrees with GET',
+      created.body?.data?.seatLabel === read.body?.data?.seatLabel &&
+        created.body?.data?.type === read.body?.data?.type)
+  }
+
+  // ── C6. Decision 2: one party, one service rate ─────────────────────────
+  {
+    const { sessionId, seatIds, tableId } = await makeSession('table', { withTable: true, seats: 2 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    await addItem(sessionId, seatIds[1]!, 1, 100_000)
+    const first = track(await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' }))
+
+    // The party leaves the table. Before the fix the next bill read the live
+    // attachment and charged 0%.
+    await sql(`UPDATE order_session_tables SET released_at = now()
+                WHERE session_id = $1 AND table_id = $2`, [sessionId, tableId])
+    const second = track(await api(waiterCookie,
+      `/api/sessions/${sessionId}/seats/${seatIds[1]}/bill`, { method: 'POST', body: '{}' }))
+
+    check('C6 the first bill carried the table-service rate',
+      first.body?.data?.serviceChargeBp === rateBp, String(first.body?.data?.serviceChargeBp))
+    check('C6 the second keeps it after the table is released',
+      second.body?.data?.serviceChargeBp === rateBp &&
+        second.body?.data?.serviceChargePaisa === first.body?.data?.serviceChargePaisa,
+      `${second.body?.data?.serviceChargeBp} bp, ${second.body?.data?.serviceChargePaisa} paisa`)
+  }
+
+  // ── C7. Decision 1: a seat bill does NOT settle the session ─────────────
+  // The screen derives `settling` from a consolidated bill existing. The
+  // server-side shape of that is: a seat bill leaves the session orderable.
+  {
+    const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 2 })
+    await addItem(sessionId, seatIds[0]!, 1, 100_000)
+    track(await api(waiterCookie, `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`,
+      { method: 'POST', body: '{}' }))
+
+    // Seats 2 ordered NOTHING, so every event is billed - the exact shape that
+    // froze the screen before Decision 1.
+    const state = await api(waiterCookie, `/api/sessions/${sessionId}/bills`)
+    const stillOrderable = await sendRound(waiterCookie, sessionId, [{ seatId: seatIds[1]! }])
+
+    check('C7 one seat billed, nothing else ordered: no CONSOLIDATED bill exists',
+      state.body?.data?.bills?.every((b: any) => b.seatSlotId !== null) === true &&
+        state.body?.data?.bills?.length === 1,
+      JSON.stringify(state.body?.data?.bills?.map((b: any) => b.type)))
+    check('C7 and the other seat can still be served',
+      stillOrderable.status === 201,
+      `${stillOrderable.status} ${stillOrderable.body?.error?.code}`)
+  }
+
+  // ── C8. The seat route's re-auth seam (P15) ─────────────────────────────
+  {
+    const tid = await tenantId()
+    await sql(`UPDATE tenant_config SET financial_action_reauth = true WHERE tenant_id = $1`, [tid])
+    try {
+      const { sessionId, seatIds } = await makeSession('table', { withTable: true, seats: 1 })
+      await addItem(sessionId, seatIds[0]!, 1, 100_000)
+      const path = `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`
+
+      const noPin = await api(waiterCookie, path, { method: 'POST', body: '{}' })
+      const badShape = await api(waiterCookie, path,
+        { method: 'POST', body: JSON.stringify({ pin: '123' }) })
+      const wrong = await api(waiterCookie, path,
+        { method: 'POST', body: JSON.stringify({ pin: '9999' }) })
+      const good = track(await api(waiterCookie, path,
+        { method: 'POST', body: JSON.stringify({ pin: '1234' }) }))
+
+      check('C8 seat route, no PIN -> 401 REAUTH_REQUIRED',
+        noPin.status === 401 && noPin.body?.error?.code === 'REAUTH_REQUIRED',
+        `${noPin.status} ${noPin.body?.error?.code}`)
+      check('C8 a malformed PIN blames the PIN',
+        badShape.status === 400 && /PIN/.test(badShape.body?.error?.message ?? ''),
+        `${badShape.status} "${badShape.body?.error?.message}"`)
+      check('C8 a wrong PIN -> 401 REAUTH_FAILED',
+        wrong.status === 401 && wrong.body?.error?.code === 'REAUTH_FAILED',
+        `${wrong.status} ${wrong.body?.error?.code}`)
+      check('C8 the right PIN bills the seat',
+        good.status === 201, `${good.status} ${good.body?.error?.code}`)
+    } finally {
+      await sql(`UPDATE tenant_config SET financial_action_reauth = false WHERE tenant_id = $1`,
+        [tid])
+    }
   }
 
   // ── Cleanup ───────────────────────────────────────────────────────────────

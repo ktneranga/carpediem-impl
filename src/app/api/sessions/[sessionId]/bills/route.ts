@@ -177,7 +177,15 @@ export async function POST(
     return NextResponse.json({ success: true, data: bill }, { status: 201 })
   } catch (error) {
     if (error instanceof NothingToBillError) {
-      return fail('NOTHING_TO_BILL', 'This order has nothing on it yet', 422)
+      // After Story 6.4 the commonest way to reach this is a table whose
+      // seats have ALL been billed individually — not an empty order. Saying
+      // "nothing has been ordered" there is flatly untrue, and naming the
+      // wrong cause is what the surrounding comments warn against.
+      return fail(
+        'NOTHING_TO_BILL',
+        'There is nothing left to bill on this order',
+        422,
+      )
     }
     if (error instanceof BillAlreadyOpenError) {
       // The service's id is empty only on the unique-index path, where its
@@ -277,10 +285,17 @@ export async function GET(
 
   try {
     const sessionId = parsedSessionId.data
-    const [billList, unbilled] = await Promise.all([
-      loadSessionBills(db, sessionId),
-      hasUnbilledItems(db, sessionId),
-    ])
+
+    // ── ONE transaction, on purpose ────────────────────────────────────────
+    // These were two independent statements under READ COMMITTED, so a round
+    // committing between them produced `{bills:[b1], hasUnbilled:false}` for a
+    // session that HAS unbilled items — which the screen reads as "settling"
+    // and freezes over a table that just ordered. The comment below always
+    // claimed the pair had to agree; now they are read from one snapshot.
+    const { bills: billList, unbilled } = await db.transaction(async (tx) => ({
+      bills: await loadSessionBills(tx, sessionId),
+      unbilled: await hasUnbilledItems(tx, sessionId),
+    }))
     // `hasUnbilled` travels with the bills because the screen needs BOTH to
     // decide `settling`: a table with one seat billed and three still ordering
     // has bills and is not settling. Sending only the list would make the

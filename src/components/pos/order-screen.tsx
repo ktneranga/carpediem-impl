@@ -451,9 +451,13 @@ export function OrderScreen({
   // seat instead of leaving the row with nothing active. Story 4.2's review
   // replaced the same shape on the category chips for the same reason: an
   // effect that writes state after render is a frame of wrong UI.
+  // The fallback skips BILLED seats. It used to take `seats[0]`, so reloading
+  // a table whose Seat 1 had paid announced "SEAT 1 SELECTED - TAPS LAND HERE"
+  // and every tap staged onto a seat the server would refuse — losing the
+  // whole round, including the other seats' lines (code review 2026-10-13).
   const activeSeatId = seats.some((seat) => seat.id === selectedSeatId)
     ? selectedSeatId
-    : (seats[0]?.id ?? null)
+    : (seats.find((seat) => !seatIsBilled(seat.id))?.id ?? seats[0]?.id ?? null)
   const activeSeat = seats.find((seat) => seat.id === activeSeatId) ?? null
 
   // Selecting a different chip closes the panel by construction — no effect,
@@ -635,7 +639,7 @@ export function OrderScreen({
    * already-billed order, and refetched on window focus — the tablet a waiter
    * returns to is the one most likely to be stale.
    */
-  const { data: billState } = useQuery({
+  const { data: billState, error: billStateError } = useQuery({
     queryKey: billQueryKey,
     queryFn: () =>
       seatRequest<{ bills: BillDetail[]; hasUnbilled: boolean }>(
@@ -652,6 +656,11 @@ export function OrderScreen({
   )
   /** A consolidated bill sweeps everything, so it closes every seat at once. */
   const hasConsolidatedBill = sessionBills.some((b) => b.seatSlotId === null)
+
+  /** Can anything still be added to this seat? */
+  function seatIsBilled(seatId: string): boolean {
+    return hasConsolidatedBill || billedSeatIds.has(seatId)
+  }
 
   const { data: submittedRounds, error: ordersError } = useQuery({
     queryKey: ['orders', sessionId],
@@ -675,6 +684,11 @@ export function OrderScreen({
   useSocketEvent<OrderConfirmedPayload>('order:confirmed', (payload) => {
     if (payload.sessionId === sessionId) {
       void queryClient.invalidateQueries({ queryKey: ['orders', sessionId] })
+      // A round landing changes whether anything is left to bill, and billing
+      // emits no event of its own. Without this the bill state only refreshed
+      // on window focus — and a POS tablet on a stand is never blurred, so a
+      // seat billed on the other tablet never reached this one.
+      void queryClient.invalidateQueries({ queryKey: billQueryKey })
     }
   })
 
@@ -710,8 +724,15 @@ export function OrderScreen({
   )
   const stagedProblems = new Map<string, StagedLineProblem>()
   for (const line of lines) {
-    if (!seats.some((seat) => seat.id === line.seatSlotId)) {
+    const lineSeat = seats.find((seat) => seat.id === line.seatSlotId)
+    if (!lineSeat) {
       stagedProblems.set(line.lineId, { kind: 'seat-gone' })
+      continue
+    }
+    // Before the menu checks: a billed seat cannot take the line whatever the
+    // dish's state, and the server refuses the entire round over it.
+    if (seatIsBilled(lineSeat.id)) {
+      stagedProblems.set(line.lineId, { kind: 'seat-billed', seatLabel: lineSeat.seatLabel })
       continue
     }
     // `menu === undefined` means the menu has not loaded yet, which is not the
@@ -1025,6 +1046,11 @@ export function OrderScreen({
           setSeatNotice('This seat already has a bill.')
           return
         }
+        // Every other refusal still means this screen's picture of the bills
+        // may be wrong — 422 SEAT_HAS_NO_ITEMS usually means another tablet
+        // swept this seat into a consolidated bill. Refetch, or the chip keeps
+        // offering a button that can only fail the same way.
+        void queryClient.invalidateQueries({ queryKey: billQueryKey })
         setSeatNotice(error.message)
         return
       }
@@ -1044,23 +1070,25 @@ export function OrderScreen({
   // `empty`. `addingMore` is cleared again by the next stage or by Clear, so
   // the strip can return to `submitted`; it used to be a one-way latch.
   //
-  // ── `settling` means NOTHING IS LEFT TO BILL, not "a bill exists" ─────────
-  // Story 6.4 makes those two different statements. A table with one seat paid
-  // and three still eating HAS a bill and is emphatically not settling, and
-  // the first version of this check — `bill !== null` — would have frozen the
-  // screen for the other three guests.
+  // ── `settling` means A CONSOLIDATED BILL EXISTS (Teran, 2026-10-15) ───────
+  // One bill for the whole table means the table is done. One bill for one
+  // seat means that SEAT is done, and the chips say so.
   //
-  // `hasUnbilled` comes from the server (`hasUnbilledItems`), the same
-  // predicate Story 6.5 needs for auto-close. It is not re-derived here.
+  // This replaced `!hasUnbilled && bills.length > 0`, which looked right and
+  // froze the screen in the ordinary case: seat 1 orders a drink and pays
+  // while seats 2-4 are still deciding. Every event was then billed, so
+  // `hasUnbilled` was false and the strip settled — no Send, no Clear, menu
+  // still on screen, and `hasUnbilled` could only become true again by SENDING,
+  // which the strip no longer offered. The only way out was closing the table.
+  // Both review layers found it independently.
   //
-  // Per-seat progress is shown by the seat chips, not by a new strip state
-  // (Teran's open question, option 1). The strip stays on `submitted` while
-  // anything remains billable, and its "Generate Bill" means "bill whatever is
-  // left" — which is exactly what the route now does.
+  // Accepted consequence: when every seat has been billed separately the strip
+  // stays on `submitted`. The waiter closes the table, which is what they would
+  // do anyway, and a late extra drink is still possible.
   //
-  // Anything still staged when a bill lands is discarded by the effect below
-  // rather than left on screen: `settling` renders no Send AND no Clear, so
-  // stranded lines had no way out and came back after a reload.
+  // The staged-round clear hangs off the SAME predicate, so dishes tapped in
+  // but not yet sent can no longer be destroyed while the table is still
+  // ordering — only a whole-table bill clears them.
   // Anything staged when the bill appeared can never be sent — the server
   // refuses it — and `settling` draws no Clear, so the lines had no way out
   // and came back from localStorage after a reload, ready to be sent against
@@ -1073,11 +1101,11 @@ export function OrderScreen({
   // screen LOADING against a session that was billed elsewhere — where there
   // is no event to hang it on.
   useEffect(() => {
-    if (!billState.hasUnbilled && sessionBills.length > 0) clearStagedRound(sessionId)
-  }, [billState.hasUnbilled, sessionBills.length, sessionId])
+    if (hasConsolidatedBill) clearStagedRound(sessionId)
+  }, [hasConsolidatedBill, sessionId])
 
   const stripState: OrderActionStripState =
-    !billState.hasUnbilled && sessionBills.length > 0
+    hasConsolidatedBill
       ? 'settling'
       : lines.length > 0
         ? 'items-added'
@@ -1468,7 +1496,7 @@ export function OrderScreen({
 
             {/* A failing background refetch is surfaced, derived from the query
                 rather than pushed into state by an effect. */}
-            {seatNotice || seatsError || ordersError ? (
+            {seatNotice || seatsError || ordersError || billStateError ? (
               <p
                 role="status"
                 className="rounded-control bg-occupied-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-occupied-ink"
@@ -1476,7 +1504,13 @@ export function OrderScreen({
                 {seatNotice ??
                   (seatsError
                     ? 'Could not refresh the seats. Reopen the order to retry.'
-                    : 'Could not refresh what has been sent. Reopen the order to retry.')}
+                    : ordersError
+                      ? 'Could not refresh what has been sent. Reopen the order to retry.'
+                      : // The bills query failing used to be swallowed entirely:
+                        // only `data` was destructured, so the screen ran on the
+                        // server-rendered snapshot indefinitely and could keep
+                        // showing a seat as unbilled after it had been paid.
+                        'Could not refresh the bills. Reopen the order to retry.')}
               </p>
             ) : null}
           </div>

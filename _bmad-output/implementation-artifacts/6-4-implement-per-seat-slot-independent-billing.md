@@ -1,6 +1,6 @@
 # Story 6.4: Implement Per-Seat-Slot Independent Billing
 
-Status: review
+Status: done
 
 - **Epic:** 6 — Bill Settlement & Payment Recording (second story of the demo path)
 - **Story ID:** 6.4
@@ -226,6 +226,149 @@ Every monetary field is an integer in paisa. No strings, no floats.
         bill are not optional.** They are AC-9, AC-2 and AC-5, and the first two are the exact shapes
         that 6.2's review found broken.
   - [x] Every new case must be able to FAIL. 6.2 shipped four that could not — see Trap 5.
+
+---
+
+### Review Findings
+
+Code review 2026-10-13. Three layers: Blind Hunter (diff only), Edge Case Hunter (diff + project +
+read-only DB), Acceptance Auditor (diff + spec + planning docs). **39 raw findings, 28 after merge,
+3 dismissed.** Two of the three layers died mid-run on a session rate limit and were relaunched.
+
+**Decisions — RESOLVED by Teran, 2026-10-15. Both became patches.**
+
+- [x] [Review][Decision] **The `settling` predicate froze the screen and destroyed staged work**
+      → **(a) settle ONLY when a consolidated bill exists.** One bill for the whole table means the
+      table is done; one bill for one person means that person is done. Billing a seat never locks
+      the screen — the seat chip carries it.
+      This is what option 1 of the story's open question actually meant, and it fixes both symptoms
+      at once: the staged-round clear hangs off the same predicate, so dishes tapped in but not yet
+      sent can no longer be deleted while the rest of the table is still ordering.
+      Accepted consequence: when every seat has been billed individually the strip stays on
+      `submitted` rather than `settling`. The waiter closes the table, which is what they would do
+      anyway, and a late extra drink is still possible.
+
+- [x] [Review][Decision] **Service charge could differ between guests of one party**
+      → **(a) pin it.** Once the FIRST bill on a session has been generated, every later bill on
+      that session uses that bill's `service_charge_bp`. One party, one rate. Without this, a group
+      that moves from a table back to the bar has one guest charged 10% and the next charged 0%, on
+      append-only bills that cannot be corrected.
+      Read the rate from the earliest bill on the session when one exists; fall back to the live
+      `hasTableService` read only for the first bill.
+
+**Patches — unambiguous.**
+
+- [x] [Review][Patch] **(from Decision 1)** `settling` becomes "a consolidated bill exists", not
+      "nothing left to bill". The staged-clear effect follows the same predicate
+      [order-screen.tsx:1074, :1079]
+- [x] [Review][Patch] **(from Decision 2)** Pin the service rate to the session's FIRST bill; only
+      the first bill reads `hasTableService` live [bill.service.ts]
+
+- [x] [Review][Patch] **S7 cannot fail on the thing it claims to prove, and the Dev Agent Record says
+      it does.** `generateSeatBill` locks the session, so the loser returns 409 from `findSeatBill`
+      and never reaches the `bills` INSERT — delete the whole `idx_bills_seat_slot` try/catch and S7
+      still passes twice. 6.2 hit exactly this and solved it with a direct-SQL case; 6.4 added no
+      equivalent (`grep idx_bills_seat_slot verify-bills.ts` → no hits). Add the 6-line case in 6.2's
+      pattern AND correct the record's claim [verify-bills.ts, story record]
+- [x] [Review][Patch] A CONSOLIDATED bill's POST response carries a seat label —
+      `seatLabel: events[0]?.seatLabel ?? null` is not gated on `seatId`, so POST returns
+      `{ seatSlotId: null, seatLabel: 'S1' }` while GET of the same bill returns null. The POST value
+      also comes from a LIVE `seat_slots` join, the one AC-11 forbids re-adding [bill.service.ts:578]
+- [x] [Review][Patch] Staging onto a BILLED seat is unguarded, and the default active seat can be the
+      billed one. On reload `activeSeatId` falls back to `seats[0]`; the header says "SEAT 1
+      SELECTED" and every tap stages onto a seat whose round the server will refuse whole.
+      `stagedProblems` has no `seat-billed` kind [order-screen.tsx:454, :711]
+- [x] [Review][Patch] The billed chip hides its staged count — the one affordance that would show
+      WHICH lines are stuck on the billed seat is the one overwritten by "billed"
+      [seat-selector.tsx:133]
+- [x] [Review][Patch] Bill state never refreshes except on window focus. A POS tablet on a stand is
+      never blurred, so a seat billed on tablet B never reaches tablet A. Billing emits no socket
+      event and `order:confirmed` invalidates only `['orders']` [order-screen.tsx:636]
+- [x] [Review][Patch] `GET /bills` reads the list and `hasUnbilled` as two unsynchronised queries. A
+      round committing between them yields `{bills:[b1], hasUnbilled:false}` → a frozen screen over a
+      table that just ordered. One transaction [bills/route.ts:280, page.tsx:162]
+- [x] [Review][Patch] Any 23505 on the CONSOLIDATED path becomes `SeatBillAlreadyExistsError`:
+      `isUniqueViolation` returns true when `constraint === undefined`, and `/bills/route.ts` has no
+      branch for that error, so it falls through to a 500 naming a seat collision that cannot happen.
+      Gate the catch on `seatId !== null` [bill.service.ts:518]
+- [x] [Review][Patch] Two exported `SeatNotOnSessionError` classes — `bill.service.ts:41` and
+      `order.service.ts:53`. All error handling here is `instanceof`; same name, different identity
+- [x] [Review][Patch] `NOTHING_TO_BILL` still says "This order has nothing on it yet" / "Nothing has
+      been ordered yet". After 6.4 the commonest way to reach it is a table whose seats were ALL
+      billed individually — Decision 1 said so explicitly and the message was never updated
+      [bills/route.ts, order-screen.tsx]
+- [x] [Review][Patch] Matrix row 7 is not implemented and S6 is mislabelled: it takes a consolidated
+      bill first, so `BillAlreadyOpenError` answers and `NothingToBillError` is never reached. The
+      path the matrix names (all seats billed, then a consolidated request → 422) is untested
+      [verify-bills.ts S6]
+- [x] [Review][Patch] Matrix row 16 is not implemented — no S case touches `comp_records`. The
+      behaviour IS correct (comps key off `eventIds`, so the seat filter scopes them), but the
+      comment above it says it "is verified with a hand-inserted row", which is now false for the
+      seat path [verify-bills.ts]
+- [x] [Review][Patch] AC-11's read path is never exercised for a seat bill. Every
+      `GET /api/bills/:billId` in the suite predates this story and uses consolidated bills; S1
+      asserts `seatLabel` on the POST response, which is the opposite path. A regression re-adding a
+      `seat_slots` join to `getBill` would pass the whole suite [verify-bills.ts]
+- [x] [Review][Patch] R6 exercises the re-auth seam against `/bills` only. The seat route
+      reimplements the whole thing — `REAUTH_REQUIRED`, the `DUMMY_PIN_HASH` compare, the
+      PIN-owner stamp — and nothing tests it. The enumeration-oracle defect 6.2 shipped lived in
+      exactly this code [verify-bills.ts R6]
+- [x] [Review][Patch] `mine.rounds` and `mine.events` are pushed and never read; cleanup deletes by
+      `session_id`. The new comment says of `rounds`: "a registry entry that tracked nothing. **It is
+      used now.**" It still tracks nothing — a comment committing the defect it congratulates itself
+      for fixing [verify-bills.ts:31, :177, :197]
+- [x] [Review][Patch] Task 4 asked for `type = 'consolidated'`; the code filters
+      `seat_slot_id IS NULL` in three places. Equivalent only because `buildBill` writes both from
+      one variable — and the suite itself inserts a counterexample (`type: 'seat'` with a NULL seat)
+      at verify-bills.ts:583. Add a CHECK constraint tying them [bill.service.ts, bills/route.ts]
+- [x] [Review][Patch] `loadSessionBills` silently drops any bill `getBill` returns null for — no log.
+      The client then shows fewer bills than exist and `hasUnbilled`, computed separately, can
+      disagree with nothing to flag it [bill.service.ts:516]
+- [x] [Review][Patch] The bills query swallows its own errors (only `data` is destructured), so a 500
+      leaves the screen running on SSR-seeded state indefinitely — including a stale `settling`. And
+      the 422 `SEAT_HAS_NO_ITEMS` branch does not invalidate, so the chips keep offering a button
+      that can only 422 again [order-screen.tsx:636, :1026]
+- [x] [Review][Patch] Two verification cases cannot fail by Trap 5's own test: S1's rounding
+      assertion re-implements the production formula on a subtotal that divides exactly, and S8 (two
+      different seats concurrently) has no production change that reddens it today. Strengthen S1;
+      label S8 as the forward-looking sentinel it is [verify-bills.ts]
+
+**Deferred — real, but owned elsewhere or pre-existing.**
+
+- [x] [Review][Defer] Closing a part-billed session strands the unbilled remainder forever —
+      `closeSession` never consults bills, and afterwards `lockOpenSession` refuses every billing
+      route. Deferred: Story 6.5 owns settlement and close, and 6.2's review already deferred the
+      narrower version of this. Strengthened in `deferred-work.md`
+- [x] [Review][Defer] A fully settled per-seat table can only be closed as a "walkout" —
+      `isWalkout = itemCount > 0` counts billed events too, so every correctly settled table is
+      recorded as a walkout in the audit trail. Deferred, Story 6.5
+- [x] [Review][Defer] "Bill This Seat" is a dead end when `financial_action_reauth` is on — no PIN
+      UI exists. Deferred, Story 2.4; the consolidated button has the identical hole and it is
+      already recorded
+- [x] [Review][Defer] A comp recorded AFTER its seat's bill can never reach any bill, silently —
+      `collectBillable` gathers comps only for unbilled events. Deferred, Epic 7 owns comps
+- [x] [Review][Defer] `x-staff-id` is written as `bills.staff_id` with no existence, active or tenant
+      check when re-auth is off. Consistent with every route in the app; deferred as its own decision
+
+**Dismissed (3).**
+
+1. *"`collectBillable` leaves the comps query session-wide, so a seat bill can swallow another seat's
+   discount"* (Blind Hunter, HIGH — and the finding its central conclusion rested on). **False.**
+   Comps key off `eventIds`, which derives from the already seat- and unbilled-filtered event list.
+   Verified. The Acceptance Auditor independently reached the same verdict. Its sub-point — that no
+   case covers comps — survives as a patch above.
+2. *Seat bills plus remainder do not reconcile with a single consolidated bill.* Declared intended in
+   Trap 3: each guest's bill is internally correct and there is no whole being divided. Unchanged.
+3. *The recorded post-run DB snapshot no longer reproduces.* True when taken. The Auditor confirmed
+   the newer rows are manual UI testing after the commit, not script residue — a run creates ~28
+   sessions, so three survivors would be impossible if cleanup had aborted.
+
+**Verified TRUE by the Acceptance Auditor — not re-checked:** the narrowed guard still closes 6.2's
+hole (it walked every residual path); R1 and R4 were narrowed honestly, not defanged; "one builder,
+not two"; both deferred-work items implemented; cleanup cannot print a pass line if it throws;
+`disabled_triggers 0` and `config 1000/0/false` live; exactly 98 `check(` calls, none in a loop;
+S2, S5, S11, S12, S14 prove what the record says they prove; the schema, migration and journal match
+the spec exactly.
 
 ---
 
@@ -566,6 +709,54 @@ usually a seat bill, so a consolidated 409 handed the client a seat bill's id. N
 **Not done, and not in scope:** no payment is recorded, no seat or session is closed, and nothing
 auto-closes a table. Story 6.5 owns all of that. A bill is not a payment.
 
+### Review Patches Applied (2026-10-15/16)
+
+All 20 patches applied, including both resolved decisions. **119/119 verification checks pass**, up
+from 98. Database confirmed afterwards: `disabled_triggers 0`, no sessions, rounds or print jobs left
+behind, `tenant_config` back at `1000 / 0 / false`.
+
+**The two decisions**
+
+- **`settling` now means "a consolidated bill exists"** (Teran, 2026-10-15). The old predicate
+  `!hasUnbilled && bills.length > 0` froze the screen whenever one seat paid and the others had not
+  ordered yet: every event was billed, the strip settled, Send disappeared, and `hasUnbilled` could
+  only become true again by sending — which the strip no longer offered. Case **C7** reproduces that
+  exact shape and asserts the other seat can still be served. The staged-round clear hangs off the
+  same predicate, so dishes tapped in but unsent can no longer be destroyed mid-service.
+- **The service rate is pinned to the session's first bill.** `pinnedServiceBp` reads the earliest
+  bill's `service_charge_bp`; only the first bill consults the live table attachment. Case **C6**
+  bills a seat at 10%, releases the table, bills the next seat and requires the same rate.
+
+**The verification gaps, closed**
+
+- **C1 tests `idx_bills_seat_slot` directly.** S7 could not: `lockOpenSession` serialises the two
+  requests, so the loser returns from `findSeatBill` and never reaches the INSERT — S7 passes with
+  the whole try/catch deleted. C1 inserts a rival bill in SQL and asserts `23505` plus
+  `constraint === 'idx_bills_seat_slot'`, the shape Story 6.2 used for the same reason.
+- **C2** covers matrix row 7, which S6 never reached (it took a consolidated bill first, so
+  `BillAlreadyOpenError` answered). It also asserts the message no longer claims nothing was ordered.
+- **C3** covers matrix row 16 — a comp on one seat's item must not touch the other seat's bill.
+- **C4** is the first `GET /api/bills/:billId` on a SEAT bill in the suite; it renames the menu item
+  first, so a regression re-adding a `menu_items` join would fail it.
+- **C5** asserts a consolidated bill reports `seatLabel: null`, and that POST agrees with GET.
+- **C8** exercises the seat route's re-auth seam, which only `/bills` had covered.
+- **S1b** replaces an assertion that could not fail with one on an inexact figure.
+- **S8** is labelled honestly as a forward-looking sentinel rather than a regression test.
+
+**Corrections to this record's earlier claims**
+
+- The claim *"Case S7 is what proves it: two simultaneous taps give one 201 and one 409, not a 500"*
+  was **wrong**. S7 proves the OUTCOME is right; it does not exercise the `idx_bills_seat_slot` catch
+  at all. C1 does.
+- The registry comment asserting `mine.rounds` *"is used now"* was **false** — it is still written and
+  never read, because `cleanup()` deletes by `session_id`, which is strictly broader. The comment now
+  says that instead of the opposite.
+
+**Also fixed:** migration 0021 adds `CHECK ((type = 'seat') = (seat_slot_id IS NOT NULL))`, so the
+three places that ask "is this the consolidated bill?" via `seat_slot_id IS NULL` are provably
+equivalent to Task 4's `type = 'consolidated'`. The verification script was itself inserting the
+counterexample and now cannot.
+
 ### File List
 
 New:
@@ -628,3 +819,11 @@ Modified:
   The post-run database check was blocked at the time by Docker Desktop's engine stopping; it was run
   once Docker was back and is recorded in the Debug Log. Nothing leaked and no trigger was left
   disabled — `rounds_today 0`, `print_jobs_today 0`, `disabled_triggers 0`.
+- 2026-10-16: All 20 code-review patches applied; 119/119 verification checks pass (98 before).
+  Teran resolved both decisions: `settling` means a CONSOLIDATED bill exists, and the service rate is
+  pinned to the session's first bill. The screen-freeze bug both review layers found independently is
+  fixed and covered by case C7; the service-rate divergence by C6. Eight new case groups close the
+  verification gaps the Acceptance Auditor identified, the most important being C1 — a direct test of
+  `idx_bills_seat_slot`, which S7 could never reach because the session lock answers first. Two false
+  claims in this record are corrected above rather than quietly edited away. Migration 0021 adds a
+  CHECK tying `type` to `seat_slot_id`. Five findings remain deferred, four of them to Story 6.5.

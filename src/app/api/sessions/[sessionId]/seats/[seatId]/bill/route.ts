@@ -13,7 +13,7 @@ import {
   MissingTenantConfigError,
   SeatBillAlreadyExistsError,
   SeatHasNoItemsError,
-  SeatNotOnSessionError,
+  BillSeatNotOnSessionError,
   UnpricedItemError,
 } from '@/server/services/bill.service'
 import { SessionAlreadyClosedError } from '@/server/services/table-session.service'
@@ -147,7 +147,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, data: bill }, { status: 201 })
   } catch (error) {
-    if (error instanceof SeatNotOnSessionError) {
+    if (error instanceof BillSeatNotOnSessionError) {
       return fail('SEAT_NOT_ON_SESSION', 'That seat is not on this order', 404)
     }
     if (error instanceof SeatHasNoItemsError) {

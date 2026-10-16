@@ -229,3 +229,27 @@
   mid-service and releases it on the floor plan while four guests are still being served. The same
   predicate is what 6.4's `stripState` needs to decide `settling`, so it is defined once in
   `bill.service.ts` and exported; 6.5 must import it rather than write a second version.
+
+## Deferred from: code review of story-6.4 (2026-10-13)
+
+- **Closing a part-billed session strands the unbilled remainder permanently.** Sharper than the
+  version deferred from 6.2's review. Seat 1 billed and paid, seats 2-4 with live items, waiter closes
+  as a walkout: `closeSession` writes `closed_at` without consulting bills, and afterwards
+  `lockOpenSession` refuses every billing route, so seats 2-4 can never be billed by anything. Only
+  `reason = 'abandoned'` is guarded, and only against having items at all. Per-seat billing makes
+  "half this table is settled" routine and nothing at the close boundary asks about the other half.
+  Story 6.5 owns close; at minimum the confirmation should state how much is unbilled, because a
+  genuine walkout by the remaining guests IS a legitimate reason to close this way.
+- **A fully settled per-seat table is recorded as a walkout.** `isWalkout = itemCount > 0` counts
+  billed events too, so once 6.5 exists every correctly settled table still offers only "Close table -
+  walkout" and writes that reason into the `SESSION_CLOSED` audit row. 6.5 must make the control read
+  the bill state, not the item count.
+- **A comp recorded after its seat's bill reaches no bill, silently.** `collectBillable` gathers comps
+  only for UNBILLED events, so a manager comping a seat-1 item after seat 1 is billed produces no
+  error, no 409 and no discount anywhere. Epic 7 owns comps and must decide: refuse a comp on a billed
+  event, or make it an append-only adjustment against the bill (which is the Epic 7 shape anyway).
+- **`x-staff-id` is trusted as the biller of record when re-auth is off.** Every billing route
+  validates the header is a UUID and nothing more, then writes it as `bills.staff_id` - the person
+  attributed with a financial document. A deactivated or another tenant's staff id is accepted; an unknown
+  one produces an FK 500 rather than a 400. Consistent across every route in the app, so this is a
+  project-wide decision rather than a 6.4 defect, but billing is where it first costs something.

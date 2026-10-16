@@ -17,6 +17,12 @@ import { cn } from '@/lib/utils'
  */
 export type StagedLineProblem =
   | { kind: 'seat-gone' }
+  /**
+   * This line's seat has been billed, so the server will refuse the WHOLE
+   * round (Story 6.4, AC-3). Flagged per line because the refusal names one
+   * seat and the waiter has to find which dishes are on it.
+   */
+  | { kind: 'seat-billed'; seatLabel: string }
   | { kind: 'item-unavailable' }
   | { kind: 'item-gone' }
   /** The menu price moved after the dish was staged (Story 4.5, AC-9). */
@@ -199,6 +205,11 @@ export function StagedRoundList({
                       ? // AC-7: names the seat that vanished, from the label
                         // captured when the dish was staged.
                         `${line.seatLabel || 'This seat'} was removed. Move this to someone else, or take it off.`
+                      : problem.kind === 'seat-billed'
+                      ? // Story 6.4: the seat has paid. The server refuses the
+                        // whole round over one such line, so the waiter needs
+                        // to see exactly which dishes are stuck on it.
+                        `${problem.seatLabel} has already been billed. Move this to someone else, or take it off.`
                       : problem.kind === 'item-gone'
                         ? `${line.name} is no longer on the menu. Take it off to send the round.`
                         : problem.kind === 'price-changed'
@@ -226,7 +237,8 @@ export function StagedRoundList({
                     </button>
                   ) : null}
 
-                  {problem.kind === 'seat-gone' && seats.length > 0 ? (
+                  {(problem.kind === 'seat-gone' || problem.kind === 'seat-billed') &&
+                  seats.length > 0 ? (
                     <div className="flex flex-wrap gap-sp-2">
                       {seats.map((seat) => (
                         <button

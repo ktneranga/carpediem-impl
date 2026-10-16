@@ -37,8 +37,17 @@ export class SeatBillAlreadyExistsError extends Error {
 /** The seat has no UNBILLED items of its own (Story 6.4, AC-7). */
 export class SeatHasNoItemsError extends Error {}
 
-/** The seat belongs to a different session (Story 6.4, AC-8). */
-export class SeatNotOnSessionError extends Error {}
+/**
+ * The seat belongs to a different session (Story 6.4, AC-8).
+ *
+ * Named `BillSeatNotOnSessionError`, not `SeatNotOnSessionError`, because
+ * `order.service.ts` already exports a class by the latter name. Two exported
+ * classes sharing a name in a codebase whose error handling is entirely
+ * `instanceof` is a landmine: the wrong one reaching a `catch` fails the check
+ * silently and the waiter gets a 500 where a 404 belongs (code review
+ * 2026-10-13).
+ */
+export class BillSeatNotOnSessionError extends Error {}
 
 /** The session already has an unsettled bill (AC-6). Carries it, so the route can name it. */
 export class BillAlreadyOpenError extends Error {
@@ -175,6 +184,30 @@ export function computeBillTotals({
  * the menu admin as a percent, and changing it there belongs in the story that
  * owns those screens. The × 100 here is the whole cost of leaving it.
  */
+/**
+ * The service rate this SESSION is operating under, if any bill exists yet.
+ *
+ * ── Why a session can only have one rate (Teran, 2026-10-15) ────────────────
+ * `hasTableService` is read live from the attached tables, which a session can
+ * gain and lose mid-service. A counter-origin party seated at a table had seat
+ * 1 billed at 10%; the party went back to the bar, the table was released, and
+ * seat 2 was billed at 0% — two guests of one party paying different rates on
+ * append-only bills nobody can correct.
+ *
+ * So the FIRST bill decides. Every later bill on the session reuses the rate
+ * that bill stored. Only the first consults the live table attachment.
+ */
+async function pinnedServiceBp(tx: Tx, sessionId: string): Promise<number | null> {
+  const [first] = await tx
+    .select({ serviceChargeBp: bills.serviceChargeBp })
+    .from(bills)
+    .where(eq(bills.sessionId, sessionId))
+    .orderBy(asc(bills.createdAt))
+    .limit(1)
+
+  return first?.serviceChargeBp ?? null
+}
+
 async function readRates(tx: Tx, tenantId: string) {
   const [config] = await tx
     .select({
@@ -431,7 +464,7 @@ export async function generateSeatBill(
     .from(seatSlots)
     .where(and(eq(seatSlots.id, seatId), eq(seatSlots.sessionId, sessionId)))
     .limit(1)
-  if (!seat) throw new SeatNotOnSessionError()
+  if (!seat) throw new BillSeatNotOnSessionError()
 
   const existing = await findSeatBill(tx, sessionId, seatId)
   if (existing) throw new SeatBillAlreadyExistsError(existing.id)
@@ -460,6 +493,10 @@ async function buildBill(
     seatId: seatId ?? undefined,
   })
   const { serviceChargeBp, taxBp } = await readRates(tx, session!.tenantId)
+
+  // One party, one rate. `null` means this is the session's first bill, so the
+  // live table attachment decides and this bill sets the precedent.
+  const pinned = await pinnedServiceBp(tx, sessionId)
 
   // 4 — for a seat, "nothing left" is SeatHasNoItemsError; for the session it
   // is NothingToBillError, which since 6.4 also means "everything is already
@@ -492,9 +529,11 @@ async function buildBill(
 
   const totals = computeBillTotals({
     subtotalPaisa,
-    serviceChargeBp,
+    // A pinned rate of 0 is as binding as a pinned 1000: it records that this
+    // party's first bill carried no service charge, and the rest must match.
+    serviceChargeBp: pinned ?? serviceChargeBp,
     taxBp,
-    hasTableService,
+    hasTableService: pinned === null ? hasTableService : pinned > 0,
   })
 
   // Before the insert, so `22003` cannot surface as an opaque 500.
@@ -523,7 +562,12 @@ async function buildBill(
       })
       .returning({ id: bills.id, createdAt: bills.createdAt })
   } catch (error) {
-    if (isUniqueViolation(error, 'idx_bills_seat_slot')) {
+    // `seatId !== null` guard: `isUniqueViolation` deliberately treats an
+    // ABSENT constraint name as a match, so without this any 23505 raised on
+    // the consolidated path became a seat collision — an error `/bills/route`
+    // has no branch for, which then fell through to a 500 naming a collision
+    // that cannot happen (code review 2026-10-13).
+    if (seatId !== null && isUniqueViolation(error, 'idx_bills_seat_slot')) {
       // The id is not in hand — this transaction is rolling back and cannot
       // read the winner — so the route re-reads outside it.
       throw new SeatBillAlreadyExistsError('')
@@ -575,7 +619,11 @@ async function buildBill(
     sessionId,
     type: seatId ? 'seat' : 'consolidated',
     seatSlotId: seatId,
-    seatLabel: events[0]?.seatLabel ?? null,
+    // Gated on `seatId`. Unconditional, this returned the first collected
+    // event's seat on a CONSOLIDATED bill, so POST said `seatLabel: 'S1'` while
+    // a GET of the same bill said null — and the POST value came from the live
+    // `seat_slots` join that migration 0019 removed (code review 2026-10-13).
+    seatLabel: seatId ? (events[0]?.seatLabel ?? null) : null,
     createdAt: bill!.createdAt.toISOString(),
     ...totals,
     lines: events.map((event, index) => ({
@@ -720,6 +768,16 @@ export async function loadSessionBills(
     .orderBy(asc(bills.createdAt))
 
   const loaded = await Promise.all(rows.map((row) => getBill(executor, row.id)))
+
+  // A null here means a row `bills` has and `getBill` could not render. It used
+  // to be filtered away in silence, so the screen showed fewer bills than exist
+  // — a billed seat's chip un-struck, "Bill This Seat" offered again — while
+  // `hasUnbilledItems`, computed separately, disagreed with nothing to flag it.
+  const missing = rows.filter((row, i) => loaded[i] === null).map((row) => row.id)
+  if (missing.length > 0) {
+    console.error('[bill.service] loadSessionBills could not render bills:', missing)
+  }
+
   return loaded.filter((bill): bill is BillDetail => bill !== null)
 }
 

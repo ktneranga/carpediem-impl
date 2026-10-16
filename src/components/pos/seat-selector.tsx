@@ -133,8 +133,14 @@ export function SeatSelector({
                       isActive ? 'text-brand-700' : 'text-slate-600',
                     )}
                   >
+                    {/* A billed seat still shows its staged count when it
+                        has one. Showing only "billed" hid the single thing the
+                        waiter needs after a 409: WHICH dishes are stuck on the
+                        seat that has paid (code review 2026-10-13). */}
                     {isBilled
-                      ? 'billed'
+                      ? count === 0
+                        ? 'billed'
+                        : `billed · ${count} stuck`
                       : count === 0
                         ? 'empty'
                         : `${count} item${count === 1 ? '' : 's'}`}
