@@ -38,6 +38,27 @@ export function elapsed(minutes: number): string {
 }
 
 /**
+ * A glance-value for a floor card: `LKR 4.3k`.
+ *
+ * ── Why a second money formatter ────────────────────────────────────────────
+ * `lkrFromPaisa` is exact because a bill that displays one number and charges
+ * another is an audit discrepancy. A table card is not a bill: nobody
+ * reconciles against it, and the waiter reading it from three metres away
+ * needs the MAGNITUDE, not the rupees. "LKR 4.3k" fits the card; "LKR 4,350"
+ * does not, and truncating it with an ellipsis would be worse than rounding.
+ *
+ * Rounded DOWN, never up, and never to zero: a card must not flatter what a
+ * table owes. The exact figure is on the order screen, one tap away, and the
+ * card's accessible name reads it in full.
+ */
+export function lkrCompact(paisa: number): string {
+  const rupees = paisa / 100
+  if (rupees < 1000) return `LKR ${Math.floor(rupees).toLocaleString('en-LK')}`
+  // floor to one decimal: 4,350 -> 4.3k, never 4.4k.
+  return `LKR ${(Math.floor(rupees / 100) / 10).toFixed(1)}k`
+}
+
+/**
  * A price held in integer paisa, rendered without lying about it.
  *
  * `lkr()` above takes RUPEES and rounds, which is right for totals on a bill —

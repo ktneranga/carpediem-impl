@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Receipt, Users } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MenuBrowser } from '@/components/pos/menu-browser'
@@ -39,7 +40,6 @@ import { COUNTER_QUERY_KEY } from '@/components/pos/table-grid'
 import { elapsedMinutesFrom, useMinuteTick } from '@/hooks/use-minute-tick'
 import { useSocketEvent, useSocketRoom } from '@/hooks/use-socket'
 import { signOut } from '@/lib/auth-client'
-import { zoneUsesSeats } from '@/lib/design'
 import { clockTime, elapsed } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -94,6 +94,14 @@ export type OrderScreenProps = {
    * `OrderSummary`.
    */
   taxRatePercent: number
+  /**
+   * Whether this order tracks PEOPLE (Teran, 2026-10-16).
+   *
+   * Replaces `zoneUsesSeats(zoneName)` as the rule. `one` is a NON-SEAT order:
+   * the waiter sees no seat anywhere on this screen, and the kitchen ticket
+   * carries none either.
+   */
+  initialBillMode: 'one' | 'separate'
   /**
    * The bills this session already has, read on the server.
    *
@@ -283,6 +291,30 @@ class BillRefusedError extends Error {
   }
 }
 
+/** `PATCH /api/sessions/:id/bill-mode` — the One bill / Separate bills switch. */
+async function setBillModeRequest(
+  sessionId: string,
+  mode: 'one' | 'separate',
+): Promise<{ movedItems: number; removedSeats: number }> {
+  const response = await fetch(`/api/sessions/${sessionId}/bill-mode`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  })
+
+  if (response.status === 401) throw new SessionExpiredError('Session expired')
+  if (response.status === 403) throw new ForbiddenError('Role not permitted')
+
+  const payload = await response.json().catch(() => null)
+  if (response.ok && payload?.success) {
+    return payload.data as { movedItems: number; removedSeats: number }
+  }
+  if (payload?.error?.code === 'SESSION_ALREADY_CLOSED') {
+    throw new SessionGoneError('Already closed')
+  }
+  throw new Error(payload?.error?.message ?? 'Could not change how this order is billed.')
+}
+
 /** `POST /api/sessions/:id/seats/:seatId/bill` — Story 6.4. */
 async function billSeat(sessionId: string, seatId: string): Promise<BillDetail> {
   const response = await fetch(`/api/sessions/${sessionId}/seats/${seatId}/bill`, {
@@ -380,6 +412,7 @@ export function OrderScreen({
   staffName,
   zoneName,
   taxRatePercent,
+  initialBillMode,
   initialBills,
   initialHasUnbilled,
   tableLabel,
@@ -396,7 +429,27 @@ export function OrderScreen({
   const displayLabel = tableLabel ?? 'Counter'
   // Seats only in the Tables zone (Teran, 2026-09-16). Elsewhere every dish
   // goes to the order's automatic Seat 1 and the seat section is hidden.
-  const usesSeats = zoneUsesSeats(zoneName)
+  /**
+   * Optimistic, because the switch must feel instant on a tablet: the seat
+   * chips appear on tap and the request confirms behind them. A failure
+   * rolls it back and says so, rather than leaving the screen in a state the
+   * server never agreed to.
+   */
+  const [billMode, setBillMode] = useState<'one' | 'separate'>(initialBillMode)
+
+  /**
+   * Seats are shown when the order is TRACKING PEOPLE — not when the zone says
+   * so (changed 2026-10-16).
+   *
+   * `zoneUsesSeats(zoneName)` used to decide this. It survives only as the
+   * default a NEW session starts from, which the server applies; by the time
+   * this screen renders the session has already recorded its own answer.
+   *
+   * `one` is a non-seat order in the full sense: no chips, no seat on a line,
+   * no seat column in the history, no seat in the modifier sheet, and no seat
+   * line on the ticket. See `billMode` in the schema.
+   */
+  const usesSeats = billMode === 'separate'
 
   /**
    * Has this seat had anything SENT to the kitchen?
@@ -445,6 +498,8 @@ export function OrderScreen({
   const [noteDraft, setNoteDraft] = useState('')
   const [confirmingSeatRemoval, setConfirmingSeatRemoval] = useState(false)
   const [seatNotice, setSeatNotice] = useState<string | null>(null)
+  /** Open while asking whether to throw away the per-person grouping. */
+  const [collapseConfirm, setCollapseConfirm] = useState(false)
 
   // DERIVED, not synced in an effect. A selection that no longer exists — the
   // seat was removed here, or on the other tablet — falls back to the first
@@ -1058,6 +1113,73 @@ export function OrderScreen({
     },
   })
 
+  /**
+   * The One bill / Separate bills switch.
+   *
+   * Optimistic: `billMode` flips first so the chips appear on tap, and a
+   * failure rolls it back. A tablet that waits for a round trip before
+   * redrawing feels broken.
+   */
+  const billModeMutation = useMutation({
+    mutationFn: (mode: 'one' | 'separate') => setBillModeRequest(sessionId, mode),
+    onMutate: (mode) => {
+      const previous = billMode
+      setBillMode(mode)
+      setSeatNotice(null)
+      return { previous }
+    },
+    onSuccess: (result, mode) => {
+      // Collapsing rewrites seats, so the seat list and the round history are
+      // both stale. Say what happened: the waiter has just lost grouping work
+      // and should be told, not left to notice.
+      void queryClient.invalidateQueries({ queryKey: seatsQueryKey })
+      void queryClient.invalidateQueries({ queryKey: ['orders', sessionId] })
+      if (mode === 'one' && result.removedSeats > 0) {
+        setSeatNotice(
+          `Everything is on one bill now — ${result.movedItems} item${
+            result.movedItems === 1 ? '' : 's'
+          } moved off ${result.removedSeats} person${result.removedSeats === 1 ? '' : 's'}.`,
+        )
+      }
+    },
+    onError: (error, _mode, context) => {
+      // Roll the optimistic flip back. Leaving the chips showing after a
+      // failed switch is worse than never having shown them: the waiter
+      // assigns items to people the server does not believe exist.
+      if (context) setBillMode(context.previous)
+      if (error instanceof SessionExpiredError) {
+        window.location.assign('/login')
+        return
+      }
+      if (error instanceof ForbiddenError) {
+        setSeatNotice('Your role cannot change how this order is billed.')
+        return
+      }
+      if (error instanceof SessionGoneError) {
+        setClosedDuringSend(true)
+        return
+      }
+      setSeatNotice('Could not change how this order is billed. Try again.')
+    },
+  })
+
+  /**
+   * Switching to One bill THROWS AWAY the grouping, so it is confirmed first —
+   * but only when there is something to lose.
+   *
+   * Teran chose collapse-over-refuse (2026-10-16) precisely so the waiter is
+   * never stuck, which makes an accidental tap the remaining risk. One
+   * confirmation when people exist; none at all on the common path.
+   */
+  function requestBillMode(mode: 'one' | 'separate') {
+    if (billModeMutation.isPending || mode === billMode) return
+    if (mode === 'one' && seats.length > 1) {
+      setCollapseConfirm(true)
+      return
+    }
+    billModeMutation.mutate(mode)
+  }
+
   function clearRound() {
     clear()
     setConfirmingClear(false)
@@ -1302,10 +1424,57 @@ export function OrderScreen({
           {/* Capped at 45% of the column and scrollable. With eight seats, the
               note editor and a removal confirmation open, an uncapped section
               squeezed the round to zero height and pushed the total off-screen. */}
-          {/* Hidden outside the Tables zone — but shown anyway when the order
+          {/* ── One bill / Separate bills (Teran, 2026-10-16) ───────────────
+              The first question of the order, so it sits above everything the
+              answer changes. It replaced `zoneUsesSeats` — the zone used to
+              decide, and now the waiter does.
+
+              Two real buttons rather than a toggle switch: a switch has an
+              implied "off", and neither of these is off. The copy underneath
+              says what the choice MEANS, because "One bill" and "Separate
+              bills" both sound reasonable to someone who has not thought about
+              it yet. */}
+          <section className="flex shrink-0 flex-col gap-sp-2 border-b border-slate-200 p-sp-4">
+            <div role="group" aria-label="How this order is billed" className="flex gap-sp-2">
+              {([
+                { mode: 'one' as const, icon: Receipt, label: 'One bill' },
+                { mode: 'separate' as const, icon: Users, label: 'Separate bills' },
+              ]).map(({ mode, icon: Icon, label }) => {
+                const active = billMode === mode
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={active}
+                    disabled={billModeMutation.isPending}
+                    onClick={() => requestBillMode(mode)}
+                    className={cn(
+                      'flex h-touch-kitchen flex-1 items-center justify-center gap-sp-2 rounded-waiter border',
+                      'text-fs-16 font-bold transition-[transform,box-shadow] duration-120 ease-standard',
+                      'active:scale-[0.97] active:shadow-pressed disabled:opacity-60',
+                      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                      active
+                        ? 'border-brand-500 bg-brand-050 text-brand-700 shadow-el-1'
+                        : 'border-slate-200 bg-white text-slate-600',
+                    )}
+                  >
+                    <Icon aria-hidden="true" strokeWidth={2.2} className="size-5 shrink-0" />
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-fs-12 font-semibold text-slate-600">
+              {billMode === 'one'
+                ? 'Everything goes on one table bill. If guests later pay separately, split it on the bill screen.'
+                : 'Each item is tagged to a person, and each person gets their own bill.'}
+            </p>
+          </section>
+
+          {/* Shown only while the order is TRACKING PEOPLE — or when it somehow
               has no seat at all, which only a session from before migration
-              0013 could have. Without it nothing could be staged and there
-              would be no way to add the seat that fixes it. */}
+              0013 could have. Without that second case nothing could be staged
+              and there would be no way to add the seat that fixes it. */}
           {usesSeats || seats.length === 0 ? (
           <>
           {/* Only the seat GRID lives in the height-capped, scrollable section.
@@ -1674,6 +1843,55 @@ export function OrderScreen({
           />
         </aside>
       </div>
+
+      {/* Switching to One bill destroys the per-person grouping (Teran chose
+          collapse over refuse, 2026-10-16), so it is confirmed — but only when
+          there is something to lose. */}
+      {collapseConfirm ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="collapse-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
+        >
+          <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2">
+            <h2 id="collapse-title" className="text-fs-20 font-extrabold text-slate-900">
+              Put everything on one bill?
+            </h2>
+            <p className="text-fs-16 text-slate-600">
+              {seats.length} people have items on this order. They will all move onto one bill, and
+              who ordered what will be lost. Switching back will not bring it back.
+            </p>
+            <div className="flex gap-sp-3">
+              <button
+                type="button"
+                onClick={() => setCollapseConfirm(false)}
+                className={cn(
+                  'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white',
+                  'text-fs-18 font-bold text-slate-900 shadow-el-1 active:scale-[0.97]',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                )}
+              >
+                Keep separate
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCollapseConfirm(false)
+                  billModeMutation.mutate('one')
+                }}
+                className={cn(
+                  'h-touch-waiter flex-1 rounded-waiter bg-brand-700 text-fs-18 font-bold text-white',
+                  'shadow-el-2 active:scale-[0.97]',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                )}
+              >
+                One bill
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {sheet && sheetSeat ? (
         <ModifierSheet

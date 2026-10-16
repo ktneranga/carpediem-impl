@@ -63,6 +63,7 @@ export default async function OrderPage({
       sessionId: orderSessions.id,
       openedAt: orderSessions.openedAt,
       coverCount: orderSessions.coverCount,
+      billMode: orderSessions.billMode,
       kind: orderSessions.kind,
       primaryTableId: orderSessions.tableId,
       tableId: tables.id,
@@ -182,6 +183,7 @@ export default async function OrderPage({
       seats={seats}
       submittedRounds={submittedRounds}
       taxRatePercent={config?.taxRatePercent ?? 0}
+      initialBillMode={session.billMode}
       initialBills={initialBills}
       initialHasUnbilled={initialHasUnbilled}
     />

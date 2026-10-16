@@ -1328,6 +1328,24 @@ So that I can find any item quickly regardless of whether I know where it lives 
 
 ### Story 4.3: Implement Seat Slot Management
 
+> **Seats are no longer decided by the ZONE (changed 2026-10-16, Teran — see
+> `sprint-change-proposal-2026-10-16.md`).** They are decided per order by a **One bill / Separate
+> bills** switch on the order screen, defaulting to One bill.
+>
+> **One bill is a NON-SEAT order.** No seat chips, no seat on a line, no seat column in the round
+> history, no seat in the modifier sheet, and **no seat line on the kitchen ticket**. "Seat 1" still
+> exists in the database for every session — `openSession` has always created it — and is simply
+> never named on screen. That is why this change needs no migration to `order_events`: a seat id was
+> never null and still is not.
+>
+> **Separate bills** reveals the picker and the rest of this story's behaviour unchanged.
+>
+> Switching mid-order is allowed. Switching BACK to One bill collapses every person onto one bill
+> and the grouping is gone — it is not restored by switching again. Refusing the switch was
+> considered and rejected: a dead end mid-service is the worse failure.
+>
+> `zoneUsesSeats()` survives as the DEFAULT the switch starts from, not as a rule.
+
 As a waiter,
 I want to create named seat slots on a table before taking orders,
 So that I can track which items belong to which person from the moment of order entry.
@@ -1741,6 +1759,12 @@ So that a party can each pay for exactly what they ordered without pre-assigning
 ---
 
 ### Story 6.4: Implement Per-Seat-Slot Independent Billing
+
+> **AC-12's gate changed 2026-10-16.** "Bill This Seat" was offered when `zoneUsesSeats(zoneName)`
+> was true. It is now offered when the SESSION is in **Separate bills** mode. Same intent — do not
+> offer a per-seat split on an order that is not tracking people — and the rest of the story,
+> including the `UNIQUE (order_event_id)` invariant and Trap 2, is untouched. A seat id is still
+> never null.
 
 As a waiter,
 I want to generate and settle a bill for a specific seat slot while other seats at the same table remain open,

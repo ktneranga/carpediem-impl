@@ -156,8 +156,15 @@
 
 ## Deferred from: seats-only-in-Tables decision (2026-09-16, Teran)
 
-- **Orders outside the Tables zone cannot be split by seat at billing** [Epic 6 — Story 6.4] - Bean Bags, Sun Beds, Rooftop and counter sales now hide the seat section, and every item lands on Seat 1. Per-seat billing (6.4) therefore has nothing to split there; consolidated billing (6.2) and the mid-settlement person split (6.3) still apply. Whoever builds 6.4 should hide the per-seat option for those zones rather than offer a split with one seat in it.
+- **~~Orders outside the Tables zone cannot be split by seat at billing~~** [Epic 6 — Story 6.4] -
+  **SUPERSEDED 2026-10-16** by the One bill / Separate bills switch
+  (`sprint-change-proposal-2026-10-16.md`). Seats are no longer decided by the zone, so ANY order —
+  Bean Bags, Sun Bed, Rooftop or counter — can be put into Separate bills mode and split by person.
+  The gate on "Bill This Seat" moves from `zoneUsesSeats(zoneName)` to the session's `bill_mode`.
+  Original note kept below for the reasoning, which still explains why the gate exists at all:
+  offering a per-seat split on an order with one seat in it is a control that can only confuse.
 - **The seat rule is keyed on the zone NAME** [`src/lib/design.ts`, `zoneUsesSeats`] - Renaming the "Tables" zone turns seats off there, silently. Acceptable while zones are seeded, not owner-edited; when Epic 10's zone configuration (Story 10.3) lands, make it a per-zone `uses_seats` column instead.
+  **Reduced in severity 2026-10-16:** `zoneUsesSeats` is no longer a rule, only the DEFAULT the bill-mode switch starts from, so a renamed zone now costs a waiter one tap rather than silently removing a capability.
 
 ## Deferred from: 4-5-implement-order-submission-and-multi-destination-routing (2026-09-16)
 
