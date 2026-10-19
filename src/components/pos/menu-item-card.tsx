@@ -79,7 +79,7 @@ export function MenuItemCard({
         <span
           className={cn(
             'absolute top-sp-4 right-sp-3 flex size-8 items-center justify-center rounded-pill',
-            'bg-brand-700 text-fs-14 font-bold tabular-nums text-white',
+            'bg-brand-800 text-fs-14 font-bold tabular-nums text-white',
           )}
         >
           <span aria-hidden="true">{stagedCount}</span>
@@ -148,7 +148,7 @@ export function MenuItemCard({
                 'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',
                 // `brand-050` is the system's tint. (`brand-50` is not a token;
                 // an earlier version of this card used it and rendered no fill.)
-                isStaged ? 'bg-brand-700 text-white' : 'bg-brand-050 text-brand-700',
+                isStaged ? 'bg-brand-800 text-white' : 'bg-brand-050 text-brand-700',
               )}
             >
               {isStaged ? 'Add another' : 'Add'}

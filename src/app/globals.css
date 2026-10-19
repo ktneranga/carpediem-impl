@@ -30,6 +30,15 @@
      selected states, primary buttons, breadcrumbs, chart series — never as a
      decorative wash. Maximum two background colours per screen. */
   --color-brand-900: #0C4257;
+  /* THE primary. Every filled button, the active zone tab, the avatar.
+     Sampled from Teran's designs: the "Open order" fill, the active tab and
+     the avatar circle are all exactly #12556F, and his brief names the token
+     ("Send button, brand-800"). brand-700 is the colour for brand TEXT and
+     BORDERS on white - "Counter sale" and "Bill & split" both use it that
+     way - which is why both steps exist.
+
+     8.6:1 on white, so white text clears AA at every size we use. */
+  --color-brand-800: #12556F;
   --color-brand-700: #1A6A8C;
   --color-brand-500: #2288B4;   /* primary */
   --color-brand-300: #6EC1E4;
@@ -62,6 +71,11 @@
 
   --color-occupied-edge: #F59E0B;
   --color-occupied-chip: #FEF3C7;
+  /* The amber OUTLINE on an occupied card, as distinct from --occupied-edge,
+     which fills its icon tile. The design pairs an amber-500 fill with an
+     amber-300 outline; using the fill colour as a border made every occupied
+     card shout. */
+  --color-occupied-line: #FCD34D;
   --color-occupied-body: #FFFBEB;
   --color-occupied-ink:  #7C4A03;
   --color-occupied-band: #B45309;   /* 5.04:1 with white; --edge was 2.15:1 */
@@ -196,6 +210,7 @@
 @layer base {
   :root {
     --color-brand-900: #0C4257;
+    --color-brand-800: #12556F;
     --color-brand-700: #1A6A8C;
     --color-brand-500: #2288B4;
     --color-brand-300: #6EC1E4;
@@ -217,6 +232,7 @@
 
     --color-occupied-edge: #F59E0B;
     --color-occupied-chip: #FEF3C7;
+    --color-occupied-line: #FCD34D;
     --color-occupied-body: #FFFBEB;
     --color-occupied-ink:  #7C4A03;
     --color-occupied-band: #B45309;

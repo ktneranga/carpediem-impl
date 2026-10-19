@@ -1247,7 +1247,7 @@ export function OrderScreen({
             }
           }}
           className={cn(
-            'h-touch-waiter rounded-waiter bg-brand-700 px-sp-6 text-fs-18 font-bold text-white shadow-el-2',
+            'h-touch-waiter rounded-waiter bg-brand-800 px-sp-6 text-fs-18 font-bold text-white shadow-el-2',
             'transition-transform duration-80 ease-standard active:scale-[0.97]',
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
           )}
@@ -1457,7 +1457,7 @@ export function OrderScreen({
                       type="submit"
                       disabled={seatBusy}
                       className={cn(
-                        'h-touch-kitchen flex-1 rounded-control bg-brand-700 text-fs-14 font-bold text-white',
+                        'h-touch-kitchen flex-1 rounded-control bg-brand-800 text-fs-14 font-bold text-white',
                         'transition-transform duration-80 ease-standard active:scale-[0.97]',
                         'disabled:opacity-40 disabled:active:scale-100',
                         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',

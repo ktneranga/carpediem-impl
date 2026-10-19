@@ -24,6 +24,15 @@ export type TableGridRow = {
   openedAt: string | null
   itemCount: number
   /**
+   * Guests seated, from `order_sessions.cover_count`. Null with no session.
+   *
+   * The card reads "2/2 guests" against `capacity`. It was not on this row
+   * before because the old card showed items instead; the new floor design
+   * leads with how full the table is, which is what decides where to seat the
+   * next party.
+   */
+  coverCount: number | null
+  /**
    * What the open order has run up so far, in integer paisa. 0 with no session.
    *
    * Priced from the event rows, so it is what the guests were quoted. It is not
@@ -71,6 +80,7 @@ export async function GET() {
         label: tables.label,
         status: tables.status,
         capacity: tables.capacity,
+        coverCount: orderSessions.coverCount,
         unavailableReason: tables.unavailableReason,
         zoneId: zones.id,
         zoneName: zones.name,
@@ -210,6 +220,7 @@ export async function GET() {
       // Story 4.4 one row can carry "× 3". ITEM_REMOVED is not subtracted
       // because nothing writes it yet; Epic 7's corrections will.
       itemCount: row.sessionId ? (itemCounts.get(row.sessionId) ?? 0) : 0,
+      coverCount: row.sessionId ? row.coverCount : null,
       totalPaisa: row.sessionId ? (sessionTotals.get(row.sessionId) ?? 0) : 0,
       groupTableLabels: row.sessionId ? (groupLabels.get(row.sessionId) ?? []) : [],
     }))

@@ -161,7 +161,7 @@ export function SeatSelector({
                       // Filled while its panel is open, so the badge shows which
                       // seat the note editor below belongs to.
                       isEditing
-                        ? 'border-brand-700 bg-brand-700 text-white'
+                        ? 'border-brand-700 bg-brand-800 text-white'
                         : 'border-slate-200 bg-white text-brand-700',
                     )}
                   >

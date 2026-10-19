@@ -366,6 +366,24 @@ async function fetchTables(): Promise<TableGridRow[]> {
   return body.data as TableGridRow[]
 }
 
+/**
+ * How long an occupied table may sit before the floor flags it.
+ *
+ * Two hours (2026-10-16 design). A table open longer than this is not an
+ * error — a long lunch is ordinary — but it is the shape of the mistake that
+ * actually happens: a party left, nobody closed the table, and it has been
+ * holding a seat ever since. The card says "Still open? Check" rather than
+ * anything accusatory, because most of the time the answer is "yes, fine".
+ *
+ * Not configurable yet. When it becomes so it belongs in `tenant_config`
+ * beside the other floor settings, not in a constant here.
+ */
+const STALE_MINUTES = 2 * 60
+
+function isStale(elapsedMinutes: number | undefined): boolean {
+  return elapsedMinutes !== undefined && elapsedMinutes >= STALE_MINUTES
+}
+
 export function TableGrid({
   restaurantName,
   staffName,
@@ -899,24 +917,50 @@ export function TableGrid({
   // Shared with the order screen — see src/lib/auth-client.ts. Duplicating it
   // once already left that screen with a "Switch user" button that did nothing.
 
-  // Zones carry their own open count — the number a waiter is actually scanning
-  // the filter for. Derived here rather than fetched: the grid already holds
-  // every table, and a second request would go stale against the socket feed.
+  // Zones carry OCCUPIED out of TOTAL (2026-10-16 design) — how busy the zone
+  // is, rather than how many tables are free. Derived here rather than
+  // fetched: the grid already holds every table, and a second request would go
+  // stale against the socket feed.
+  //
+  // Out-of-service tables count in the DENOMINATOR, not the numerator: the
+  // zone really does have eight tables, one of them just cannot be used. The
+  // heading beside the grid reads the same way.
   const zones: Zone[] = useMemo(() => {
     if (!tables) return []
     const seen = new Map<string, Zone>()
     for (const table of tables) {
-      const entry = seen.get(table.zoneId) ?? { id: table.zoneId, name: table.zoneName, openCount: 0 }
-      if (table.status === 'open') entry.openCount += 1
+      const entry =
+        seen.get(table.zoneId) ??
+        { id: table.zoneId, name: table.zoneName, occupiedCount: 0, tableCount: 0 }
+      entry.tableCount += 1
+      if (table.status === 'occupied') entry.occupiedCount += 1
       seen.set(table.zoneId, entry)
     }
     return Array.from(seen.values())
   }, [tables])
 
-  const totalOpenCount = useMemo(
+  const staleCount = useMemo(
+    () =>
+      tables
+        ? tables.filter(
+            (table) =>
+              table.status === 'occupied' &&
+              isStale(elapsedMinutesFrom(table.openedAt, minuteTick)),
+          ).length
+        : 0,
+    [tables, minuteTick],
+  )
+
+  const openCount = useMemo(
     () => (tables ? tables.filter((table) => table.status === 'open').length : 0),
     [tables],
   )
+
+  const totalOccupiedCount = useMemo(
+    () => (tables ? tables.filter((table) => table.status === 'occupied').length : 0),
+    [tables],
+  )
+  const totalTableCount = tables?.length ?? 0
 
   // Client-side filter. AC-2 forbids a network request on zone change.
   const visibleTables = useMemo(() => {
@@ -1056,6 +1100,42 @@ export function TableGrid({
         onStaffTap={signOut}
       />
 
+      {/* ── The zone bar (2026-10-19 design) ──────────────────────────────
+          A full-bleed WHITE band of its own, between the header and the grid,
+          rather than a row of tabs floating on the grey.
+
+          It is navigation, and the design gives navigation its own surface:
+          the white reads as chrome that stays put while the grey below is the
+          thing that scrolls and changes. Flush to the edges — it carries its
+          own padding so the band runs the full width rather than stopping
+          inside the main column's gutter. */}
+      <div className="shrink-0 border-b border-slate-200 bg-white px-sp-4 py-sp-3">
+        <ZoneChipBar
+          zones={zones}
+          activeZoneId={activeZoneId}
+          totalOccupiedCount={totalOccupiedCount}
+          totalTableCount={totalTableCount}
+          onZoneChange={(id) => {
+            // See the breadcrumb handler above — a merge cannot outlive the
+            // zone it was staged in, and `selectedUnit` is derived from the
+            // zone-filtered list.
+            endMergeMode()
+            setCounterMode(false)
+            setSelectedCounterId(null)
+            setActiveZoneId(id)
+            setSelectedTableId(null)
+          }}
+          counterActive={counterMode}
+          showCounter={canOpenCounterSales}
+          onCounterSelect={() => {
+            endMergeMode()
+            setSelectedTableId(null)
+            setActiveZoneId(null)
+            setCounterMode(true)
+          }}
+        />
+      </div>
+
       <main className="flex flex-1 flex-col gap-sp-4 p-sp-4">
         {/* Real-time is the only thing keeping this grid true. When it drops, a
             waiter must know the colours may be stale rather than trusting them —
@@ -1100,32 +1180,39 @@ export function TableGrid({
           </div>
         ) : null}
 
-        <ZoneChipBar
-          zones={zones}
-          activeZoneId={activeZoneId}
-          totalOpenCount={totalOpenCount}
-          onZoneChange={(id) => {
-            // See the breadcrumb handler above — a merge cannot outlive the zone
-            // it was staged in, and `selectedUnit` is derived from the
-            // zone-filtered list.
-            endMergeMode()
-            setCounterMode(false)
-            setSelectedCounterId(null)
-            setActiveZoneId(id)
-            setSelectedTableId(null)
-          }}
-          counterActive={counterMode}
-          showCounter={canOpenCounterSales}
-          onCounterSelect={() => {
-            // Going back to the counter list abandons an in-progress seating —
-            // unlike a zone change, this leaves the tables entirely.
-            endMergeMode()
-            endSeating()
-            setSelectedTableId(null)
-            setSelectedCounterId(null)
-            setCounterMode(true)
-          }}
-        />
+        {/* ── Floor summary (2026-10-16 design) ────────────────────────────
+            The three numbers a waiter wants before they look at a single
+            card: what is busy, what is free, and what has been sitting too
+            long. "to check" is only shown when there IS something to check —
+            a permanent "0 to check" trains people to ignore the row.
+
+            The legend is here rather than on the cards because the card
+            states are already self-describing (a clock, a dot and the word
+            "seats", a warning glyph, a hatch); this is a key for the colours,
+            not the only way to read them. */}
+        {!counterMode ? (
+          <div className="flex flex-wrap items-center justify-between gap-sp-3 pt-sp-1">
+            <p className="text-fs-14 font-semibold text-slate-600 tabular-nums">
+              {totalOccupiedCount} occupied · {openCount} open
+              {staleCount > 0 ? (
+                <span className="text-unavailable-band"> · {staleCount} to check</span>
+              ) : null}
+            </p>
+            <ul className="flex items-center gap-sp-4" aria-label="What the card colours mean">
+              {[
+                ['bg-open-edge', 'Open'],
+                ['bg-occupied-edge', 'Occupied'],
+                ['bg-unavailable-edge', 'Needs check'],
+              ].map(([dot, text]) => (
+                <li key={text} className="flex items-center gap-sp-2">
+                  <span aria-hidden="true" className={cn('size-2.5 rounded-pill', dot)} />
+                  <span className="text-fs-12 font-semibold text-slate-600">{text}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
 
         {counterMode ? (
           // A LIST, not a grid.
@@ -1274,6 +1361,10 @@ export function TableGrid({
                   capacity={unit.capacity}
                   elapsedMinutes={elapsedMinutesFrom(table.openedAt, minuteTick)}
                   itemCount={table.sessionId ? table.itemCount : undefined}
+                  coverCount={table.sessionId ? table.coverCount : undefined}
+                  // Decided HERE, not in the card, so every card and the
+                  // "N to check" figure in the header agree on one threshold.
+                  needsCheck={isStale(elapsedMinutesFrom(table.openedAt, minuteTick))}
                   // Session-level, so every member of a group carries the same
                   // figure; the unit's primary speaks for all of them.
                   totalPaisa={table.sessionId ? table.totalPaisa : undefined}
