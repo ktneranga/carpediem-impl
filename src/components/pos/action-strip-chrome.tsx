@@ -47,6 +47,7 @@ export function ActionStripShell({
   detail,
   muted = false,
   quiet = false,
+  leading,
   children,
 }: {
   /** Names the landmark. "Selected table actions", "Order actions". */
@@ -74,6 +75,14 @@ export function ActionStripShell({
    * readers through the region's accessible name.
    */
   quiet?: boolean
+  /**
+   * Content for the LEFT of the strip, where the text column would be.
+   *
+   * Only used in `quiet` mode. The design puts More on the left and the two
+   * actions on the right; without a real left slot both ended up in the same
+   * group and the whole row drifted to one side.
+   */
+  leading?: React.ReactNode
   children?: React.ReactNode
 }) {
   return (
@@ -87,9 +96,18 @@ export function ActionStripShell({
       )}
     >
       {quiet ? (
-        // Not rendered, but not lost: the region is still named, so a screen
-        // reader entering the strip hears what it is for.
-        <span className="sr-only">{`${label}${detail ? `. ${detail}` : ''}`}</span>
+        // The left slot still EXISTS in quiet mode, holding whatever the
+        // caller puts there — on the order screen, the More menu.
+        //
+        // It is a real flex child with `mr-auto`, not just the sr-only text:
+        // `sr-only` is absolutely positioned, so it leaves the flex flow
+        // entirely, and `justify-between` with one remaining child pushes the
+        // buttons to the LEFT. That is exactly what happened when `quiet`
+        // first shipped.
+        <div className="mr-auto flex items-center gap-sp-3">
+          <span className="sr-only">{`${label}${detail ? `. ${detail}` : ''}`}</span>
+          {leading}
+        </div>
       ) : (
       <div aria-live="polite" className="flex min-w-0 flex-col gap-sp-1">
         {/* slate-600, not slate-400 (2.56:1): on the order screen this eyebrow says

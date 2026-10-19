@@ -199,6 +199,16 @@ export function OrderActionStrip({
         // eyebrow used to carry are both in the order panel directly above,
         // where the waiter is already looking.
         quiet
+        leading={
+          moreItems.length > 0 ? (
+            <MoreMenu
+              busy={busy}
+              open={moreOpen}
+              onOpenChange={setMoreOpen}
+              items={moreItems}
+            />
+          ) : null
+        }
         eyebrow="Not sent"
         label={
           stagedCount === 0
@@ -209,14 +219,6 @@ export function OrderActionStrip({
           note ?? (destinationSummary ? `→ ${destinationSummary}` : 'Nothing has gone to the kitchen yet.')
         }
       >
-        {moreItems.length > 0 ? (
-          <MoreMenu
-            busy={busy}
-            open={moreOpen}
-            onOpenChange={setMoreOpen}
-            items={moreItems}
-          />
-        ) : null}
         {onClear ? (
           <button
             type="button"
