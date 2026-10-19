@@ -3,14 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ContextHeader } from '@/components/pos/context-header'
+import { FloorHeader } from '@/components/pos/floor-header'
+import { useClock } from '@/hooks/use-clock'
 import { TableCard } from '@/components/pos/table-card'
 import { ZoneChipBar, type Zone } from '@/components/pos/zone-chip-bar'
 import { FloorActionStrip } from '@/components/pos/floor-action-strip'
 import { useSocketEvent, useSocketStatus } from '@/hooks/use-socket'
 import { signOut } from '@/lib/auth-client'
 import { elapsedMinutesFrom, useMinuteTick } from '@/hooks/use-minute-tick'
-import { clockTime, elapsed, mergedTitle } from '@/lib/format'
+import { clockTime, elapsed } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { TableGridRow } from '@/app/api/tables/route'
 import type { TableStatusChangedPayload } from '@/types/tables'
@@ -385,11 +386,19 @@ function isStale(elapsedMinutes: number | undefined): boolean {
 }
 
 export function TableGrid({
-  restaurantName,
   staffName,
   role,
 }: {
-  restaurantName: string
+  /**
+   * REMOVED from the UI on 2026-10-19 and kept as a prop on purpose.
+   *
+   * The floor's header now reads "Floor" rather than the restaurant's name —
+   * a waiter on one tablet in one restaurant never needed telling which. The
+   * page still fetches and passes it because the owner dashboard (Epic 9) and
+   * the printed bill both want it, and dropping it here would mean the page
+   * stops reading `tenant_config.restaurant_name` at all.
+   */
+  restaurantName?: string
   staffName: string
   /**
    * Read server-side from the validated session and passed down, never sniffed
@@ -925,6 +934,8 @@ export function TableGrid({
   // Out-of-service tables count in the DENOMINATOR, not the numerator: the
   // zone really does have eight tables, one of them just cannot be used. The
   // heading beside the grid reads the same way.
+  const clock = useClock()
+
   const zones: Zone[] = useMemo(() => {
     if (!tables) return []
     const seen = new Map<string, Zone>()
@@ -971,7 +982,6 @@ export function TableGrid({
   // Merged sessions collapse to one card here, after the zone filter.
   const units = useMemo(() => toGridUnits(visibleTables), [visibleTables])
 
-  const activeZoneName = zones.find((z) => z.id === activeZoneId)?.name ?? null
 
   /**
    * The selected unit — found by the table id, whether it is a single or a
@@ -992,12 +1002,6 @@ export function TableGrid({
   // same session server-side — the routes all look up through the join table —
   // so this is a stable choice rather than a significant one.
   const selectedTable = selectedUnit?.primary ?? null
-
-  const selectedUnitTitle = selectedUnit
-    ? selectedUnit.isGroup
-      ? mergedTitle(selectedUnit.labels)
-      : selectedUnit.primary.label
-    : null
 
   // Labels of the staged tables, in the order they were staged, so the commit
   // button can name them (AC-14).
@@ -1063,40 +1067,24 @@ export function TableGrid({
   // the strip rendered mid-screen with white space beneath it.
   return (
     <div className="min-h-app flex flex-col">
-      <ContextHeader
-        restaurantName={restaurantName}
+      <FloorHeader
+        occupiedCount={totalOccupiedCount}
+        openCount={openCount}
+        staleCount={staleCount}
         staffName={staffName}
-        zoneName={activeZoneName}
-        tableLabel={selectedUnitTitle}
-        onNavigate={(level) => {
-          setCounterMode(false)
-          setSelectedCounterId(null)
-          // Seating survives — see endSeating. Only merge dies with the zone.
-          // Merge mode dies with the selection.
-          //
-          // It used to survive: `mergeTableIds` stayed non-null while
-          // `selectedUnit` went null, so the strip fell through to the "No table
-          // selected" shell — which has NO Cancel button — while every card tap
-          // still took the merge branch and staged tables invisibly. The
-          // cross-zone guard is written `selectedTable && …`, so a null anchor
-          // skipped it too. There was no way out but a page reload.
+        clock={clock}
+        showCounterSale={canOpenCounterSales}
+        counterActive={counterMode}
+        onCounterSale={() => {
+          // Going to the counter list abandons an in-progress seating — unlike
+          // a zone change, this leaves the tables entirely.
           endMergeMode()
-          if (level === 'zones') {
-            setActiveZoneId(null)
-            setSelectedTableId(null)
-          } else {
-            setSelectedTableId(null)
-          }
+          setSelectedTableId(null)
+          setActiveZoneId(null)
+          setCounterMode(true)
         }}
-        // Sign-out was unreachable from the entire application: the placeholder
-        // page carried the only LogoutButton and TableGrid replaced it, leaving
-        // POST /api/auth/logout with no caller. On a shared tablet that means a
-        // waiter cannot end a shift and the next person inherits their
-        // x-staff-id, so every order is misattributed.
-        //
-        // Story 2.4 re-points this at the PIN-switch flow; until then the
-        // header's staff control signs out, which also stops it being a 44px
-        // button that announces "Switch user" and does nothing.
+        // The only way off this screen for a waiter ending a shift. Sign-out
+        // was once unreachable from the whole application.
         onStaffTap={signOut}
       />
 
@@ -1180,38 +1168,6 @@ export function TableGrid({
           </div>
         ) : null}
 
-        {/* ── Floor summary (2026-10-16 design) ────────────────────────────
-            The three numbers a waiter wants before they look at a single
-            card: what is busy, what is free, and what has been sitting too
-            long. "to check" is only shown when there IS something to check —
-            a permanent "0 to check" trains people to ignore the row.
-
-            The legend is here rather than on the cards because the card
-            states are already self-describing (a clock, a dot and the word
-            "seats", a warning glyph, a hatch); this is a key for the colours,
-            not the only way to read them. */}
-        {!counterMode ? (
-          <div className="flex flex-wrap items-center justify-between gap-sp-3 pt-sp-1">
-            <p className="text-fs-14 font-semibold text-slate-600 tabular-nums">
-              {totalOccupiedCount} occupied · {openCount} open
-              {staleCount > 0 ? (
-                <span className="text-unavailable-band"> · {staleCount} to check</span>
-              ) : null}
-            </p>
-            <ul className="flex items-center gap-sp-4" aria-label="What the card colours mean">
-              {[
-                ['bg-open-edge', 'Open'],
-                ['bg-occupied-edge', 'Occupied'],
-                ['bg-unavailable-edge', 'Needs check'],
-              ].map(([dot, text]) => (
-                <li key={text} className="flex items-center gap-sp-2">
-                  <span aria-hidden="true" className={cn('size-2.5 rounded-pill', dot)} />
-                  <span className="text-fs-12 font-semibold text-slate-600">{text}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
 
 
         {counterMode ? (

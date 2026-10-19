@@ -1,44 +1,8 @@
 'use client'
 
-import { useSyncExternalStore } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useClock } from '@/hooks/use-clock'
 import { cn } from '@/lib/utils'
-
-/**
- * Clock as an external store.
- *
- * `useSyncExternalStore` is React's primitive for reading a mutable external
- * source (here: wall-clock time) without breaking hydration. React renders
- * `getServerSnapshot` on the server AND during hydration, then swaps to the
- * client snapshot afterwards — so server and client markup always agree and no
- * mismatch warning is produced.
- */
-function subscribeToClock(onChange: () => void): () => void {
-  const timer = setInterval(onChange, 30_000)
-  return () => clearInterval(timer)
-}
-
-// getSnapshot must return a referentially stable value between ticks — building
-// a fresh string every call would re-render forever. Cached per minute.
-let cachedMinute = -1
-let cachedLabel = ''
-
-function getClockSnapshot(): string {
-  const now = new Date()
-  const minuteOfDay = now.getHours() * 60 + now.getMinutes()
-
-  if (minuteOfDay !== cachedMinute) {
-    cachedMinute = minuteOfDay
-    cachedLabel = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-  }
-
-  return cachedLabel
-}
-
-/** Blank on the server — there is no meaningful "now" to commit to at build time. */
-function getServerClockSnapshot(): string {
-  return ''
-}
 
 export type ContextHeaderProps = {
   restaurantName: string
@@ -67,7 +31,7 @@ export function ContextHeader({
   onNavigate,
   onStaffTap,
 }: ContextHeaderProps) {
-  const time = useSyncExternalStore(subscribeToClock, getClockSnapshot, getServerClockSnapshot)
+  const time = useClock()
 
   const crumbButton = cn(
     'rounded-chip px-sp-1 text-fs-14 font-semibold text-brand-700',
