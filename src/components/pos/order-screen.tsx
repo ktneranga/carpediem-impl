@@ -451,6 +451,50 @@ export function OrderScreen({
   // seat instead of leaving the row with nothing active. Story 4.2's review
   // replaced the same shape on the category chips for the same reason: an
   // effect that writes state after render is a frame of wrong UI.
+  // Declared ABOVE the seat logic below, which calls `seatIsBilled` — and
+  // therefore reads `hasConsolidatedBill` — while computing `activeSeatId`
+  // during render. Lower down, that is a temporal dead zone and the page
+  // 500s with "Cannot access 'hasConsolidatedBill' before initialization".
+  // Story 6.4's review patch moved the fallback without moving this.
+  const billQueryKey = ['bills', sessionId] as const
+
+  /**
+   * The bill this session has, from the SERVER (code review 2026-10-13).
+   *
+   * This was two `useState` flags set by the generate mutation. Both died on a
+   * page refresh and neither existed on a second tablet, so the screen
+   * re-offered "Add More Items" on an order that was already billed — and the
+   * round that followed could never be put on any bill, because a session gets
+   * one. The server refuses such a round now, but a button that only fails
+   * when pressed is not an answer; the screen has to know before it draws.
+   *
+   * Seeded from the server render so there is no flash of `submitted` on an
+   * already-billed order, and refetched on window focus — the tablet a waiter
+   * returns to is the one most likely to be stale.
+   */
+  const { data: billState, error: billStateError } = useQuery({
+    queryKey: billQueryKey,
+    queryFn: () =>
+      seatRequest<{ bills: BillDetail[]; hasUnbilled: boolean }>(
+        `/api/sessions/${sessionId}/bills`,
+      ),
+    initialData: { bills: initialBills, hasUnbilled: initialHasUnbilled },
+    refetchOnWindowFocus: true,
+  })
+
+  const sessionBills = billState.bills
+  /** Seat ids that already have a bill of their own — for the seat chips. */
+  const billedSeatIds = new Set(
+    sessionBills.map((b) => b.seatSlotId).filter((id): id is string => id !== null),
+  )
+  /** A consolidated bill sweeps everything, so it closes every seat at once. */
+  const hasConsolidatedBill = sessionBills.some((b) => b.seatSlotId === null)
+
+  /** Can anything still be added to this seat? */
+  function seatIsBilled(seatId: string): boolean {
+    return hasConsolidatedBill || billedSeatIds.has(seatId)
+  }
+
   // The fallback skips BILLED seats. It used to take `seats[0]`, so reloading
   // a table whose Seat 1 had paid announced "SEAT 1 SELECTED - TAPS LAND HERE"
   // and every tap staged onto a seat the server would refuse — losing the
@@ -622,45 +666,6 @@ export function OrderScreen({
    * on the client is a number two tablets can choose identically.
    */
   const [addingMore, setAddingMore] = useState(false)
-
-  const billQueryKey = ['bills', sessionId] as const
-
-  /**
-   * The bill this session has, from the SERVER (code review 2026-10-13).
-   *
-   * This was two `useState` flags set by the generate mutation. Both died on a
-   * page refresh and neither existed on a second tablet, so the screen
-   * re-offered "Add More Items" on an order that was already billed — and the
-   * round that followed could never be put on any bill, because a session gets
-   * one. The server refuses such a round now, but a button that only fails
-   * when pressed is not an answer; the screen has to know before it draws.
-   *
-   * Seeded from the server render so there is no flash of `submitted` on an
-   * already-billed order, and refetched on window focus — the tablet a waiter
-   * returns to is the one most likely to be stale.
-   */
-  const { data: billState, error: billStateError } = useQuery({
-    queryKey: billQueryKey,
-    queryFn: () =>
-      seatRequest<{ bills: BillDetail[]; hasUnbilled: boolean }>(
-        `/api/sessions/${sessionId}/bills`,
-      ),
-    initialData: { bills: initialBills, hasUnbilled: initialHasUnbilled },
-    refetchOnWindowFocus: true,
-  })
-
-  const sessionBills = billState.bills
-  /** Seat ids that already have a bill of their own — for the seat chips. */
-  const billedSeatIds = new Set(
-    sessionBills.map((b) => b.seatSlotId).filter((id): id is string => id !== null),
-  )
-  /** A consolidated bill sweeps everything, so it closes every seat at once. */
-  const hasConsolidatedBill = sessionBills.some((b) => b.seatSlotId === null)
-
-  /** Can anything still be added to this seat? */
-  function seatIsBilled(seatId: string): boolean {
-    return hasConsolidatedBill || billedSeatIds.has(seatId)
-  }
 
   const { data: submittedRounds, error: ordersError } = useQuery({
     queryKey: ['orders', sessionId],
