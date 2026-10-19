@@ -1438,7 +1438,15 @@ export function OrderScreen({
   // static position. The floor screen hit that exact problem.
   return (
     // `slate-100` is the system's app background.
-    <div className="flex min-h-dvh flex-col bg-slate-100 md:h-dvh">
+    // ── Capped at the design's canvas ────────────────────────────────────
+    // The brief targets a 1194x834 waiter tablet and the design is drawn for
+    // exactly that. Without a cap the layout is fluid, so on a 1920px desktop
+    // the menu cards come out 240px against the 135px drawn — everything
+    // correct in proportion and half again too big.
+    //
+    // `mx-auto` centres the surplus. On the tablet itself this changes
+    // nothing: 1194 is the cap and the cap is the screen.
+    <div className="mx-auto flex min-h-dvh w-full max-w-[1194px] flex-col bg-slate-100 md:h-dvh">
       <OrderHeader
         zoneName={zoneName}
         tableLabel={displayLabel}
