@@ -1497,7 +1497,7 @@ export function OrderScreen({
               says what the choice MEANS, because "One bill" and "Separate
               bills" both sound reasonable to someone who has not thought about
               it yet. */}
-          <section className="flex shrink-0 flex-col gap-sp-2 border-b border-slate-200 p-sp-4">
+          <section className="flex shrink-0 flex-col gap-sp-2 border-b border-slate-200 px-sp-4 py-sp-3">
             {/* ONE segmented control in a tinted trough, not two separate
                 buttons: the design treats these as two states of a single
                 choice, and the selected one is a raised white card inside the
@@ -1505,7 +1505,7 @@ export function OrderScreen({
             <div
               role="group"
               aria-label="How this order is billed"
-              className="flex gap-sp-1 rounded-waiter bg-slate-100 p-sp-1"
+              className="flex gap-0.5 rounded-control bg-slate-100 p-0.5"
             >
               {([
                 { mode: 'one' as const, icon: Receipt, label: 'One bill' },
@@ -1520,7 +1520,13 @@ export function OrderScreen({
                     disabled={billModeMutation.isPending}
                     onClick={() => requestBillMode(mode)}
                     className={cn(
-                      'flex h-touch-kitchen flex-1 items-center justify-center gap-sp-2 rounded-control',
+                      // 44px — `touch-standard`, the system's floor for any
+                      // target, with a 2px trough: 48px all in against the
+                      // ~43px measured in the design. It was `touch-kitchen`
+                      // (56px) in a 4px trough, so 64px, and this control is
+                      // a one-off choice at the start of an order rather than
+                      // an action a waiter reaches for all service.
+                      'flex h-touch-standard flex-1 items-center justify-center gap-sp-2 rounded-chip',
                       'text-fs-16 font-bold transition-[transform,box-shadow] duration-120 ease-standard',
                       'active:scale-[0.97] disabled:opacity-60',
                       'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',
