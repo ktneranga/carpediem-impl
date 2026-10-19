@@ -43,16 +43,34 @@ import { cn } from '@/lib/utils'
 export function ActionStripShell({
   regionLabel,
   eyebrow,
+  icon,
   label,
+  secondary,
   detail,
   muted = false,
   children,
 }: {
   /** Names the landmark. "Selected table actions", "Order actions". */
   regionLabel: string
-  /** Small caps above the label — what KIND of thing this strip is about. */
-  eyebrow: string
+  /**
+   * Small caps above the label — what KIND of thing this strip is about.
+   *
+   * OPTIONAL since 2026-10-19. The order screen needs it: there it says
+   * "NOT SENT", a fact about the order that nothing else on the strip carries.
+   * The floor's said "SELECTED" above the name of the table the waiter had
+   * just tapped — the one thing already obvious — so the floor design drops it
+   * and leads with the table instead.
+   */
+  eyebrow?: string
+  /** A tile left of the text — on the floor, the selected table's zone icon. */
+  icon?: React.ReactNode
   label: string
+  /**
+   * Grey text beside the label, on the same line — the floor puts the zone and
+   * the seat count here. Separate from `detail` because this describes what
+   * the thing IS; detail describes what it is DOING.
+   */
+  secondary?: string
   detail?: string
   /**
    * A terminal state with nothing to do — a closed session.
@@ -74,21 +92,31 @@ export function ActionStripShell({
         muted ? 'bg-slate-100' : 'bg-white',
       )}
     >
-      <div aria-live="polite" className="flex min-w-0 flex-col gap-sp-1">
-        {/* slate-600, not slate-400 (2.56:1): on the order screen this eyebrow says
-            "NOT SENT", the one fact that must never be misread. */}
-        <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase">
-          {eyebrow}
-        </span>
-        <span
-          className={cn(
-            'truncate text-fs-18 font-bold tracking-title',
-            muted ? 'text-slate-600' : 'text-slate-900',
-          )}
-        >
-          {label}
-        </span>
-        {detail ? <span className="truncate text-fs-14 text-slate-600">{detail}</span> : null}
+      <div aria-live="polite" className="flex min-w-0 items-center gap-sp-3">
+        {icon}
+        <div className="flex min-w-0 flex-col gap-0.5">
+          {/* slate-600, not slate-400 (2.56:1): on the order screen this eyebrow
+              says "NOT SENT", the one fact that must never be misread. */}
+          {eyebrow ? (
+            <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase">
+              {eyebrow}
+            </span>
+          ) : null}
+          <span className="flex min-w-0 items-baseline gap-sp-2">
+            <span
+              className={cn(
+                'truncate text-fs-18 font-bold tracking-title',
+                muted ? 'text-slate-600' : 'text-slate-900',
+              )}
+            >
+              {label}
+            </span>
+            {secondary ? (
+              <span className="truncate text-fs-14 font-semibold text-slate-500">{secondary}</span>
+            ) : null}
+          </span>
+          {detail ? <span className="truncate text-fs-14 text-slate-600">{detail}</span> : null}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-sp-3">{children}</div>

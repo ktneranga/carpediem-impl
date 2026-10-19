@@ -2,14 +2,15 @@
 
 import { Receipt } from 'lucide-react'
 
-import { useState } from 'react'
+import { createElement, useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
   ActionStripShell,
   primaryButtonClass,
   secondaryButtonClass,
 } from '@/components/pos/action-strip-chrome'
-import { elapsed, mergedTitle } from '@/lib/format'
+import { zoneIcon } from '@/lib/design'
+import { elapsed, lkrFromPaisa, mergedTitle } from '@/lib/format'
 import type { StaffRole } from '@/server/auth/permissions'
 import type { TableGridRow } from '@/app/api/tables/route'
 
@@ -494,8 +495,12 @@ export function FloorActionStrip({
   if (table.status === 'unavailable') {
     return (
       <Shell
-        label={`${table.label} · out of service`}
-        detail={table.unavailableReason ?? 'No reason recorded'}
+        label={table.label}
+        secondary={tableSubtitle(table.zoneName, table.capacity)}
+        zoneName={table.zoneName}
+        // The status moves out of the title and into the line that was already
+        // explaining it: "B5 · out of service / Sun bed broken" said it twice.
+        detail={`Out of service · ${table.unavailableReason ?? 'no reason recorded'}`}
       >
         {/* Owner only. The 403 from /api/config is the enforcement — hiding the
             button is courtesy, so a waiter is not offered something that will
@@ -518,19 +523,29 @@ export function FloorActionStrip({
 
   if (table.status === 'occupied') {
     const groupLabels = groupTables.map((groupTable) => groupTable.label)
+    // Guests, time, money — what the design puts under the name, and the three
+    // questions actually asked about a table in service: how many, how long,
+    // how much. It was the ITEM COUNT before, which answers none of them, and
+    // the money was already on the card: a strip that stays silent about the
+    // figure the card is showing is worse than a terse one.
     const detail = [
       // The full list only when the title has had to truncate it. For a pair the
       // heading already reads `B2 + B3`, and repeating it underneath is noise.
       isMerged && groupTables.length > 2 ? groupLabels.join(' + ') : null,
+      table.coverCount != null ? `${table.coverCount} guests` : null,
       elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : null,
-      `${table.itemCount} item${table.itemCount === 1 ? '' : 's'}`,
+      // Absent rather than "LKR 0" — an order with nothing on it has no total,
+      // and a zero reads as a party who have ordered nothing in an hour.
+      table.totalPaisa ? lkrFromPaisa(table.totalPaisa) : null,
     ]
       .filter(Boolean)
       .join(' · ')
 
     return (
       <Shell
-        label={`${isMerged ? mergedTitle(groupLabels) : table.label} · occupied`}
+        label={isMerged ? mergedTitle(groupLabels) : table.label}
+        secondary={tableSubtitle(table.zoneName, table.capacity)}
+        zoneName={table.zoneName}
         detail={detail}
       >
         {canSeat ? (
@@ -593,14 +608,24 @@ export function FloorActionStrip({
 
   if (!canSeat) {
     return (
-      <Shell label={`${table.label} · ready to seat`} detail="Ready to seat">
+      <Shell
+        label={table.label}
+        secondary={tableSubtitle(table.zoneName, table.capacity)}
+        zoneName={table.zoneName}
+        detail="Ready to seat"
+      >
         <p className="text-fs-14 text-slate-600">Kitchen staff cannot seat or hold tables.</p>
       </Shell>
     )
   }
 
   return (
-    <Shell label={`${table.label} · no open order`} detail="Ready to seat">
+    <Shell
+      label={table.label}
+      secondary={tableSubtitle(table.zoneName, table.capacity)}
+      zoneName={table.zoneName}
+      detail="Ready to seat"
+    >
       <MoreMenu
         busy={busy}
         open={moreOpen}
@@ -653,16 +678,49 @@ function mergeButtonLabel(labels: string[]): string {
  */
 function Shell({
   label,
+  secondary,
   detail,
+  zoneName,
   children,
 }: {
   label: string
+  secondary?: string
   detail?: string
+  /** Present once a table is selected — draws that table's zone icon in the tile. */
+  zoneName?: string
   children?: React.ReactNode
 }) {
   return (
-    <ActionStripShell regionLabel="Selected table actions" eyebrow="Selected" label={label} detail={detail}>
+    <ActionStripShell
+      regionLabel="Selected table actions"
+      // No eyebrow. It read "SELECTED" directly above the name of the table the
+      // waiter had just tapped, restating the one thing they already knew, and
+      // cost a line the design gives to the table itself.
+      icon={zoneName ? zoneTile(zoneName) : undefined}
+      label={label}
+      secondary={secondary}
+      detail={detail}
+    >
       {children}
     </ActionStripShell>
   )
+}
+
+/** The same tile the card carries, so the strip and the card read as one thing. */
+function zoneTile(zoneName: string) {
+  return (
+    <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-brand-050 text-brand-500">
+      {/* `createElement`, not `<Icon />` — see table-card.tsx. */}
+      {createElement(zoneIcon(zoneName), {
+        'aria-hidden': 'true',
+        strokeWidth: 2.2,
+        className: 'size-6',
+      })}
+    </span>
+  )
+}
+
+/** "Bean Bags · 2 seats" — what the table IS, beside what it is called. */
+function tableSubtitle(zoneName: string, capacity: number | null) {
+  return capacity != null ? `${zoneName} · ${capacity} seats` : zoneName
 }

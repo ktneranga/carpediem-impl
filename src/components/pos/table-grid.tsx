@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createElement, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FloorHeader } from '@/components/pos/floor-header'
@@ -12,6 +12,7 @@ import { useSocketEvent, useSocketStatus } from '@/hooks/use-socket'
 import { signOut } from '@/lib/auth-client'
 import { elapsedMinutesFrom, useMinuteTick } from '@/hooks/use-minute-tick'
 import { clockTime, elapsed } from '@/lib/format'
+import { zoneIcon } from '@/lib/design'
 import { cn } from '@/lib/utils'
 import type { TableGridRow } from '@/app/api/tables/route'
 import type { TableStatusChangedPayload } from '@/types/tables'
@@ -982,6 +983,54 @@ export function TableGrid({
   // Merged sessions collapse to one card here, after the zone filter.
   const units = useMemo(() => toGridUnits(visibleTables), [visibleTables])
 
+  /**
+   * The grid split into one block per zone, each under its own heading.
+   *
+   * Only under "All zones". Picking a single zone makes the heading restate
+   * the tab that is already lit, so that case stays one unbroken grid.
+   *
+   * ── Why group at all ────────────────────────────────────────────────────
+   * Unzoned, "All zones" is a wall of cards whose only ordering is the one the
+   * API happened to return. A waiter reads the floor SPATIALLY — the sun beds
+   * are a place, not a filter — and the labels do not carry it: B3, S1 and
+   * Table 2 sitting adjacent says nothing about where any of them are.
+   *
+   * The counts come from `zones`, not from the units underneath. A merged
+   * party collapses several tables into one card, so counting cards would
+   * report a zone as smaller than it is every time two tables were pushed
+   * together.
+   */
+  const sections = useMemo(() => {
+    if (activeZoneId) {
+      return [{ key: activeZoneId, zoneName: null, occupied: 0, total: 0, units }]
+    }
+
+    const byZone = new Map<string, GridUnit[]>()
+    for (const unit of units) {
+      // By the unit's PRIMARY. A group is one card and belongs in one place;
+      // merges are same-zone anyway (FR62), so there is nothing to split.
+      const existing = byZone.get(unit.primary.zoneId)
+      if (existing) existing.push(unit)
+      else byZone.set(unit.primary.zoneId, [unit])
+    }
+
+    // In `zones` order, so sections keep their places as tables fill and
+    // empty rather than reshuffling under the waiter's hand.
+    return zones.flatMap((zone) => {
+      const zoneUnits = byZone.get(zone.id)
+      if (!zoneUnits) return []
+      return [
+        {
+          key: zone.id,
+          zoneName: zone.name,
+          occupied: zone.occupiedCount,
+          total: zone.tableCount,
+          units: zoneUnits,
+        },
+      ]
+    })
+  }, [activeZoneId, units, zones])
+
 
   /**
    * The selected unit — found by the table id, whether it is a single or a
@@ -1113,14 +1162,10 @@ export function TableGrid({
             setActiveZoneId(id)
             setSelectedTableId(null)
           }}
+          // Still passed though there is no Counter tab any more: while the
+          // counter list is showing, NO zone is being looked at, so "All zones"
+          // must not light up as though one were.
           counterActive={counterMode}
-          showCounter={canOpenCounterSales}
-          onCounterSelect={() => {
-            endMergeMode()
-            setSelectedTableId(null)
-            setActiveZoneId(null)
-            setCounterMode(true)
-          }}
         />
       </div>
 
@@ -1288,11 +1333,43 @@ export function TableGrid({
               : 'No tables are set up yet. Add zones and tables in settings, or run the seed.'}
           </p>
         ) : (
-          // The table grid is 5 columns with 12px gaps on tablet landscape, and
-          // steps down on anything narrower. A wrapping flex row gave ragged
-          // trailing rows, which reads as a list rather than a floor plan.
-          <div className="grid grid-cols-2 gap-sp-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {units.map((unit) => {
+          // Cards are a FIXED SIZE and the row holds as many as fit —
+          // `auto-fill` with a capped track, not `xl:grid-cols-5`.
+          //
+          // Column counts made the card a FRACTION OF THE SCREEN: the same
+          // five columns that are 174px each on the 1194px tablet the design
+          // is drawn for became 360px each on a desktop monitor, so the floor
+          // rendered as five enormous slabs. A table card is an object of a
+          // known size, like a key on a keyring — a wider screen should show
+          // MORE of them, not bigger ones.
+          //
+          // minmax so it still degrades: tracks cap at the drawn 174px and
+          // shrink to 152px rather than overflowing on a narrow phone.
+          <div className="flex flex-col gap-sp-5">
+            {sections.map((section) => (
+              <section key={section.key}>
+                {section.zoneName ? (
+                  <header className="flex items-baseline gap-sp-2 pb-sp-3">
+                    <span className="flex self-center text-slate-500">
+                      {/* `createElement`, not `<Icon />` — `zoneIcon()` returns a
+                          component, and using that result as JSX is what the
+                          compiler's "cannot create components during render"
+                          rule catches. */}
+                      {createElement(zoneIcon(section.zoneName), {
+                        'aria-hidden': 'true',
+                        strokeWidth: 2.2,
+                        className: 'size-5 shrink-0',
+                      })}
+                    </span>
+                    <h2 className="text-fs-16 font-bold text-slate-900">{section.zoneName}</h2>
+                    <span className="text-fs-12 font-semibold tabular-nums text-slate-500">
+                      {section.occupied} of {section.total} occupied
+                    </span>
+                  </header>
+                ) : null}
+
+                <div className="grid justify-start gap-sp-4 [grid-template-columns:repeat(auto-fill,minmax(152px,174px))]">
+            {section.units.map((unit) => {
               // Every action targets the group's primary row. For a single-table
               // unit that IS the table, so this collapses to the old behaviour.
               const table = unit.primary
@@ -1425,6 +1502,9 @@ export function TableGrid({
                 />
               )
             })}
+                </div>
+              </section>
+            ))}
           </div>
         )}
       </main>

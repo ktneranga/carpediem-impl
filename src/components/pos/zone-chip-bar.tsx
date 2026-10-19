@@ -1,6 +1,6 @@
 'use client'
 
-import { ConciergeBell } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { ALL_ZONES_ICON, zoneIcon } from '@/lib/design'
 import { cn } from '@/lib/utils'
 
@@ -28,20 +28,16 @@ export type ZoneChipBarProps = {
    * inside one or under "All zones" — mixing them in would make that tab a lie.
    */
   counterActive: boolean
-  onCounterSelect: () => void
-  /**
-   * Whether to show the Counter tab at all.
-   *
-   * Kitchen staff cannot open, read or close counter sales — `/api/sessions` is
-   * owner + waiter. Showing them the tab led somewhere that reads "No counter
-   * sales", indistinguishable from a genuinely empty bar, with a create button
-   * that always 403s.
-   */
-  showCounter: boolean
 }
 
 /**
  * Zone filter — one row of tabs with per-zone occupancy.
+ *
+ * ── Counter is NOT a tab here (2026-10-19) ───────────────────────────────────
+ * It used to be the last chip. It is not a zone: a counter sale occupies no
+ * table, appears under no zone filter and has no denominator, so sitting among
+ * tabs that all read "occupied of total" implied a place on the floor it does
+ * not have. It is a button in the floor header now, beside the legend.
  *
  * It FILTERS the grid; it does not navigate. There is no bottom tab bar
  * anywhere in this application at any level: navigation is linear and
@@ -67,8 +63,6 @@ export function ZoneChipBar({
   totalTableCount,
   onZoneChange,
   counterActive,
-  onCounterSelect,
-  showCounter,
 }: ZoneChipBarProps) {
   const tabBase = cn(
     'flex h-touch-waiter shrink-0 items-center gap-sp-3 rounded-control px-sp-5',
@@ -89,7 +83,7 @@ export function ZoneChipBar({
 
   function tab(
     key: string,
-    Icon: typeof ConciergeBell,
+    Icon: LucideIcon,
     name: string,
     count: string | null,
     isActive: boolean,
@@ -164,26 +158,6 @@ export function ZoneChipBar({
           `${zone.occupiedCount} of ${zone.tableCount} occupied`,
         ),
       )}
-
-      {/* Counter — orders belonging to no table at all (FR64).
-
-          DELIBERATELY COUNTLESS, and it stays that way under the new design.
-          Every tab above counts TABLES occupied out of tables that exist. A
-          counter sale occupies no table, so there is no denominator to show;
-          a bare number here would be active orders, read in an identically
-          -styled badge as though it were occupancy. The cards themselves say
-          how many there are, unambiguously. */}
-      {showCounter
-        ? tab(
-            'counter',
-            ConciergeBell,
-            'Counter',
-            null,
-            counterActive,
-            onCounterSelect,
-            'Counter sales, which occupy no table',
-          )
-        : null}
     </div>
   )
 }

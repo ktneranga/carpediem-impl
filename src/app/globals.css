@@ -278,13 +278,20 @@
   }
 }
 
-/* The 135° hatch at 10% red is the ONE exception to flat-colour-only: a pattern
-   used as a status carrier, so `unavailable` stays distinguishable from
-   `occupied` even if hue fails entirely (glare, greyscale, colour blindness). */
+/* The 135° hatch is the ONE exception to flat-colour-only: a pattern used as a
+   status carrier, so `unavailable` stays distinguishable from `occupied` even
+   if hue fails entirely (glare, greyscale, colour blindness).
+
+   GREY, not red (2026-10-19). It was red at 10%, which put an out-of-service
+   table and a table that has been open six hours in the same colour family —
+   and those two want opposite responses: ignore it, versus go and look at it
+   now. The design reserves red for "needs check" and draws out of service in
+   grey, so the hatch follows. The pattern still carries the state without
+   hue. */
 @utility hatch-unavailable {
   background-image: repeating-linear-gradient(
     135deg,
-    rgba(239, 68, 68, 0.10) 0 6px,
+    rgba(100, 116, 139, 0.16) 0 6px,
     transparent 6px 12px
   );
 }
