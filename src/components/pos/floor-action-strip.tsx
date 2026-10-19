@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
-  MoreMenu,
   ActionStripShell,
   primaryButtonClass,
   secondaryButtonClass,
@@ -121,7 +120,6 @@ export function FloorActionStrip({
   const [reasonOpen, setReasonOpen] = useState(false)
   const [customReason, setCustomReason] = useState('')
   const [unmergeOpen, setUnmergeOpen] = useState(false)
-  const [moreOpen, setMoreOpen] = useState(false)
 
   // Two or more tables on one session. Read from `groupTables` rather than the
   // row's own `groupTableLabels` so the strip and the grid agree on what a group
@@ -442,19 +440,16 @@ export function FloorActionStrip({
       >
         {canSeat ? (
           <>
-            {/* An OCCUPIED table cannot be taken out of service — there are
-                guests on it — so the menu carries only the un-merge here, and
-                renders nothing at all when there is nothing to put in it. */}
-            <MoreMenu
-              busy={busy}
-              open={moreOpen}
-              onOpenChange={setMoreOpen}
-              items={
-                isMerged
-                  ? [{ label: 'Un-merge this group', onClick: () => setUnmergeOpen(true) }]
-                  : []
-              }
-            />
+            {isMerged ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setUnmergeOpen(true)}
+                className={secondary}
+              >
+                Un-merge
+              </button>
+            ) : null}
             <button type="button" disabled={busy} onClick={onBeginMerge} className={secondary}>
               Merge
             </button>
@@ -464,7 +459,7 @@ export function FloorActionStrip({
               onClick={() => onOpenOrder(table.id)}
               className={primary}
             >
-              Open order
+              Add items
             </button>
           </>
         ) : (
@@ -484,18 +479,14 @@ export function FloorActionStrip({
 
   return (
     <Shell label={`${table.label} · no open order`} detail="Ready to seat">
-      <MoreMenu
-        busy={busy}
-        open={moreOpen}
-        onOpenChange={setMoreOpen}
-        items={[
-          {
-            label: 'Take out of service',
-            onClick: () => setReasonOpen(true),
-            danger: true,
-          },
-        ]}
-      />
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => setReasonOpen(true)}
+        className={secondary}
+      >
+        Take out of service
+      </button>
       {/* Pre-merge: stage the group BEFORE the order exists, so a party needing
           two tables is one session from the start rather than a merge after. */}
       <button type="button" disabled={busy} onClick={onBeginMerge} className={secondary}>

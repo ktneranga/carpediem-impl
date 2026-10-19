@@ -155,13 +155,6 @@
       "when": 1791868228580,
       "tag": "0021_bill_type_matches_seat",
       "breakpoints": true
-    },
-    {
-      "idx": 22,
-      "version": "7",
-      "when": 1792154533053,
-      "tag": "0022_wise_micromax",
-      "breakpoints": true
     }
   ]
 }

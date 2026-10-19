@@ -63,7 +63,6 @@ export default async function OrderPage({
       sessionId: orderSessions.id,
       openedAt: orderSessions.openedAt,
       coverCount: orderSessions.coverCount,
-      billMode: orderSessions.billMode,
       kind: orderSessions.kind,
       primaryTableId: orderSessions.tableId,
       tableId: tables.id,
@@ -116,10 +115,7 @@ export default async function OrderPage({
     : []
 
   const [config] = await db
-    .select({
-      taxRatePercent: tenantConfig.taxRatePercent,
-      serviceChargeBp: tenantConfig.serviceChargeBp,
-    })
+    .select({ taxRatePercent: tenantConfig.taxRatePercent })
     .from(tenantConfig)
     .limit(1)
 
@@ -185,15 +181,7 @@ export default async function OrderPage({
       itemCount={Number(items?.total ?? 0)}
       seats={seats}
       submittedRounds={submittedRounds}
-      // Basis points, like the bill stores them. `tax_rate_percent` is an
-      // integer percent, so it is converted here at the single place it is
-      // read — the same conversion `readRates` does on the server.
-      taxBp={(config?.taxRatePercent ?? 0) * 100}
-      serviceChargeBp={config?.serviceChargeBp ?? 0}
-      // What earns the service charge: tables attached NOW, not
-      // `order_sessions.kind`, which records only where the order started.
-      hasTableService={attached.length > 0}
-      initialBillMode={session.billMode}
+      taxRatePercent={config?.taxRatePercent ?? 0}
       initialBills={initialBills}
       initialHasUnbilled={initialHasUnbilled}
     />

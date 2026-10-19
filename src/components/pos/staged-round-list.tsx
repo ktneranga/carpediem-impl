@@ -97,10 +97,6 @@ export function StagedRoundList({
   ]
 
   const dishCount = lines.reduce((total, line) => total + line.quantity, 0)
-  const unsentPaisa = lines.reduce(
-    (total, line) => total + line.pricePaisa * line.quantity,
-    0,
-  )
 
   const stepperButton = cn(
     'flex size-touch-standard items-center justify-center rounded-control text-slate-900',
@@ -110,18 +106,9 @@ export function StagedRoundList({
 
   return (
     <section aria-label="Items not yet sent" className="flex flex-col gap-sp-2">
-      {/* The heading carries the money (2026-10-16 design). It is the figure
-          a waiter reads back to a guest mid-order — "that's four thousand two
-          hundred so far" — and it was previously only visible after scrolling
-          to the totals at the foot of the column. */}
-      <div className="flex items-baseline justify-between gap-sp-3">
-        <h2 className="text-fs-12 font-bold tracking-micro text-unsent-ink uppercase">
-          Not sent yet · {dishCount} item{dishCount === 1 ? '' : 's'}
-        </h2>
-        <span className="shrink-0 text-fs-14 font-extrabold tabular-nums text-unsent-ink">
-          {lkrFromPaisa(unsentPaisa)}
-        </span>
-      </div>
+      <h2 className="text-fs-12 font-bold tracking-micro text-unsent-ink uppercase">
+        Not sent · {dishCount} item{dishCount === 1 ? '' : 's'}
+      </h2>
 
       <ul className="flex flex-col gap-sp-1">
         {ordered.map((line) => {
@@ -132,13 +119,11 @@ export function StagedRoundList({
           const seatName =
             liveSeatName.get(line.seatSlotId) ?? (line.seatLabel || 'A removed seat')
 
-          // The PRICE is no longer one detail among several: the design
-          // gives it its own line under the name, because it is the thing
-          // being checked, and running it together with a seat label and a
-          // modifier made it the hardest part of the row to find.
-          const details = [showSeats ? seatName : null, line.modifierText || null].filter(
-            Boolean,
-          )
+          const details = [
+            showSeats ? seatName : null,
+            line.modifierText || null,
+            lkrFromPaisa(line.pricePaisa * line.quantity),
+          ].filter(Boolean)
 
           return (
             <li
@@ -147,21 +132,16 @@ export function StagedRoundList({
                 'flex flex-col gap-sp-2 rounded-control border px-sp-3 py-sp-2',
                 problem
                   ? 'border-2 border-unavailable-edge bg-unavailable-body'
-                  : 'border-occupied-line bg-unsent-body',
+                  : 'border-unsent-edge bg-unsent-body',
               )}
             >
               <div className="flex items-center gap-sp-2">
                 <div className="flex min-w-0 flex-1 flex-col">
                   <p className="truncate text-fs-16 font-bold text-slate-900">{line.name}</p>
-                  {/* The line total, on its own, directly under the name — the
-                      figure being checked. */}
-                  <p className="text-fs-14 font-semibold tabular-nums text-slate-600">
-                    {lkrFromPaisa(line.pricePaisa * line.quantity)}
-                  </p>
-                  {/* Seat and the kitchen note. The note is here so it can be
-                      checked before it goes; it wraps rather than truncates,
-                      because a clipped "no nuts — sev…" is worse than a taller
-                      row. */}
+                  {/* Seat, the kitchen note and the line total on one small
+                      line. The note is here so it can be checked before it
+                      goes; it wraps rather than truncates, because a clipped
+                      "no nuts — sev…" is worse than a taller row. */}
                   <p className="text-fs-12 font-semibold text-slate-600">
                     {details.map((detail, index) => (
                       <span key={index}>
@@ -247,7 +227,7 @@ export function StagedRoundList({
                       type="button"
                       onClick={() => onAcceptPrice(line.menuItemId, problem.currentPricePaisa)}
                       className={cn(
-                        'h-touch-kitchen self-start rounded-control bg-brand-800 px-sp-4',
+                        'h-touch-kitchen self-start rounded-control bg-brand-700 px-sp-4',
                         'text-fs-14 font-bold whitespace-nowrap text-white',
                         'transition-transform duration-80 ease-standard active:scale-[0.97]',
                         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',

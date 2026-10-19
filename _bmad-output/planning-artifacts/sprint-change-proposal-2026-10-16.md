@@ -1,3 +1,21 @@
+> ## ⛔ REVERTED 2026-10-19
+>
+> Teran reverted the whole redesign, this change with it. `order_sessions.bill_mode`,
+> `setBillMode`, the `/bill-mode` route and the switch are all gone from the code, and
+> `zoneUsesSeats()` is the rule again.
+>
+> **This document is kept, not deleted**, because the analysis in it outlived the code. The
+> finding that matters: the premise the change was raised on was WRONG. `openSession` has
+> always created "Seat 1" for every session regardless of zone, so `order_events.seat_slot_id`
+> was never null and a Bean Bags order already WAS a one-bill order. Anyone revisiting this
+> should start from §2 rather than re-deriving it.
+>
+> **One loose end on the dev database:** migration 0022 was applied before the revert, so the
+> `bill_mode` column still physically exists there, and `__drizzle_migrations` still has its
+> row. Both are harmless — the column is `NOT NULL DEFAULT 'one'` and nothing reads it, and
+> drizzle ignores a recorded migration with no matching file. A fresh install is clean. Drop
+> the column if the tidiness is worth a migration.
+
 # Sprint Change Proposal — "One bill / Separate bills" replaces zone-decided seats
 
 **Date:** 2026-10-16

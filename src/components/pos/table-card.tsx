@@ -1,9 +1,8 @@
 'use client'
 
-import { createElement } from 'react'
-import { AlertTriangle, Ban, Split } from 'lucide-react'
-import { STATUS_TONES, zoneIcon, type TableStatus } from '@/lib/design'
-import { elapsed, lkrCompact, lkrFromPaisa, mergedTitle } from '@/lib/format'
+import { Clock, Split } from 'lucide-react'
+import { STATUS_TONES, type TableStatus } from '@/lib/design'
+import { elapsed, lkrFromPaisa, mergedTitle } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 export type { TableStatus }
@@ -15,33 +14,19 @@ export type TableCardProps = {
   status: TableStatus
   /** Seat count from `tables.capacity`. Absent on tables never given one. */
   capacity?: number | null
-  /** Guests seated, from `order_sessions.cover_count`. Absent with no session. */
-  coverCount?: number | null
   elapsedMinutes?: number
   itemCount?: number
   /**
    * What the open order has run up, in paisa. Undefined when there is no session.
    *
-   * Rendered COMPACT here ("LKR 4.3k"): the figure is a glance-value for a
-   * waiter crossing the floor, not a sum anyone reconciles against, and the
-   * exact rupees are two taps away on the order screen. The accessible name
-   * still reads the full amount.
-   *
-   * It is the sum of what was sent, at the prices quoted — NOT a bill. Service
-   * charge, tax and comps are Epic 6's, and none of them is in this number.
+   * On the card because the mockup puts it there: a waiter crossing the floor
+   * can see what a table is standing at without opening it. It is the sum of
+   * what was sent, at the prices quoted — NOT a bill. Service charge, tax,
+   * comps and discounts are Epic 6's, and none of them is in this number.
    */
   totalPaisa?: number
-  /** Why the table is out of service. Shown under the label. */
+  /** Why the table is out of service. Shown under "Not in service". */
   unavailableReason?: string | null
-  /**
-   * Occupied for longer than the floor's stale threshold.
-   *
-   * A DERIVED display state, not a status in the database — "occupied" that
-   * has gone on too long. Decided by the grid, which owns the threshold, for
-   * the same reason `merged` is: one card re-deriving it from its own
-   * `elapsedMinutes` would drift from the heading count beside it.
-   */
-  needsCheck?: boolean
   selected?: boolean
   /** Staged for a merge — distinct from `selected`, which marks the anchor. */
   pendingMerge?: boolean
@@ -74,37 +59,15 @@ export type TableCardProps = {
   onSelect: () => void
 }
 
-/**
- * One table on the floor.
- *
- * ── The 2026-10-16 design ────────────────────────────────────────────────────
- * Replaces the full-width coloured band with a filled ZONE-ICON TILE in the
- * corner and a tinted body. The band carried the status word across the whole
- * card top; the tile carries the same hue in a quarter of the space, which is
- * what buys room for the three facts the new design leads with — how long,
- * how full, how much.
- *
- * ── Colour is still never alone ──────────────────────────────────────────────
- * The rule survives the restyle, because it is an accessibility requirement
- * rather than a visual preference:
- *   · occupied    — a duration, top right. Nothing else shows a clock.
- *   · open        — a green dot AND "N seats". A dot alone would be hue only.
- *   · needs check — a warning glyph and the words "Still open? Check".
- *   · unavailable — a slashed circle, the hatch pattern, and the words.
- * Every state is legible in greyscale, and the accessible name below reads the
- * same facts in the same order.
- */
 export function TableCard({
   label,
   zoneName,
   status,
   capacity,
-  coverCount,
   elapsedMinutes,
   itemCount,
   totalPaisa,
   unavailableReason,
-  needsCheck = false,
   selected = false,
   pendingMerge = false,
   groupLabels = [],
@@ -113,11 +76,8 @@ export function TableCard({
   onSelect,
 }: TableCardProps) {
   const tone = STATUS_TONES[status]
+  const StatusIcon = tone.icon
   const showOccupiedDetail = status === 'occupied' && elapsedMinutes !== undefined
-
-  // `needsCheck` only means anything while occupied. A grid that passed it on
-  // an open table would otherwise paint an empty table red.
-  const stale = needsCheck && status === 'occupied'
 
   // `capacity` arrives already SUMMED for a group — the card does not add it up,
   // because only the grid knows which rows belong to the session.
@@ -136,23 +96,28 @@ export function TableCard({
   //
   // A tap now means "select this table"; the action strip decides what can be
   // done with it. Selecting an unavailable table is not only valid, it is the
-  // only way an owner reaches "Return to service".
+  // only way an owner reaches "Return to service". So the card is operable
+  // again, and `aria-disabled` is gone — it would now be a lie, because the
+  // button does have an effect.
+  //
+  // The state is still unmistakable: red band, hatched body, "Not in service",
+  // and an accessible name that says unavailable. What changed is that
+  // unusable-for-seating no longer means unusable-as-a-control.
 
   // Accessible name carries the same facts the card shows, in the same order —
   // except that it names EVERY table in a group even when the visible title has
-  // degraded to `Table 1 +2`, and it reads the FULL amount rather than the
-  // compact one, because "four point three thousand rupees" is not a number
-  // anyone wants read to them.
+  // degraded to `Table 1 +2`. A screen-reader user must not be the only person
+  // on the floor who cannot find out which tables the party is sitting at.
   const spokenName = isMerged ? `${spokenList(groupLabels)}, merged` : label
   const accessibleName = [
     spokenName,
-    stale ? 'needs check' : tone.label.toLowerCase(),
+    tone.label.toLowerCase(),
     showOccupiedDetail ? elapsed(elapsedMinutes) : null,
-    status === 'occupied' && coverCount != null
-      ? `${coverCount} of ${capacity ?? coverCount} guests`
-      : null,
+    // The same facts the card shows, in the same order — the money and the
+    // out-of-service reason included, or a screen-reader user would be the only
+    // person on the floor who cannot tell what a table is standing at, or why
+    // it is off the floor.
     status === 'occupied' && totalPaisa ? lkrFromPaisa(totalPaisa) : null,
-    status === 'open' && capacity != null ? `${capacity} seats` : null,
     status === 'unavailable' && unavailableReason ? unavailableReason : null,
   ]
     .filter(Boolean)
@@ -165,151 +130,140 @@ export function TableCard({
       aria-label={accessibleName}
       // NOT aria-pressed. Selection here is mutually exclusive and cannot be
       // toggled off, so "pressed" promised a state change the control could not
-      // deliver. aria-current marks "this is the one in context" without
-      // implying a togglable state; the action strip carries the consequence.
+      // deliver — activating a selected card did nothing and announced nothing.
+      // aria-current marks "this is the one in context" without implying a
+      // togglable state; the action strip carries the consequence.
       aria-current={selected || undefined}
       className={cn(
-        'relative flex h-26 flex-col justify-between overflow-hidden rounded-card border p-sp-3 text-left',
+        // Saturated band + tinted body + matching edge, so status reads without
+        // focusing. `overflow-hidden` is what lets the band meet the 20px corner
+        // cleanly instead of poking a square shoulder through it.
+        //
+        // 152px, raised from 120px on 2026-09-20: a merged occupied card now
+        // carries four lines — the timer, the items, the running total and the
+        // group — and at 120px the last of them was clipped by the
+        // `overflow-hidden` above, silently and only on the busiest cards.
+        'relative flex h-38 flex-col overflow-hidden rounded-card border-2 text-left',
         // Only from `sm` up. At two columns a spanning card would be the entire
         // row, which on a phone-width viewport is just a card with no neighbours.
         wide && 'sm:col-span-2',
         'transition-[transform,box-shadow] duration-120 ease-standard',
         'active:scale-[0.97] active:shadow-pressed',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-        // Body tint carries the status; the hatch keeps `unavailable` legible
-        // if hue fails entirely (glare, greyscale, colour blindness).
-        status === 'unavailable'
-          ? 'hatch-unavailable bg-slate-100'
-          : stale
-            ? 'bg-unavailable-body'
-            : status === 'occupied'
-              ? 'bg-occupied-body'
-              : 'bg-white',
-        // Selection is a RING, not a recolour: the status tint has to survive
-        // being selected, or the waiter loses the one fact they selected it for.
+        // Three states, in priority order: the merge anchor, a table staged into
+        // the merge, or neither. Staged tables get a dashed brand border so they
+        // read as "about to join" rather than "already selected".
         selected
-          ? 'border-2 border-brand-500 shadow-selected'
+          ? 'border-brand-500 shadow-selected'
           : pendingMerge
-            ? 'border-2 border-dashed border-brand-500 shadow-el-2'
-            : cn(
-                'shadow-el-1',
-                status === 'unavailable'
-                  ? 'border-slate-200'
-                  : stale
-                    ? 'border-unavailable-edge'
-                    : status === 'occupied'
-                      ? 'border-occupied-line'
-                      : 'border-slate-200',
-              ),
+            ? 'border-dashed border-brand-500 shadow-el-2'
+            : cn(tone.edge, 'shadow-el-1'),
       )}
     >
-      {/* Top row — the zone tile, and the one fact that distinguishes the state. */}
-      <span className="flex items-start justify-between gap-sp-2">
-        <span
-          className={cn(
-            'flex size-9 shrink-0 items-center justify-center rounded-control',
-            // Filled while the table is in use, tinted while it is free. The
-            // fill is what reads from across the room.
-            status === 'unavailable'
-              ? 'bg-slate-200 text-slate-400'
-              : stale
-                ? 'bg-unavailable-edge text-white'
-                : status === 'occupied'
-                  ? 'bg-occupied-edge text-white'
-                  : 'bg-brand-050 text-brand-500',
-          )}
-        >
-          {/* `createElement`, not `<ZoneIcon />`: `zoneIcon()` RETURNS a
-              component, and calling it during render then using the result as
-              JSX is what the compiler's "cannot create components during
-              render" rule exists to catch. Same icon, no new component
-              identity on every render. */}
-          {createElement(zoneIcon(zoneName), {
-            'aria-hidden': 'true',
-            strokeWidth: 2.2,
-            className: 'size-5',
-          })}
-        </span>
-
-        {status === 'occupied' ? (
-          stale ? (
-            <span className="flex items-center gap-sp-1 pt-0.5 text-fs-12 font-bold text-unavailable-band">
-              <AlertTriangle aria-hidden="true" strokeWidth={2.5} className="size-3.5 shrink-0" />
-              Open {elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : '—'}
-            </span>
-          ) : (
-            <span className="pt-0.5 text-fs-12 font-bold tabular-nums text-occupied-ink">
-              {elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : '—'}
-            </span>
-          )
-        ) : status === 'unavailable' ? (
-          <Ban aria-hidden="true" strokeWidth={2.2} className="mt-0.5 size-4 shrink-0 text-slate-400" />
-        ) : (
-          // A free table's whole message is "nothing here yet", so the dot is
-          // the entire top-right. It is never alone: "N seats" sits below it.
-          <span
-            aria-hidden="true"
-            className="mt-1.5 size-2.5 shrink-0 rounded-pill bg-open-edge"
-          />
+      {/* Band — the half a waiter reads from ten metres. */}
+      <span
+        className={cn(
+          'flex shrink-0 items-center justify-between gap-sp-2 px-sp-3 py-sp-2',
+          // brand-700, not brand-500: white text on brand-500 is 3.9:1 and fails
+          // AA at these sizes, the same trap the --*-band tokens exist to avoid.
+          selected ? 'bg-brand-700' : tone.band,
         )}
-      </span>
-
-      {/* The label, and underneath it whatever this state has to say. */}
-      <span className="flex flex-col gap-0.5">
-        <span className="truncate text-fs-24 font-extrabold tracking-title text-slate-900">
+      >
+        <span className="truncate text-fs-18 font-extrabold tracking-title text-white">
           {title}
         </span>
-
-        {status === 'occupied' ? (
-          stale ? (
-            <span className="truncate text-fs-12 font-bold text-unavailable-band">
-              Still open? Check
-            </span>
-          ) : (
-            <span className="flex items-baseline justify-between gap-sp-2">
-              <span className="truncate text-fs-12 font-semibold tabular-nums text-occupied-ink">
-                {coverCount != null
-                  ? `${coverCount}/${capacity ?? coverCount} guests`
-                  : itemCount !== undefined
-                    ? `${itemCount} item${itemCount === 1 ? '' : 's'}`
-                    : 'No items yet'}
-              </span>
-              {/* Absent rather than "LKR 0" before anything is sent: an order
-                  with nothing on it has no total, and a zero reads as a table
-                  that has been sitting an hour ordering nothing. */}
-              {totalPaisa ? (
-                <span className="shrink-0 text-fs-12 font-extrabold tabular-nums text-occupied-ink">
-                  {lkrCompact(totalPaisa)}
-                </span>
-              ) : null}
-            </span>
-          )
-        ) : status === 'unavailable' ? (
-          <span className="truncate text-fs-12 font-semibold text-slate-600">
-            {unavailableReason || 'Out of service'}
-          </span>
-        ) : (
-          <span className="text-fs-12 font-semibold tabular-nums text-slate-600">
-            {capacity != null ? `${capacity} seats` : 'Ready to seat'}
-          </span>
-        )}
-
-        {/* Which other tables the party is on. Named rather than counted: a
-            waiter looking at `B1 +2` otherwise has to open the card to find out
-            where the party is sitting. */}
-        {isMerged ? (
-          <span className="flex items-center gap-sp-1 truncate text-fs-12 font-semibold text-slate-600">
-            <Split aria-hidden="true" strokeWidth={2.5} className="size-3 shrink-0" />
-            <span className="truncate">
-              {showFullGroup
-                ? groupLabels.join(' + ')
-                : `With ${groupLabels.filter((other) => other !== label).join(', ')}`}
-            </span>
-          </span>
-        ) : null}
+        {/* The word, always — and now the glyph beside it, which is the design
+            system's "colour is never alone" rule taken to the letter. Hue is
+            accompanied by the label; the label is not optional — so selection
+            is carried by the border, elevation and halo, and never by replacing
+            the one thing that must not be misread. */}
+        <span className="flex shrink-0 items-center gap-sp-1 text-fs-12 font-semibold tracking-micro text-white uppercase">
+          <StatusIcon aria-hidden="true" strokeWidth={2.5} className="size-3.5" />
+          {tone.label}
+        </span>
       </span>
 
-      <span className="sr-only">{zoneName}</span>
+      {/* Body — tinted, and hatched on unavailable so the state survives even if
+          hue fails entirely (glare, greyscale, colour blindness). */}
+      <span
+        className={cn(
+          'relative flex flex-1 flex-col justify-center gap-sp-1 px-sp-3 py-sp-2',
+          selected ? 'bg-white' : tone.body,
+          status === 'unavailable' && 'hatch-unavailable',
+        )}
+      >
+        {status === 'occupied' ? (
+          <>
+            {/* The clock, from the mockup. How long a party has been sitting is
+                the first thing read on an occupied card, and the glyph is what
+                lets it be read as a duration rather than as a quantity. */}
+            <span className={cn('flex items-center gap-sp-1 text-fs-16 font-bold tabular-nums', tone.ink)}>
+              <Clock aria-hidden="true" strokeWidth={2.5} className="size-4 shrink-0" />
+              {elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : '—'}
+            </span>
+            <span className={cn('truncate text-fs-12 tabular-nums', tone.ink)}>
+              {itemCount !== undefined ? `${itemCount} item${itemCount === 1 ? '' : 's'}` : 'No items yet'}
+              {/* `seats` is the group's COMBINED capacity — the number needed to
+                  place a party of seven, which nobody could get before without
+                  adding up cards in their head. The mockup reads "3 covers"
+                  here; covers are not captured anywhere yet (see the note in
+                  `deferred-work.md`), and a card that says "1 cover" on every
+                  table would be worse than one that says what it knows. */}
+              {capacity != null ? ` · seats ${capacity}` : ''}
+            </span>
+            {/* The running total, the mockup's most prominent line after the
+                title. Absent rather than "LKR 0" before anything is sent: an
+                order with nothing on it has no total, and a zero reads as a
+                table that has been sitting for an hour ordering nothing. */}
+            {totalPaisa ? (
+              <span className={cn('text-fs-18 font-extrabold tabular-nums', tone.ink)}>
+                {lkrFromPaisa(totalPaisa)}
+              </span>
+            ) : null}
+            {/* Which other tables the party is on. The mockup writes it
+                "Merged with T07"; with more than one other table the labels are
+                listed instead, because naming them is the whole point — a
+                waiter looking at `B1 +2` otherwise has to open the card to find
+                out where the party is sitting. */}
+            {isMerged ? (
+              <span className={cn('flex items-center gap-sp-1 truncate text-fs-12 font-semibold', tone.ink)}>
+                <Split aria-hidden="true" strokeWidth={2.5} className="size-3.5 shrink-0" />
+                <span className="truncate">
+                  {showFullGroup
+                    ? groupLabels.join(' + ')
+                    : `Merged with ${groupLabels.filter((other) => other !== label).join(', ')}`}
+                </span>
+              </span>
+            ) : null}
+          </>
+        ) : status === 'unavailable' ? (
+          <>
+            <span className={cn('text-fs-14 font-semibold', tone.ink)}>Not in service</span>
+            {/* The REASON, which the API has always returned and the card has
+                never shown — "Sun bed broken" in the mockup. Without it an owner
+                has to open the table to find out why it is off the floor, and
+                the person who took it off already typed the answer. */}
+            {unavailableReason ? (
+              <span className={cn('truncate text-fs-12', tone.ink)}>{unavailableReason}</span>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <span
+              className={cn('text-fs-16 font-semibold', selected ? 'text-slate-900' : tone.ink)}
+            >
+              Ready to seat
+            </span>
+            {capacity != null ? (
+              <span className={cn('text-fs-12 tabular-nums', selected ? 'text-slate-600' : tone.ink)}>
+                Seats {capacity}
+              </span>
+            ) : null}
+          </>
+        )}
+
+        <span className="sr-only">{zoneName}</span>
+      </span>
     </button>
   )
 }
@@ -317,9 +271,9 @@ export function TableCard({
 /**
  * `B2 and B3`, `B2, B3 and B4` — for the accessible name only.
  *
- * Separate from `mergedTitle` on purpose: that one truncates to fit a card, and
- * truncation is a visual compromise that should not follow a table into speech,
- * where there is no width to run out of.
+ * Separate from `mergedTitle` on purpose: that one truncates to fit a card band,
+ * and truncation is a visual compromise that should not follow a table into
+ * speech, where there is no width to run out of.
  */
 function spokenList(labels: string[]): string {
   if (labels.length <= 1) return labels[0] ?? ''

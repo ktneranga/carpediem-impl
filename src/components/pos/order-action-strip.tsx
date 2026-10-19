@@ -1,15 +1,10 @@
 'use client'
 
-import { useState } from 'react'
-import { Receipt } from 'lucide-react'
-import { cn } from '@/lib/utils'
-
 import {
   ActionStripShell,
   primaryButtonClass,
   secondaryButtonClass,
   sendButtonClass,
-  MoreMenu,
 } from '@/components/pos/action-strip-chrome'
 
 /**
@@ -74,17 +69,6 @@ export type OrderActionStripProps = {
   sendBlocked?: boolean
   busy?: boolean
   onSubmitOrder?: () => void
-  /**
-   * Items for the "More" menu (2026-10-16 design).
-   *
-   * The destructive actions live here rather than on the row: "Clear unsent
-   * items" throws away a round the waiter has just typed, and "Close table —
-   * walkout" ends the sitting. Both were one tap from Send, at the same size.
-   *
-   * Passed as data rather than as buttons so the strip keeps deciding its own
-   * layout — the same reason `onClear` is a callback and not a node.
-   */
-  moreItems?: { label: string; onClick: () => void; danger?: boolean }[]
   onClear?: () => void
   onAddMoreItems?: () => void
   onGenerateBill?: () => void
@@ -98,12 +82,10 @@ export function OrderActionStrip({
   sendBlocked = false,
   busy = false,
   onSubmitOrder,
-  moreItems = [],
   onClear,
   onAddMoreItems,
   onGenerateBill,
 }: OrderActionStripProps) {
-  const [moreOpen, setMoreOpen] = useState(false)
   // Terminal. No buttons at all — not disabled ones, which invite a tap and
   // teach nothing — and a muted shell so it reads as finished rather than as an
   // order waiting for input.
@@ -205,14 +187,6 @@ export function OrderActionStrip({
           note ?? (destinationSummary ? `→ ${destinationSummary}` : 'Nothing has gone to the kitchen yet.')
         }
       >
-        {moreItems.length > 0 ? (
-          <MoreMenu
-            busy={busy}
-            open={moreOpen}
-            onOpenChange={setMoreOpen}
-            items={moreItems}
-          />
-        ) : null}
         {onClear ? (
           <button
             type="button"
@@ -235,28 +209,6 @@ export function OrderActionStrip({
 
             Story 4.4 stages items without wiring submission; 4.5 passes the
             handler and Send appears. */}
-        {/* "Bill & split" sits beside Send while items are still staged, as
-            the design draws it. It generates the bill; the SPLIT half of the
-            name is Stories 6.1/6.3 and the screen it should open does not
-            exist yet, so for now this is the same action the `submitted`
-            state offers, in the position the design puts it. */}
-        {onGenerateBill ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onGenerateBill}
-            className={cn(
-              'flex h-touch-waiter items-center gap-sp-2 rounded-waiter px-sp-5',
-              'border border-brand-500 bg-brand-050 text-fs-16 font-bold text-brand-800',
-              'transition-[transform,box-shadow] duration-80 ease-standard',
-              'active:scale-[0.97] active:shadow-pressed disabled:opacity-40',
-              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-            )}
-          >
-            <Receipt aria-hidden="true" strokeWidth={2.2} className="size-5 shrink-0" />
-            Bill &amp; split
-          </button>
-        ) : null}
         {onSubmitOrder ? (
           <button
             type="button"
@@ -264,22 +216,7 @@ export function OrderActionStrip({
             onClick={onSubmitOrder}
             className={sendButtonClass}
           >
-            {busy ? (
-              'Sending…'
-            ) : (
-              // Two lines, as the design draws it: the COUNT is the decision
-              // and the stations are the consequence. On one line the
-              // stations pushed the count off-centre on a long routing
-              // ("Send 3 to Kitchen + Pizza + Bar").
-              <span className="flex flex-col items-center leading-tight">
-                <span>
-                  Send {stagedCount} item{stagedCount === 1 ? '' : 's'}
-                </span>
-                <span className="text-fs-12 font-semibold opacity-90">
-                  to {destinationSummary ?? 'the kitchen'}
-                </span>
-              </span>
-            )}
+            {busy ? 'Sending…' : `Send ${stagedCount} to ${destinationSummary ?? 'the kitchen'}`}
           </button>
         ) : null}
       </ActionStripShell>

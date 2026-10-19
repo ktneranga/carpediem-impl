@@ -172,26 +172,6 @@ export const ROUTES = {
 export type RouteKey = keyof typeof ROUTES
 
 /**
- * The glyph for a production destination.
- *
- * Separate from `ROUTES` because that table is colour and wording, and a
- * component that wants only the icon should not have to know which key of a
- * style object happens to hold it. The menu card shows it beside the station
- * name so the route survives greyscale and colour blindness — the same
- * "colour is never alone" rule the table cards follow.
- */
-export function routeIcon(
-  destination: 'kitchen' | 'pizza_kitchen' | 'bar',
-): LucideIcon {
-  // Same mapping `routeForDestination` uses, deliberately spelled out rather
-  // than shared through a helper: two three-line switches are easier to keep
-  // honest than an indirection that hides which key maps to what.
-  if (destination === 'pizza_kitchen') return Pizza
-  if (destination === 'bar') return Beer
-  return UtensilsCrossed
-}
-
-/**
  * `menu_items.production_destination` → its route.
  *
  * The database says `pizza_kitchen`; the design system says `pizza`. One map,

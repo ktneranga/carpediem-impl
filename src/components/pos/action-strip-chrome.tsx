@@ -115,7 +115,7 @@ export function ActionStripShell({
  */
 export const primaryButtonClass = cn(
   'h-touch-waiter min-w-40 rounded-waiter px-sp-5 text-fs-16 font-bold tracking-title',
-  'bg-brand-800 text-white shadow-el-2 inset-shadow-top',
+  'bg-brand-700 text-white shadow-el-2 inset-shadow-top',
   'transition-[transform,box-shadow] duration-80 ease-standard',
   'active:scale-[0.97] active:bg-brand-500 active:shadow-pressed',
   'disabled:opacity-40 disabled:active:scale-100',
@@ -142,7 +142,7 @@ export const secondaryButtonClass = cn(
  */
 export const commitButtonClass = cn(
   'h-touch-waiter w-full rounded-waiter px-sp-5 text-fs-18 font-extrabold tracking-title',
-  'bg-brand-800 text-white shadow-el-2 inset-shadow-top',
+  'bg-brand-700 text-white shadow-el-2 inset-shadow-top',
   'transition-[transform,box-shadow] duration-80 ease-standard',
   'active:scale-[0.99] active:shadow-pressed',
   'disabled:opacity-40 disabled:active:scale-100',
@@ -170,101 +170,9 @@ export const commitButtonClass = cn(
  */
 export const sendButtonClass = cn(
   'h-touch-waiter min-w-64 rounded-waiter px-sp-6 text-fs-18 font-extrabold tracking-title',
-  'bg-brand-800 text-white shadow-el-2 inset-shadow-top',
+  'bg-brand-700 text-white shadow-el-2 inset-shadow-top',
   'transition-[transform,box-shadow] duration-80 ease-standard',
   'active:scale-[0.97] active:bg-brand-500 active:shadow-pressed',
   'disabled:opacity-40 disabled:active:scale-100',
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700',
 )
-
-/**
- * The "More" menu (2026-10-16 design).
- *
- * ── Why a menu rather than another button on the row ────────────────────
- * "Take out of service" used to sit on the main row of every free table,
- * one tap from "Start order" and the same size. Teran asked for it behind a
- * menu precisely because of that: taking a table off the floor by accident
- * is quiet — the card goes grey, the table stops being offered, and nobody
- * notices until a party is standing in front of it.
- *
- * So the destructive item is two taps away, last in the list, and red. It
- * still leads to the reason prompt, which is the real confirmation.
- *
- * The design's other two items — "Move to another table" and "Reprint last
- * ticket" — are NOT here. Neither feature exists, and a menu item that does
- * nothing is the dead-control defect this project has shipped twice.
- */
-export function MoreMenu({
-  items,
-  busy,
-  open,
-  onOpenChange,
-}: {
-  items: { label: string; onClick: () => void; danger?: boolean }[]
-  busy: boolean
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  if (items.length === 0) return null
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        disabled={busy}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => onOpenChange(!open)}
-        className={secondaryButtonClass}
-      >
-        More
-      </button>
-
-      {open ? (
-        <>
-          {/* Tap-away closes it. A transparent full-screen layer rather than
-              a blur listener, so a tap that dismisses the menu does not also
-              activate whatever was underneath it. */}
-          <button
-            type="button"
-            aria-label="Close menu"
-            onClick={() => onOpenChange(false)}
-            className="fixed inset-0 z-10 cursor-default"
-          />
-          <div
-            role="menu"
-            className={cn(
-              'absolute right-0 bottom-full z-20 mb-sp-2 min-w-60 overflow-hidden',
-              'rounded-waiter border border-slate-200 bg-white shadow-el-2',
-            )}
-          >
-            {items.map((item, index) => (
-              <button
-                key={item.label}
-                type="button"
-                role="menuitem"
-                disabled={busy}
-                onClick={() => {
-                  onOpenChange(false)
-                  item.onClick()
-                }}
-                className={cn(
-                  'flex h-touch-kitchen w-full items-center px-sp-4 text-left text-fs-16 font-semibold',
-                  'transition-colors duration-80 ease-standard',
-                  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',
-                  // The destructive item is separated by a rule as well as
-                  // coloured, so it is not reached by muscle memory alone.
-                  index > 0 && 'border-t border-slate-200',
-                  item.danger
-                    ? 'text-unavailable-band active:bg-unavailable-body'
-                    : 'text-slate-900 active:bg-slate-100',
-                )}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </>
-      ) : null}
-    </div>
-  )
-}

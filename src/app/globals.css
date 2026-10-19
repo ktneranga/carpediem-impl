@@ -30,29 +30,6 @@
      selected states, primary buttons, breadcrumbs, chart series — never as a
      decorative wash. Maximum two background colours per screen. */
   --color-brand-900: #0C4257;
-  /* The PRIMARY dark, and the design's most-used colour: every filled button,
-     the active zone tab, Send and Settle.
-
-     Added 2026-10-16 after sampling Teran's screenshots pixel by pixel. It
-     appears 5,456 times on the floor design and 4,439 on order entry;
-     brand-700 appears 177 and 55 times, which is the antialiasing around
-     THIS colour's edges. The order-entry brief names it directly - "Send
-     button (80px, brand-800)" - and the slot did not exist in this file.
-
-     Sits between brand-900 and brand-700. 8.6:1 on white, so white text
-     clears AA at every size we use. */
-  --color-brand-800: #12556F;
-  /* ── Verified against the 2026-10-16 screenshots ─────────────────────────
-     The palette here was checked by COUNTING PIXELS in all eight designs,
-     not by eye. Every screen without a modal is 86-90% exact against these
-     tokens and 95-97% once antialiasing is allowed for, so the remainder is
-     text edges and shadows rather than colours this file is missing.
-
-     The three payment-panel screens measure 33% exact, which is not a gap:
-     a dimmed backdrop is a TRANSPARENCY. Solving the blend from two known
-     surfaces gives alpha 0.500 on all three channels and #0F1729 - slate-900
-     at 50%, one unit off in blue from rounding. Full-screen overlays use
-     `bg-slate-900/50`, and that is measured rather than guessed. */
   --color-brand-700: #1A6A8C;
   --color-brand-500: #2288B4;   /* primary */
   --color-brand-300: #6EC1E4;
@@ -85,11 +62,6 @@
 
   --color-occupied-edge: #F59E0B;
   --color-occupied-chip: #FEF3C7;
-  /* The amber BORDER on an occupied card and an unsent order line, distinct
-     from --occupied-edge which FILLS the icon tile. The design pairs an
-     amber-500 fill with an amber-300 outline; using the fill as a border made
-     every occupied card shout. */
-  --color-occupied-line: #FCD34D;
   --color-occupied-body: #FFFBEB;
   --color-occupied-ink:  #7C4A03;
   --color-occupied-band: #B45309;   /* 5.04:1 with white; --edge was 2.15:1 */
@@ -224,7 +196,6 @@
 @layer base {
   :root {
     --color-brand-900: #0C4257;
-    --color-brand-800: #12556F;
     --color-brand-700: #1A6A8C;
     --color-brand-500: #2288B4;
     --color-brand-300: #6EC1E4;
@@ -246,7 +217,6 @@
 
     --color-occupied-edge: #F59E0B;
     --color-occupied-chip: #FEF3C7;
-    --color-occupied-line: #FCD34D;
     --color-occupied-body: #FFFBEB;
     --color-occupied-ink:  #7C4A03;
     --color-occupied-band: #B45309;

@@ -15,12 +15,7 @@ import {
   tenantConfig,
 } from '@/server/db/schema'
 import { lockOpenSession } from '@/server/services/table-session.service'
-import type { BillDetail, BillLineDetail } from '@/types/bills'
-// Moved to `@/lib/bill-math` so the order screen can preview the same totals
-// the bill will charge, without a second implementation (AC-10).
-import { computeBillTotals } from '@/lib/bill-math'
-
-export { computeBillTotals }
+import type { BillDetail, BillLineDetail, BillTotals } from '@/types/bills'
 
 /** Drizzle transaction handle. */
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -124,6 +119,59 @@ export class BillTooLargeError extends Error {}
 
 /** The largest value a PostgreSQL `integer` column holds. */
 const MAX_INT4 = 2_147_483_647
+
+/**
+ * The money, computed in ONE place (AC-2).
+ *
+ * ── Why a pure function, exported ────────────────────────────────────────────
+ * Story 6.4 (per-seat bills) and 6.5 (payments) both need these numbers. If
+ * each computed them itself, a seat bill and a consolidated bill for the same
+ * table could disagree about the service charge and nothing would catch it.
+ * There is one implementation and callers hand it a subtotal.
+ *
+ * ── Round ONCE, never per line ───────────────────────────────────────────────
+ * Rounding each line and summing produces a bill that disagrees with its own
+ * arithmetic by a few paisa, which the guest notices before you do. Each of the
+ * two roundings below happens on a single whole-bill figure.
+ *
+ * ── Order matters ────────────────────────────────────────────────────────────
+ * Service is on the subtotal; tax is on subtotal + service. Reversing them is a
+ * different total.
+ *
+ * ── `hasTableService`, not `kind` ────────────────────────────────────────────
+ * The caller decides this from the session's ATTACHED TABLES. See
+ * `collectBillable` for why `order_sessions.kind` is the wrong input (AC-3).
+ *
+ * Basis points: 1000 = 10.00%. `taxBp` is derived from the integer
+ * `tax_rate_percent` by the caller — see `readRates`.
+ */
+export function computeBillTotals({
+  subtotalPaisa,
+  serviceChargeBp,
+  taxBp,
+  hasTableService,
+}: {
+  subtotalPaisa: number
+  serviceChargeBp: number
+  taxBp: number
+  hasTableService: boolean
+}): BillTotals {
+  const appliedServiceBp = hasTableService ? serviceChargeBp : 0
+  const serviceChargePaisa = Math.round((subtotalPaisa * appliedServiceBp) / 10_000)
+  const taxPaisa = Math.round(((subtotalPaisa + serviceChargePaisa) * taxBp) / 10_000)
+
+  return {
+    subtotalPaisa,
+    serviceChargePaisa,
+    taxPaisa,
+    totalPaisa: subtotalPaisa + serviceChargePaisa + taxPaisa,
+    // The rates APPLIED, not the rates configured. A counter sale stores 0, so
+    // the bill explains why it has no service line without anyone having to
+    // know what the tenant's rate was that evening.
+    serviceChargeBp: appliedServiceBp,
+    taxBp,
+  }
+}
 
 /**
  * The tenant's two rates, both as basis points.

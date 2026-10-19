@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { MenuCategoryRow, MenuItemRow } from '@/app/api/menu/route'
 import type { MenuItemUpdatedPayload } from '@/server/socket/events'
-import { Search, X } from 'lucide-react'
 import { MenuCategoryChips } from '@/components/pos/menu-category-chips'
 import { MenuItemCard } from '@/components/pos/menu-item-card'
 import { useSocketEvent } from '@/hooks/use-socket'
@@ -170,19 +169,9 @@ export function MenuBrowser({
         .filter((category) => effectiveCategoryId === null || category.id === effectiveCategoryId)
         .map((category) => ({
           ...category,
-          // 86'd dishes sort to the END of their category (2026-10-16
-          // design). They stay visible — a waiter asked for the fish needs to
-          // see that it is off, not fail to find it — but they stop holding a
-          // grid position the hand has learned, which is how a waiter taps a
-          // dead card reaching for the one that used to be there.
-          //
-          // `sort` on a copy: the array belongs to the query cache, and
-          // sorting it in place would reorder every other reader of the same
-          // object and survive re-renders.
-          items: (needle
+          items: needle
             ? category.items.filter((item) => item.name.toLowerCase().includes(needle))
-            : [...category.items]
-          ).sort((a, b) => Number(b.available) - Number(a.available)),
+            : category.items,
         }))
         // An empty category is noise while SEARCHING and a real configuration
         // fact while browsing — which is why `/api/menu` pays for a LEFT JOIN to
@@ -221,47 +210,18 @@ export function MenuBrowser({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-sp-3" aria-label="Menu">
-      {/* 56px with a leading glyph and a clear button (2026-10-16 design).
-          Down from 80px: at `touch-waiter` height the field dominated a column
-          that is mostly menu, and it is a keyboard target rather than a
-          one-handed action button — `touch-kitchen` (56px) is still well over
-          the 44px floor. */}
-      <div className="relative shrink-0">
-        <Search
-          aria-hidden="true"
-          strokeWidth={2.2}
-          className="pointer-events-none absolute top-1/2 left-sp-4 size-5 -translate-y-1/2 text-slate-400"
-        />
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search menu"
-          aria-label="Search the menu"
-          className={cn(
-            'h-touch-kitchen w-full rounded-control border border-slate-200 bg-white',
-            'pr-12 pl-12 text-fs-16 text-slate-900 placeholder:text-slate-400 shadow-el-1',
-            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-            // The browser's own clear affordance is ~14px and inconsistent
-            // across engines; this one is a real target.
-            '[&::-webkit-search-cancel-button]:appearance-none',
-          )}
-        />
-        {search !== '' ? (
-          <button
-            type="button"
-            aria-label="Clear the search"
-            onClick={() => setSearch('')}
-            className={cn(
-              'absolute top-1/2 right-sp-2 flex size-10 -translate-y-1/2 items-center justify-center',
-              'rounded-control text-slate-400 active:bg-slate-100',
-              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-            )}
-          >
-            <X aria-hidden="true" strokeWidth={2.4} className="size-5" />
-          </button>
-        ) : null}
-      </div>
+      <input
+        type="search"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder="Search the menu — two letters is enough"
+        aria-label="Search the menu"
+        className={cn(
+          'h-touch-waiter w-full shrink-0 rounded-control border border-slate-200 bg-white px-sp-4',
+          'text-fs-18 text-slate-900 placeholder:text-slate-400 shadow-el-1',
+          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+        )}
+      />
 
       <MenuCategoryChips
         // Counts are of what the category can be ORDERED from right now — not
@@ -319,18 +279,11 @@ export function MenuBrowser({
                     {category.name}
                   </h2>
 
-                  {/* Five columns on the waiter tablet (2026-10-16 design),
-                      falling back to whatever fits on a narrower screen. The
-                      previous `minmax(210px,1fr)` gave three on a 1194px
-                      tablet; the cards are shorter now and the design asks for
-                      five, so the floor drops to 150px and `auto-fill` still
-                      protects small screens. */}
-                  {/* 112px minimum: measured off the design, where the menu
-                      pane is ~610px inside its padding and holds five cards
-                      with 12px gaps (5x112 + 4x12 = 608). `minmax(150px)` gave
-                      four. `auto-fill` still collapses gracefully on a
-                      narrower screen. */}
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-sp-3">
+                  {/* As many 210px+ cards as the menu column fits — three on
+                      a tablet, more on a wide screen. Fixed breakpoints stopped
+                      making sense once the column's width became a ratio of the
+                      screen rather than the screen itself. */}
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-sp-3">
                     {category.items.map((item) => (
                       <MenuItemCard
                         key={item.id}
