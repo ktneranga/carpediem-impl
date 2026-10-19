@@ -1438,15 +1438,7 @@ export function OrderScreen({
   // static position. The floor screen hit that exact problem.
   return (
     // `slate-100` is the system's app background.
-    // ── Capped at the design's canvas ────────────────────────────────────
-    // The brief targets a 1194x834 waiter tablet and the design is drawn for
-    // exactly that. Without a cap the layout is fluid, so on a 1920px desktop
-    // the menu cards come out 240px against the 135px drawn — everything
-    // correct in proportion and half again too big.
-    //
-    // `mx-auto` centres the surplus. On the tablet itself this changes
-    // nothing: 1194 is the cap and the cap is the screen.
-    <div className="mx-auto flex min-h-dvh w-full max-w-[1194px] flex-col bg-slate-100 md:h-dvh">
+    <div className="flex min-h-dvh flex-col bg-slate-100 md:h-dvh">
       <OrderHeader
         zoneName={zoneName}
         tableLabel={displayLabel}
@@ -1468,16 +1460,11 @@ export function OrderScreen({
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* ── The menu ─────────────────────────────────────────────────────── */}
-        {/* 2 : 1 — the menu takes two thirds and the order column one third.
-            Measured off the 2026-10-16 design: the right panel runs x=668 to
-            x=1002 on a 1002px canvas, which is exactly a third. It was 3 : 1
-            (Teran, 2026-09-16), and at that ratio the order column could not
-            hold a line name, its price and a stepper without wrapping.
-
-            Flex growth with a zero basis, so the ratio holds at every width;
-            `min-w-80` stops the order column being squeezed below what four
-            seat buttons need on a small tablet. */}
-        <main className="flex min-h-0 flex-1 flex-col p-sp-4 md:min-w-0 md:flex-[2_2_0%]">
+        {/* 3 : 1 — the menu takes three parts of the width and the order
+            column one (Teran, 2026-09-16). Flex growth with a zero basis, so
+            the ratio holds at every width; `min-w-80` stops the order column
+            being squeezed below what four seat buttons need on a small tablet. */}
+        <main className="flex min-h-0 flex-1 flex-col p-sp-4 md:min-w-0 md:flex-[3_3_0%]">
           <MenuBrowser
             onAdd={(item) => stageItem(item, activeSeat)}
             onOpenModifiers={openModifiers}
@@ -1505,7 +1492,7 @@ export function OrderScreen({
               says what the choice MEANS, because "One bill" and "Separate
               bills" both sound reasonable to someone who has not thought about
               it yet. */}
-          <section className="flex shrink-0 flex-col gap-sp-2 border-b border-slate-200 px-sp-4 py-sp-3">
+          <section className="flex shrink-0 flex-col gap-sp-2 border-b border-slate-200 p-sp-4">
             {/* ONE segmented control in a tinted trough, not two separate
                 buttons: the design treats these as two states of a single
                 choice, and the selected one is a raised white card inside the
@@ -1513,7 +1500,7 @@ export function OrderScreen({
             <div
               role="group"
               aria-label="How this order is billed"
-              className="flex gap-0.5 rounded-control bg-slate-100 p-0.5"
+              className="flex gap-sp-1 rounded-waiter bg-slate-100 p-sp-1"
             >
               {([
                 { mode: 'one' as const, icon: Receipt, label: 'One bill' },
@@ -1528,13 +1515,7 @@ export function OrderScreen({
                     disabled={billModeMutation.isPending}
                     onClick={() => requestBillMode(mode)}
                     className={cn(
-                      // 44px — `touch-standard`, the system's floor for any
-                      // target, with a 2px trough: 48px all in against the
-                      // ~43px measured in the design. It was `touch-kitchen`
-                      // (56px) in a 4px trough, so 64px, and this control is
-                      // a one-off choice at the start of an order rather than
-                      // an action a waiter reaches for all service.
-                      'flex h-touch-standard flex-1 items-center justify-center gap-sp-2 rounded-chip',
+                      'flex h-touch-kitchen flex-1 items-center justify-center gap-sp-2 rounded-control',
                       'text-fs-16 font-bold transition-[transform,box-shadow] duration-120 ease-standard',
                       'active:scale-[0.97] disabled:opacity-60',
                       'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',

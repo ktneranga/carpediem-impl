@@ -66,7 +66,7 @@ export function MenuItemCard({
           : `${item.name}, off today`
       }
       className={cn(
-        'relative flex min-h-28 flex-col justify-between gap-sp-3 rounded-waiter border p-sp-4 text-left',
+        'relative flex min-h-25 flex-col justify-between gap-sp-2 rounded-waiter border p-sp-3 text-left',
         'transition-[transform,box-shadow] duration-120 ease-standard',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
         item.available
@@ -130,11 +130,8 @@ export function MenuItemCard({
         <span className="flex items-end justify-between gap-sp-2">
           <span
             className={cn(
-              // slate-900, not slate-600: in the design the price is as dark
-              // as the dish name. It is half of what the card exists to say,
-              // and grey made it the quietest thing on it.
-              'text-fs-14 font-bold tabular-nums',
-              item.available ? 'text-slate-900' : 'text-slate-400',
+              'text-fs-14 font-semibold tabular-nums',
+              item.available ? 'text-slate-600' : 'text-slate-400',
             )}
           >
             {lkrFromPaisa(item.pricePaisa)}

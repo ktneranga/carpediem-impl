@@ -1062,10 +1062,7 @@ export function TableGrid({
   // never pushes it down to fill min-h-screen, so with one zone of four tables
   // the strip rendered mid-screen with white space beneath it.
   return (
-    // Capped at the design's 1194px canvas, like the order screen. See the
-    // note there: fluid layout on a desktop makes every card half again the
-    // size it is drawn at, and the brief targets a tablet.
-    <div className="mx-auto flex min-h-screen w-full max-w-[1194px] flex-col">
+    <div className="flex min-h-screen flex-col">
       <ContextHeader
         restaurantName={restaurantName}
         staffName={staffName}
