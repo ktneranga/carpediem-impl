@@ -46,6 +46,7 @@ export function ActionStripShell({
   label,
   detail,
   muted = false,
+  quiet = false,
   children,
 }: {
   /** Names the landmark. "Selected table actions", "Order actions". */
@@ -62,6 +63,17 @@ export function ActionStripShell({
    * invites a tap and teaches nothing.
    */
   muted?: boolean
+  /**
+   * Hide the left-hand text column, leaving only the buttons.
+   *
+   * The FLOOR strip needs it — it is the only place that says which table is
+   * selected and what it is standing at. The ORDER strip does not: the header
+   * already names the table and the panel beside it already shows the money,
+   * so the eyebrow, label and detail were a third copy taking the space the
+   * design gives to More. `label` is still required and still reaches screen
+   * readers through the region's accessible name.
+   */
+  quiet?: boolean
   children?: React.ReactNode
 }) {
   return (
@@ -74,6 +86,11 @@ export function ActionStripShell({
         muted ? 'bg-slate-100' : 'bg-white',
       )}
     >
+      {quiet ? (
+        // Not rendered, but not lost: the region is still named, so a screen
+        // reader entering the strip hears what it is for.
+        <span className="sr-only">{`${label}${detail ? `. ${detail}` : ''}`}</span>
+      ) : (
       <div aria-live="polite" className="flex min-w-0 flex-col gap-sp-1">
         {/* slate-600, not slate-400 (2.56:1): on the order screen this eyebrow says
             "NOT SENT", the one fact that must never be misread. */}
@@ -90,6 +107,7 @@ export function ActionStripShell({
         </span>
         {detail ? <span className="truncate text-fs-14 text-slate-600">{detail}</span> : null}
       </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-sp-3">{children}</div>
     </div>

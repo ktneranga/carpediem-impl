@@ -1460,11 +1460,16 @@ export function OrderScreen({
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* ── The menu ─────────────────────────────────────────────────────── */}
-        {/* 3 : 1 — the menu takes three parts of the width and the order
-            column one (Teran, 2026-09-16). Flex growth with a zero basis, so
-            the ratio holds at every width; `min-w-80` stops the order column
-            being squeezed below what four seat buttons need on a small tablet. */}
-        <main className="flex min-h-0 flex-1 flex-col p-sp-4 md:min-w-0 md:flex-[3_3_0%]">
+        {/* 2 : 1 — the menu takes two thirds and the order column one third.
+            Measured off the 2026-10-16 design: the right panel runs x=668 to
+            x=1002 on a 1002px canvas, which is exactly a third. It was 3 : 1
+            (Teran, 2026-09-16), and at that ratio the order column could not
+            hold a line name, its price and a stepper without wrapping.
+
+            Flex growth with a zero basis, so the ratio holds at every width;
+            `min-w-80` stops the order column being squeezed below what four
+            seat buttons need on a small tablet. */}
+        <main className="flex min-h-0 flex-1 flex-col p-sp-4 md:min-w-0 md:flex-[2_2_0%]">
           <MenuBrowser
             onAdd={(item) => stageItem(item, activeSeat)}
             onOpenModifiers={openModifiers}

@@ -54,9 +54,13 @@ export function MenuCategoryChips({
             // list" (ux:417). "All items" is never a toggle.
             onClick={() => onSelect(isActive && chip.id !== null ? null : chip.id)}
             className={cn(
-              // The 56px touch token — the floor for waiter controls — and the system's
-              // pill radius, not Tailwind's `rounded-full`.
-              'flex h-touch-kitchen shrink-0 items-center gap-sp-2 rounded-pill border px-sp-5',
+              // 44px — `touch-standard`, the system's floor for any target.
+              // These were `touch-kitchen` (56px), which is the floor for a
+              // WAITER ACTION; a filter chip is navigation, and at 56px the
+              // row ate the space the menu needed. The design draws them at
+              // roughly 40px, so this is the nearest token that still clears
+              // the accessibility floor rather than matching the pixel.
+              'flex h-touch-standard shrink-0 items-center gap-sp-2 rounded-pill border px-sp-4',
               'text-fs-14 font-bold whitespace-nowrap',
               'transition-[transform,box-shadow] duration-120 ease-standard',
               'active:scale-[0.97] active:shadow-pressed',

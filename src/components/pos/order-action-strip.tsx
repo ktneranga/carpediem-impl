@@ -148,6 +148,7 @@ export function OrderActionStrip({
         regionLabel="Order actions"
         eyebrow="Order"
         label="Order sent"
+        quiet
         detail="Sent to the kitchen. Add another round, or generate the bill."
       >
         {/* NOT disabled by `busy`. Opening a new round is local and harmless,
@@ -193,8 +194,11 @@ export function OrderActionStrip({
     return (
       <ActionStripShell
         regionLabel="Order actions"
-        // "Not sent" is the eyebrow because it is the one fact that must never
-        // be misread on this screen: the kitchen does not have these yet.
+        // `quiet`: the design's footer is More on the left and the two
+        // actions on the right, nothing else. The count and the money the
+        // eyebrow used to carry are both in the order panel directly above,
+        // where the waiter is already looking.
+        quiet
         eyebrow="Not sent"
         label={
           stagedCount === 0

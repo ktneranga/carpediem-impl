@@ -239,7 +239,7 @@ export function MenuBrowser({
           placeholder="Search menu"
           aria-label="Search the menu"
           className={cn(
-            'h-touch-kitchen w-full rounded-control border border-slate-200 bg-white',
+            'h-12 w-full rounded-control border border-slate-200 bg-white',
             'pr-12 pl-12 text-fs-16 text-slate-900 placeholder:text-slate-400 shadow-el-1',
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
             // The browser's own clear affordance is ~14px and inconsistent
@@ -325,12 +325,19 @@ export function MenuBrowser({
                       tablet; the cards are shorter now and the design asks for
                       five, so the floor drops to 150px and `auto-fill` still
                       protects small screens. */}
-                  {/* 112px minimum: measured off the design, where the menu
-                      pane is ~610px inside its padding and holds five cards
-                      with 12px gaps (5x112 + 4x12 = 608). `minmax(150px)` gave
-                      four. `auto-fill` still collapses gracefully on a
-                      narrower screen. */}
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-sp-3">
+                  {/* FIVE columns, fixed — not `auto-fill`.
+                      
+                      `auto-fill` with a 112px minimum was the bug: it packs in
+                      as many columns as fit, so a 1002px design canvas gave
+                      five but a real 1920px screen gave eleven, each one a
+                      sliver. The cards did not look too short, there were too
+                      many of them.
+                      
+                      Fixed columns make the card grow with the pane instead,
+                      which is what the design does. Stepped down on narrow
+                      screens so a phone-width viewport is not five 60px
+                      slivers either. */}
+                  <div className="grid grid-cols-2 gap-sp-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                     {category.items.map((item) => (
                       <MenuItemCard
                         key={item.id}
