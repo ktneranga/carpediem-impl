@@ -1226,7 +1226,7 @@ export function OrderScreen({
 
   if (sessionClosed || signedOut) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-sp-4 bg-slate-100 p-sp-5 text-center">
+      <div className="min-h-app flex flex-col items-center justify-center gap-sp-4 bg-slate-100 p-sp-5 text-center">
         <p className="text-fs-24 font-extrabold tracking-title text-slate-900">
           {sessionClosed ? `${displayLabel} was closed on another device` : 'You were signed out'}
         </p>
@@ -1264,7 +1264,7 @@ export function OrderScreen({
   // static position. The floor screen hit that exact problem.
   return (
     // `slate-100` is the system's app background.
-    <div className="flex min-h-dvh flex-col bg-slate-100 md:h-dvh">
+    <div className="min-h-app flex flex-col bg-slate-100 md:h-app">
       <OrderHeader
         tableLabel={displayLabel}
         contextLine={contextLine}

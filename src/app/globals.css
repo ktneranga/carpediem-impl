@@ -273,11 +273,47 @@
   );
 }
 
-/* ── Base ─────────────────────────────────────────────────────────────────── */
+/* ── UI scale ───────────────────────────────────────────────────────────────
+   Everything renders at 90% (Teran, 2026-10-19).
+
+   The design is drawn for a 1194x834 waiter tablet. The layout is fluid, so
+   on a wider screen every card, button and bar grows in proportion and the
+   whole thing reads heavier than it was drawn. One knob is easier to tune
+   than forty token values, and it keeps the px tokens honest: a card is
+   still "112px" in the source, it is just painted at 101.
+
+   `zoom`, not `transform: scale()`. Scale paints smaller without reflowing,
+   so the layout still occupies its full-size box and leaves a gap; zoom
+   changes layout, so the grid genuinely fits more and the page ends where
+   the content ends.
+
+   TRADE-OFF, stated plainly: this scales touch targets too. The system's
+   44px floor paints at 40px and the 56px waiter floor at 50px. On a tablet
+   in a busy service that is a real cost, and it is the reason to tune this
+   number rather than push it lower.
+
+   Change the one value to retune. 1 restores the original. */
+:root {
+  --app-zoom: 0.9;
+}
+
 body {
+  zoom: var(--app-zoom);
   background-color: var(--color-slate-100);
   color: var(--color-slate-900);
   font-family: var(--font-sans);
+}
+
+/* Viewport units are resolved against the REAL viewport, before zoom — so a
+   `100dvh` box inside a zoomed body paints at 90% of the screen and leaves a
+   strip at the bottom. These divide it back out. Use them instead of
+   `min-h-dvh` / `h-dvh` / `min-h-screen` on any full-height shell. */
+.min-h-app {
+  min-height: calc(100dvh / var(--app-zoom));
+}
+
+.h-app {
+  height: calc(100dvh / var(--app-zoom));
 }
 
 [data-theme="night"] body {

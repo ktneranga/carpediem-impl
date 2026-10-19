@@ -46,7 +46,7 @@ export default function LoginPage() {
   )
 
   return (
-    <div className="flex min-h-screen bg-slate-100">
+    <div className="min-h-app flex bg-slate-100">
       {/*
         Brand panel. No logo was supplied with the design system, so the mark is
         the name set in Inter 800 with RMS tracked out beneath — the system's own

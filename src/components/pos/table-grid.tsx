@@ -1018,7 +1018,7 @@ export function TableGrid({
   // never pushes it down to fill min-h-screen, so with one zone of four tables
   // the strip rendered mid-screen with white space beneath it.
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="min-h-app flex flex-col">
       <ContextHeader
         restaurantName={restaurantName}
         staffName={staffName}
