@@ -76,6 +76,12 @@ export type OrderActionStripProps = {
   onClear?: () => void
   onAddMoreItems?: () => void
   onGenerateBill?: () => void
+  /**
+   * Ends the sitting. Wording is the caller's because only it knows whether
+   * anything is owed — "Close table" against "Close table — walkout".
+   */
+  onCloseTable?: () => void
+  closeLabel?: string
 }
 
 export function OrderActionStrip({
@@ -89,15 +95,25 @@ export function OrderActionStrip({
   onClear,
   onAddMoreItems,
   onGenerateBill,
+  onCloseTable,
+  closeLabel = 'Close table',
 }: OrderActionStripProps) {
   const [moreOpen, setMoreOpen] = useState(false)
 
   // What the design's row no longer has room for — and nothing invented to
-  // fill it out. Clear throws away a staged round, so it is marked destructive
-  // and sits last.
+  // fill it out.
+  //
+  // The design also draws "Move to another table" and "Reprint last round".
+  // Neither feature exists, so neither is here: a menu item that does nothing
+  // is the dead-control defect this project has already shipped twice. They
+  // go in the day they have something to call.
+  //
+  // Ordered least to most destructive, with the one that ends the sitting
+  // last, separated by a rule and red.
   const moreItems = [
     ...(onAddMoreItems ? [{ label: 'Add another round', onClick: onAddMoreItems }] : []),
-    ...(onClear ? [{ label: 'Clear this round', onClick: onClear, danger: true }] : []),
+    ...(onClear ? [{ label: 'Clear unsent items', onClick: onClear }] : []),
+    ...(onCloseTable ? [{ label: closeLabel, onClick: onCloseTable, danger: true }] : []),
   ]
 
   // Terminal. No buttons at all — not disabled ones, which invite a tap and

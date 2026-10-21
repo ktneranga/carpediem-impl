@@ -63,6 +63,7 @@ export default async function OrderPage({
       sessionId: orderSessions.id,
       openedAt: orderSessions.openedAt,
       coverCount: orderSessions.coverCount,
+      billMode: orderSessions.billMode,
       kind: orderSessions.kind,
       primaryTableId: orderSessions.tableId,
       tableId: tables.id,
@@ -115,7 +116,13 @@ export default async function OrderPage({
     : []
 
   const [config] = await db
-    .select({ taxRatePercent: tenantConfig.taxRatePercent })
+    .select({
+      taxRatePercent: tenantConfig.taxRatePercent,
+      // Epic 6 added this for the bill. The order screen previews the
+      // same charge so the figure a waiter reads out matches the one
+      // that gets printed.
+      serviceChargeBp: tenantConfig.serviceChargeBp,
+    })
     .from(tenantConfig)
     .limit(1)
 
@@ -182,6 +189,8 @@ export default async function OrderPage({
       seats={seats}
       submittedRounds={submittedRounds}
       taxRatePercent={config?.taxRatePercent ?? 0}
+      serviceChargeBp={config?.serviceChargeBp ?? 0}
+      initialBillMode={session.billMode}
       initialBills={initialBills}
       initialHasUnbilled={initialHasUnbilled}
     />

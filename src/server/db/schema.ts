@@ -281,6 +281,9 @@ export const menuItems = pgTable('menu_items', {
 
 // ── Orders ────────────────────────────────────────────────────────────────────
 
+/** Whether an order tracks people. See `orderSessions.billMode`. */
+export const billModeEnum = pgEnum('bill_mode', ['one', 'separate'])
+
 export const orderSessions = pgTable('order_sessions', {
   id:               uuid('id').primaryKey().defaultRandom(),
   tenantId:         uuid('tenant_id').notNull().references(() => tenants.id),
@@ -294,6 +297,37 @@ export const orderSessions = pgTable('order_sessions', {
   openedAt:         timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
   closedAt:         timestamp('closed_at', { withTimezone: true }),
   coverCount:       integer('cover_count').notNull().default(1),
+  /**
+   * Whether this order is tracking PEOPLE (Teran, 2026-10-16; restored
+   * 2026-10-21 after the 92f2491 revert took it out with the rest of a
+   * redesign).
+   *
+   * ── One question, not two ──────────────────────────────────────────────
+   * `one`      — a non-seat order. The waiter sees no seat anywhere: no chips,
+   *              no seat on a line, no seat column in the history, and no seat
+   *              line on the kitchen ticket. "Seat 1" still exists in
+   *              `seat_slots` for every session (openSession has always made
+   *              one) and is simply never named on screen. One person settles
+   *              the whole table.
+   * `separate` — the seat picker appears, items are added per person, and
+   *              Story 6.4 issues a bill per seat at the end.
+   *
+   * ── Why STORED, not derived from the seat count ────────────────────────
+   * "More than one seat means separate bills" is wrong in the case that
+   * matters: a party of four paying together may still want four seats so the
+   * kitchen knows whose fish is whose. Seats answer "how many people are we
+   * tracking"; this answers "how many bills will there be". Collapsing the two
+   * loses the distinction the switch exists to make.
+   *
+   * ── Why no migration to order_events ───────────────────────────────────
+   * `order_events.seat_slot_id` was never null and still is not. This column
+   * changes what is DRAWN, not what is stored, which is why Story 6.4's
+   * per-seat billing and its Trap 2 are untouched.
+   *
+   * Replaces `zoneUsesSeats()` as the rule; that helper survives as the
+   * default this starts from.
+   */
+  billMode:         billModeEnum('bill_mode').notNull().default('one'),
 }, (t) => [
   index('idx_order_sessions_tenant_id').on(t.tenantId),
   index('idx_order_sessions_table_id').on(t.tableId),
