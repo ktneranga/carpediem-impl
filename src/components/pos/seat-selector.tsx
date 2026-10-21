@@ -85,135 +85,138 @@ export function SeatSelector({
   )
 
   return (
-    <div className="flex flex-col gap-sp-2">
-      <p className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
-        Items land on the selected seat
-      </p>
+    // ── No caption above the row (Teran, 2026-10-21) ─────────────────────────
+    // It read "ITEMS LAND ON THE SELECTED SEAT" and cost a line of the order
+    // column on every render, to explain a rule a waiter learns on the first
+    // table and never needs told again. The filled chip carries it now: one
+    // seat is lit and the rest are not, which is the whole statement.
+    //
+    // `aria-label` on the group keeps it for a screen reader, where there is
+    // no "lit" to see and the sighted shorthand does not exist.
+    //
+    // no-scrollbar: overflowing seats stay reachable by swipe without a
+    // scrollbar eating vertical space on a tablet — the same treatment the
+    // zone bar and the category chips use.
+    <div
+      role="group"
+      aria-label="Seats on this order — items land on the selected one"
+      className="no-scrollbar flex gap-sp-2 overflow-x-auto py-sp-1"
+    >
+      {seats.map((seat) => {
+        const isActive = seat.id === activeSeatId
+        const isEditing = seat.id === editingSeatId
+        const count = stagedCountBySeat.get(seat.id) ?? 0
+        const isBilled = billedSeatIds?.has(seat.id) ?? false
+        // The note is what the waiter recognises; the number is the fallback.
+        const shown = seat.seatNote ?? seat.seatLabel
+        const spoken = seat.seatNote ? `${seat.seatLabel}, ${seat.seatNote}` : seat.seatLabel
+        // Everything the chip now says with a badge or a strike-through, said
+        // in words — struck-through text and a missing badge are both silent.
+        const state = isBilled
+          ? count === 0
+            ? 'billed'
+            : `billed, ${count} still staged`
+          : count === 0
+            ? 'empty'
+            : `${count} item${count === 1 ? '' : 's'}`
 
-      {/* no-scrollbar: overflowing seats stay reachable by swipe without a
-          scrollbar eating vertical space on a tablet — the same treatment the
-          zone bar and the category chips use. */}
-      <div
-        role="group"
-        aria-label="Seats on this order"
-        className="no-scrollbar flex gap-sp-2 overflow-x-auto py-sp-1"
-      >
-        {seats.map((seat) => {
-          const isActive = seat.id === activeSeatId
-          const isEditing = seat.id === editingSeatId
-          const count = stagedCountBySeat.get(seat.id) ?? 0
-          const isBilled = billedSeatIds?.has(seat.id) ?? false
-          // The note is what the waiter recognises; the number is the fallback.
-          const shown = seat.seatNote ?? seat.seatLabel
-          const spoken = seat.seatNote ? `${seat.seatLabel}, ${seat.seatNote}` : seat.seatLabel
-          // Everything the chip now says with a badge or a strike-through, said
-          // in words — struck-through text and a missing badge are both silent.
-          const state = isBilled
-            ? count === 0
-              ? 'billed'
-              : `billed, ${count} still staged`
-            : count === 0
-              ? 'empty'
-              : `${count} item${count === 1 ? '' : 's'}`
-
-          return (
-            <div key={seat.id} className="flex shrink-0 items-center gap-sp-1">
-              <button
-                type="button"
-                aria-pressed={isActive}
-                aria-label={`${spoken}, ${state}`}
-                onClick={() => onSelect(seat.id)}
+        return (
+          <div key={seat.id} className="flex shrink-0 items-center gap-sp-1">
+            <button
+              type="button"
+              aria-pressed={isActive}
+              aria-label={`${spoken}, ${state}`}
+              onClick={() => onSelect(seat.id)}
+              className={cn(
+                chip,
+                // Filled, like the floor's selected zone tab. "Items land
+                // here" is a strong claim and wants a strong treatment.
+                isActive
+                  ? 'border-brand-800 bg-brand-800'
+                  : 'border-slate-200 bg-white',
+                // Settled: dimmed, but still legible and still tappable.
+                isBilled && !isActive && 'bg-slate-50 opacity-70',
+              )}
+            >
+              <span
                 className={cn(
-                  chip,
-                  // Filled, like the floor's selected zone tab. "Items land
-                  // here" is a strong claim and wants a strong treatment.
-                  isActive
-                    ? 'border-brand-800 bg-brand-800'
-                    : 'border-slate-200 bg-white',
-                  // Settled: dimmed, but still legible and still tappable.
-                  isBilled && !isActive && 'bg-slate-50 opacity-70',
+                  'max-w-32 truncate text-fs-16 font-bold',
+                  isActive ? 'text-white' : 'text-slate-700',
+                  isBilled && 'line-through',
                 )}
               >
+                {shown}
+              </span>
+
+              {/* No badge means an empty seat. Across a row of chips the
+                  absence scans faster than the word did, and the accessible
+                  name above still says "empty" out loud.
+
+                  A billed seat shows its staged count when it has one:
+                  saying only "billed" hid the single thing a waiter needs
+                  after a 409 — WHICH dishes are stuck on the seat that has
+                  already paid (code review 2026-10-13). */}
+              {count > 0 ? (
                 <span
+                  aria-hidden="true"
                   className={cn(
-                    'max-w-32 truncate text-fs-16 font-bold',
-                    isActive ? 'text-white' : 'text-slate-700',
-                    isBilled && 'line-through',
+                    'rounded-pill px-sp-2 py-0.5 text-fs-12 font-bold tabular-nums',
+                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600',
                   )}
                 >
-                  {shown}
+                  {count}
                 </span>
-
-                {/* No badge means an empty seat. Across a row of chips the
-                    absence scans faster than the word did, and the accessible
-                    name above still says "empty" out loud.
-
-                    A billed seat shows its staged count when it has one:
-                    saying only "billed" hid the single thing a waiter needs
-                    after a 409 — WHICH dishes are stuck on the seat that has
-                    already paid (code review 2026-10-13). */}
-                {count > 0 ? (
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      'rounded-pill px-sp-2 py-0.5 text-fs-12 font-bold tabular-nums',
-                      isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600',
-                    )}
-                  >
-                    {count}
-                  </span>
-                ) : isBilled ? (
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      'text-fs-12 font-semibold',
-                      isActive ? 'text-white' : 'text-slate-600',
-                    )}
-                  >
-                    billed
-                  </span>
-                ) : null}
-              </button>
-
-              {onEditSeat && isActive ? (
-                <button
-                  type="button"
-                  onClick={() => onEditSeat(seat.id)}
-                  aria-expanded={isEditing}
-                  aria-label={`${isEditing ? 'Close the note for' : 'Edit'} ${seat.seatLabel}`}
+              ) : isBilled ? (
+                <span
+                  aria-hidden="true"
                   className={cn(
-                    'flex size-touch-standard shrink-0 items-center justify-center rounded-control border',
-                    'transition-transform duration-80 ease-standard active:scale-[0.92]',
-                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                    // Filled while its panel is open, so it shows which seat
-                    // the note editor below belongs to.
-                    isEditing
-                      ? 'border-brand-800 bg-brand-800 text-white'
-                      : 'border-slate-200 bg-white text-brand-700',
+                    'text-fs-12 font-semibold',
+                    isActive ? 'text-white' : 'text-slate-600',
                   )}
                 >
-                  <Pencil aria-hidden="true" strokeWidth={2.5} className="size-4" />
-                </button>
+                  billed
+                </span>
               ) : null}
-            </div>
-          )
-        })}
+            </button>
 
-        {onAddSeat ? (
-          <button
-            type="button"
-            disabled={adding}
-            onClick={onAddSeat}
-            className={cn(
-              chip,
-              'border-dashed border-slate-400 bg-white text-fs-16 font-semibold text-slate-600',
-              'disabled:opacity-40 disabled:active:scale-100',
-            )}
-          >
-            {adding ? 'Adding…' : '+ Seat'}
-          </button>
-        ) : null}
-      </div>
+            {onEditSeat && isActive ? (
+              <button
+                type="button"
+                onClick={() => onEditSeat(seat.id)}
+                aria-expanded={isEditing}
+                aria-label={`${isEditing ? 'Close the note for' : 'Edit'} ${seat.seatLabel}`}
+                className={cn(
+                  'flex size-touch-standard shrink-0 items-center justify-center rounded-control border',
+                  'transition-transform duration-80 ease-standard active:scale-[0.92]',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                  // Filled while its panel is open, so it shows which seat
+                  // the note editor below belongs to.
+                  isEditing
+                    ? 'border-brand-800 bg-brand-800 text-white'
+                    : 'border-slate-200 bg-white text-brand-700',
+                )}
+              >
+                <Pencil aria-hidden="true" strokeWidth={2.5} className="size-4" />
+              </button>
+            ) : null}
+          </div>
+        )
+      })}
+
+      {onAddSeat ? (
+        <button
+          type="button"
+          disabled={adding}
+          onClick={onAddSeat}
+          className={cn(
+            chip,
+            'border-dashed border-slate-400 bg-white text-fs-16 font-semibold text-slate-600',
+            'disabled:opacity-40 disabled:active:scale-100',
+          )}
+        >
+          {adding ? 'Adding…' : '+ Seat'}
+        </button>
+    ) : null}
     </div>
   )
 }
