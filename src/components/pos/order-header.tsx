@@ -1,16 +1,21 @@
 'use client'
 
 import { ArrowLeft } from 'lucide-react'
+import { StaffBadge } from '@/components/pos/staff-badge'
 import { cn } from '@/lib/utils'
 
 /**
  * The order screen's header — one compact row instead of a card.
  *
  * ── Why this is not `ContextHeader` ──────────────────────────────────────────
- * That component is the FLOOR screen's header and `table-grid.tsx` still uses
- * it. This screen needs different facts in less space, and restyling a shared
- * component to suit one of its two callers is how the floor plan ends up
- * redesigned by accident.
+ * This screen needs different facts in less space than a breadcrumb header
+ * carries, and restyling a shared component to suit one of its callers is how
+ * the floor plan ends up redesigned by accident. The floor has since grown its
+ * own `FloorHeader` for the same reason, which leaves `ContextHeader` with no
+ * callers at all — it is kept, not wired, until something needs a breadcrumb.
+ *
+ * What the three DO share is `StaffBadge`, because who is signed in is the one
+ * fact that does not change with the screen.
  *
  * ── What it replaced, and why ────────────────────────────────────────────────
  * The order screen used to carry `ContextHeader` AND a `<dl>` card below it
@@ -96,22 +101,10 @@ export function OrderHeader({
           {statusLabel}
         </span>
 
-        <button
-          type="button"
-          onClick={onStaffTap}
-          aria-label={`Signed in as ${staffName}. Switch user.`}
-          className={cn(
-            // A control, so it gets the 56px floor like every other one.
-            'flex min-h-touch-kitchen items-center gap-sp-2 rounded-control px-sp-3 text-fs-14',
-            'font-semibold text-slate-900',
-            'transition-[transform,box-shadow] duration-80 ease-standard',
-            'active:scale-[0.97]',
-            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-          )}
-        >
-          {staffName}
-          <span className="tabular-nums text-slate-600">{clock}</span>
-        </button>
+        {/* Was a plain "Nina 12:46" in a 56px pill while the floor drew the
+            filled circle — the same control, two appearances, on two screens a
+            waiter moves between constantly. One component now. */}
+        <StaffBadge staffName={staffName} clock={clock} onTap={onStaffTap} />
       </div>
     </header>
   )

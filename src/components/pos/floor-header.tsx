@@ -1,6 +1,7 @@
 'use client'
 
 import { ConciergeBell } from 'lucide-react'
+import { StaffBadge } from '@/components/pos/staff-badge'
 import { cn } from '@/lib/utils'
 
 /**
@@ -52,10 +53,9 @@ export function FloorHeader({
   onCounterSale: () => void
   onStaffTap: () => void
 }) {
-  const initial = staffName.trim().charAt(0).toUpperCase() || '?'
-
   return (
-    <header className="flex shrink-0 flex-wrap items-center justify-between gap-sp-4 border-b border-slate-200 bg-white px-sp-4 py-sp-3">
+    // h-18/72px, measured off the design — the white band above the zone bar.
+    <header className="flex h-18 shrink-0 items-center justify-between gap-sp-4 border-b border-slate-200 bg-white px-sp-4">
       <div className="flex min-w-0 flex-col">
         <h1 className="text-fs-20 font-extrabold tracking-title text-slate-900">Floor</h1>
         <p className="text-fs-12 font-semibold tabular-nums text-slate-600">
@@ -110,27 +110,7 @@ export function FloorHeader({
           </button>
         ) : null}
 
-        <button
-          type="button"
-          onClick={onStaffTap}
-          aria-label={`Signed in as ${staffName}. Switch user.`}
-          className={cn(
-            'flex min-h-touch-standard items-center gap-sp-2 rounded-control px-sp-2',
-            'transition-transform duration-80 ease-standard active:scale-[0.97]',
-            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-          )}
-        >
-          <span
-            aria-hidden="true"
-            className="flex size-9 shrink-0 items-center justify-center rounded-pill bg-brand-800 text-fs-14 font-extrabold text-white"
-          >
-            {initial}
-          </span>
-          <span className="flex flex-col items-start leading-tight">
-            <span className="text-fs-14 font-bold text-slate-900">{staffName}</span>
-            <span className="text-fs-12 tabular-nums text-slate-600">{clock}</span>
-          </span>
-        </button>
+        <StaffBadge staffName={staffName} clock={clock} onTap={onStaffTap} />
       </div>
     </header>
   )
