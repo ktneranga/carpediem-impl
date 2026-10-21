@@ -1456,8 +1456,20 @@ export function OrderScreen({
               says what the choice MEANS, because "One bill" and "Separate
               bills" both sound reasonable to someone who has not thought
               about it yet. */}
-          <section className="flex shrink-0 flex-col gap-sp-2 border-b border-slate-200 p-sp-4">
-            <div role="group" aria-label="How this order is billed" className="flex gap-sp-2">
+          <section className="shrink-0 border-b border-slate-200 p-sp-4">
+            {/* A segmented control, as drawn: one slate-100 trough with a
+                white pill sliding between two halves. It was two separately
+                bordered buttons, which read as two things to pick from rather
+                than as one choice already made — the trough is what says
+                "these are the only two, and you are on this one".
+
+                Sampled off the design: trough #F1F5F9, chosen half pure white
+                with a soft shadow under it, unchosen half transparent. */}
+            <div
+              role="group"
+              aria-label="How this order is billed"
+              className="flex gap-1 rounded-control bg-slate-100 p-1"
+            >
               {([
                 { mode: 'one' as const, icon: Receipt, label: 'One bill' },
                 { mode: 'separate' as const, icon: Users, label: 'Separate bills' },
@@ -1471,16 +1483,14 @@ export function OrderScreen({
                     disabled={billModeMutation.isPending}
                     onClick={() => requestBillMode(mode)}
                     className={cn(
-                      'flex h-touch-kitchen flex-1 items-center justify-center gap-sp-2 rounded-waiter border',
-                      'text-fs-16 font-bold transition-[transform,background-color] duration-120 ease-standard',
-                      'active:scale-[0.97] disabled:opacity-60',
+                      // 48px, measured. Above the 44px standard touch floor,
+                      // and this is a once-per-table decision rather than a
+                      // control tapped at speed mid-service.
+                      'flex h-12 flex-1 items-center justify-center gap-sp-2 rounded-control',
+                      'text-fs-16 font-bold transition-colors duration-120 ease-standard',
+                      'disabled:opacity-60',
                       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                      // The unchosen side carries NO border, as drawn: two
-                      // outlined halves read as two things to pick from
-                      // rather than as one already chosen.
-                      active
-                        ? 'border-brand-500 bg-brand-050 text-brand-700'
-                        : 'border-transparent bg-white text-slate-600',
+                      active ? 'bg-white text-brand-700 shadow-el-1' : 'text-slate-600',
                     )}
                   >
                     <Icon aria-hidden="true" strokeWidth={2.2} className="size-5 shrink-0" />
@@ -1489,11 +1499,11 @@ export function OrderScreen({
                 )
               })}
             </div>
-            <p className="text-fs-12 font-semibold text-slate-600">
-              {billMode === 'one'
-                ? 'Everything goes on one table bill. If guests later pay separately, split it on the bill screen.'
-                : 'Each item is tagged to a person, and each person gets their own bill.'}
-            </p>
+            {/* No explanatory line under it (Teran, 2026-10-21). It said what
+                each choice MEANS, which is worth two lines the first time and
+                is then two lines of the order column forever. Dropped for the
+                room; the consequence of the choice is visible immediately in
+                the column below — seat chips appear or they do not. */}
           </section>
 
           {/* Shown only while the order is TRACKING PEOPLE — or when it somehow
@@ -1744,83 +1754,6 @@ export function OrderScreen({
               </p>
             ) : null}
 
-            {/* Releasing the table (Story 3.6). Kept, but pushed to the foot of
-                the order column and styled as the quiet action it should be —
-                the design has no place for it, and a wrong tap here is the one
-                thing on this screen that ends the sitting. */}
-            <div className="mt-auto pt-sp-4">
-              {confirmingWalkout ? (
-                <div
-                  role="alertdialog"
-                  aria-label="Confirm walkout"
-                  className="flex flex-col gap-sp-2 rounded-card border-2 border-unavailable-edge bg-unavailable-body p-sp-3"
-                >
-                  <p className="text-fs-14 font-bold text-unavailable-ink">
-                    Close {displayLabel} as a walkout?
-                  </p>
-                  <p className="text-fs-14 text-unavailable-ink">
-                    {/* Every clause label-agnostic — a counter sale has no table
-                        to release. */}
-                    {tableLabel ? 'This table has' : 'This order has'} {itemCount} item
-                    {itemCount === 1 ? '' : 's'} nobody has paid for. Closing records the loss
-                    against your name{tableLabel ? ' and releases the table' : ''}. It cannot be
-                    undone.
-                  </p>
-                  <div className="flex gap-sp-2">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => closeMutation.mutate({ sessionId, reason: 'walkout' })}
-                      className={cn(
-                        'h-touch-kitchen flex-1 rounded-control bg-unavailable-band text-fs-14 font-bold text-white',
-                        'transition-transform duration-80 ease-standard active:scale-[0.97]',
-                        'disabled:opacity-40 disabled:active:scale-100',
-                        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                      )}
-                    >
-                      {busy ? 'Closing…' : 'Yes, walkout'}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => setConfirmingWalkout(false)}
-                      className={cn(
-                        'h-touch-kitchen flex-1 rounded-control border border-slate-200 bg-white text-fs-14 font-semibold text-slate-600',
-                        'transition-transform duration-80 ease-standard active:scale-[0.97]',
-                        'disabled:opacity-40 disabled:active:scale-100',
-                        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                      )}
-                    >
-                      Keep it open
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    // No confirmation for an empty table: nothing is lost. A
-                    // walkout is money owed, so that one asks.
-                    if (isWalkout) setConfirmingWalkout(true)
-                    else closeMutation.mutate({ sessionId, reason: 'abandoned' })
-                  }}
-                  className={cn(
-                    'h-touch-kitchen w-full rounded-control border border-slate-200 bg-white',
-                    'text-fs-14 font-semibold text-slate-600',
-                    'transition-transform duration-80 ease-standard active:scale-[0.98]',
-                    'disabled:opacity-40 disabled:active:scale-100',
-                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                  )}
-                >
-                  {busy
-                    ? 'Closing…'
-                    : isWalkout
-                      ? `Close ${tableLabel ? 'table' : 'order'} — walkout`
-                      : `Close ${tableLabel ? 'table' : 'order'}`}
-                </button>
-              )}
-            </div>
           </div>
 
           {confirmingClear ? (
@@ -1887,6 +1820,62 @@ export function OrderScreen({
             setSheet(null)
           }}
         />
+      ) : null}
+
+      {/* Closing the table is reached from the bar's More menu now, so its
+          confirmation is a centred dialog rather than a panel at the foot of
+          the order column. It used to be both the trigger AND the warning
+          down there; the trigger moved and the warning had to follow, or a
+          walkout would have been confirmed somewhere the waiter was not
+          looking. */}
+      {confirmingWalkout ? (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="walkout-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
+        >
+          <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel border-2 border-unavailable-edge bg-white p-sp-5 shadow-el-2">
+            <h2 id="walkout-title" className="text-fs-20 font-extrabold text-unavailable-ink">
+              Close {displayLabel} as a walkout?
+            </h2>
+            <p className="text-fs-16 text-slate-600">
+              {/* Every clause label-agnostic — a counter sale has no table to
+                  release. */}
+              {tableLabel ? 'This table has' : 'This order has'} {itemCount} item
+              {itemCount === 1 ? '' : 's'} nobody has paid for. Closing records the loss against
+              your name{tableLabel ? ' and releases the table' : ''}. It cannot be undone.
+            </p>
+            <div className="flex gap-sp-3">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setConfirmingWalkout(false)}
+                className={cn(
+                  'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white',
+                  'text-fs-18 font-bold text-slate-900 shadow-el-1 active:scale-[0.97]',
+                  'disabled:opacity-40 disabled:active:scale-100',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                )}
+              >
+                Keep it open
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => closeMutation.mutate({ sessionId, reason: 'walkout' })}
+                className={cn(
+                  'h-touch-waiter flex-1 rounded-waiter bg-unavailable-band text-fs-18 font-bold text-white',
+                  'shadow-el-2 active:scale-[0.97]',
+                  'disabled:opacity-40 disabled:active:scale-100',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                )}
+              >
+                {busy ? 'Closing…' : 'Yes, walkout'}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {/* Switching to One bill destroys the per-person grouping (Teran chose

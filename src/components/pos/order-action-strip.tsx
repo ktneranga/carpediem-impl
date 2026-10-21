@@ -111,10 +111,32 @@ export function OrderActionStrip({
   // Ordered least to most destructive, with the one that ends the sitting
   // last, separated by a rule and red.
   const moreItems = [
-    ...(onAddMoreItems ? [{ label: 'Add another round', onClick: onAddMoreItems }] : []),
     ...(onClear ? [{ label: 'Clear unsent items', onClick: onClear }] : []),
     ...(onCloseTable ? [{ label: closeLabel, onClick: onCloseTable, danger: true }] : []),
   ]
+
+  /**
+   * Rendered in EVERY non-terminal state, not just while a round is staged.
+   *
+   * Closing the table used to be a button at the foot of the order column,
+   * always present. It moved into this menu, and for one commit the menu only
+   * appeared in `items-added` — so after sending a round, or before adding
+   * anything, there was no way to end the sitting at all. The menu goes
+   * wherever the bar goes.
+   */
+  const moreMenu =
+    moreItems.length > 0 ? (
+      <MoreMenu
+        items={moreItems}
+        // Never disabled by `busy`. Backing out has to work even while a
+        // request is in flight — the rule the floor strip's Cancel controls
+        // established after its review found one that stopped working
+        // mid-request.
+        busy={false}
+        open={moreOpen}
+        onOpenChange={setMoreOpen}
+      />
+    ) : null
 
   // Terminal. No buttons at all — not disabled ones, which invite a tap and
   // teach nothing — and a muted shell so it reads as finished rather than as an
@@ -161,6 +183,7 @@ export function OrderActionStrip({
         eyebrow="Order"
         label="Order sent"
         detail="Sent to the kitchen. Add another round, or generate the bill."
+        leading={moreMenu}
       >
         {/* NOT disabled by `busy`. Opening a new round is local and harmless,
             and it is the only way out if a Generate Bill request hangs — the
@@ -217,20 +240,7 @@ export function OrderActionStrip({
         // and a disabled button with no reason is the defect this file's own
         // header argues against.
         detail={note}
-        leading={
-          moreItems.length > 0 ? (
-            <MoreMenu
-              items={moreItems}
-              // Never disabled by `busy`. Backing out has to work even while a
-              // request is in flight — the rule the floor strip's Cancel
-              // controls established after its review found one that stopped
-              // working mid-request.
-              busy={false}
-              open={moreOpen}
-              onOpenChange={setMoreOpen}
-            />
-          ) : null
-        }
+        leading={moreMenu}
       >
         {/* The bill is reachable from here, as drawn: a waiter asked for the
             bill mid-round should not have to send first and walk back to the
@@ -293,6 +303,9 @@ export function OrderActionStrip({
       eyebrow="Order"
       label="Add items to begin"
       detail="Nothing staged yet."
+      // An empty table still has to be closeable — that is most of what
+      // closing an empty table IS.
+      leading={moreMenu}
     />
   )
 }
