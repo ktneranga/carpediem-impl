@@ -140,6 +140,10 @@ export function zoneIcon(zoneName: string): LucideIcon {
  * Route colours are the only non-status accents in the system. Routing is
  * derived from the item — a waiter never picks it.
  *
+ * `icon` rides with the word on the menu card's eyebrow (2026-10-21 design).
+ * It never appears alone — a fork and knife could mean half a dozen things, and
+ * the destination is the one fact on that card a waiter cannot afford to guess.
+ *
  * `band` and `chip` fill shapes; `ink` colours TEXT, and is not always the route
  * colour. Kitchen blue (#2288B4) is 4.00:1 on white, which fails WCAG AA for the
  * 12px eyebrow it would label, so kitchen text uses brand-700 (6.03:1) — the
@@ -152,6 +156,7 @@ export const ROUTES = {
     chip: 'bg-route-kitchen',
     band: 'bg-route-kitchen',
     ink: 'text-brand-700',
+    icon: UtensilsCrossed,
   },
   pizza: {
     label: 'Pizza Kitchen',
@@ -159,6 +164,8 @@ export const ROUTES = {
     chip: 'bg-route-pizza',
     band: 'bg-route-pizza',
     ink: 'text-route-pizza',
+    // The oven, not a slice: it is the pizza KITCHEN, a place a ticket goes.
+    icon: Flame,
   },
   bar: {
     label: 'Bar',
@@ -166,6 +173,7 @@ export const ROUTES = {
     chip: 'bg-route-bar',
     band: 'bg-route-bar',
     ink: 'text-route-bar',
+    icon: Beer,
   },
 } as const
 

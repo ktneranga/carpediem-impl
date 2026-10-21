@@ -43,6 +43,7 @@ import { cn } from '@/lib/utils'
 export function ActionStripShell({
   regionLabel,
   eyebrow,
+  leading,
   icon,
   label,
   secondary,
@@ -62,9 +63,18 @@ export function ActionStripShell({
    * and leads with the table instead.
    */
   eyebrow?: string
+  /**
+   * Controls pinned to the LEFT end of the bar, before the text.
+   *
+   * The order design puts "More" there and nothing else — no eyebrow, no
+   * label — so the bar is three buttons and whitespace. The floor keeps the
+   * text block. Both are this one shell.
+   */
+  leading?: React.ReactNode
   /** A tile left of the text — on the floor, the selected table's zone icon. */
   icon?: React.ReactNode
-  label: string
+  /** Optional: the order bar draws no title, only its buttons. */
+  label?: string
   /**
    * Grey text beside the label, on the same line — the floor puts the zone and
    * the seat count here. Separate from `detail` because this describes what
@@ -92,6 +102,8 @@ export function ActionStripShell({
         muted ? 'bg-slate-100' : 'bg-white',
       )}
     >
+      {leading}
+
       <div aria-live="polite" className="flex min-w-0 items-center gap-sp-3">
         {icon}
         <div className="flex min-w-0 flex-col gap-0.5">
@@ -103,14 +115,16 @@ export function ActionStripShell({
             </span>
           ) : null}
           <span className="flex min-w-0 items-baseline gap-sp-2">
-            <span
-              className={cn(
-                'truncate text-fs-18 font-bold tracking-title',
-                muted ? 'text-slate-600' : 'text-slate-900',
-              )}
-            >
-              {label}
-            </span>
+            {label ? (
+              <span
+                className={cn(
+                  'truncate text-fs-18 font-bold tracking-title',
+                  muted ? 'text-slate-600' : 'text-slate-900',
+                )}
+              >
+                {label}
+              </span>
+            ) : null}
             {secondary ? (
               <span className="truncate text-fs-14 font-semibold text-slate-500">{secondary}</span>
             ) : null}
@@ -148,6 +162,26 @@ export const primaryButtonClass = cn(
   'active:scale-[0.97] active:bg-brand-500 active:shadow-pressed',
   'disabled:opacity-40 disabled:active:scale-100',
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700',
+)
+
+/**
+ * The bill action — brand, but outlined rather than filled.
+ *
+ * Between `secondary` (a grey escape hatch) and `send` (the one irreversible
+ * commit). Asking for the bill is neither: it is a real step forward in the
+ * evening, so it carries brand colour, and it is reversible, so it does not
+ * take the one solid fill on the row. Exactly how the design draws it.
+ *
+ * `brand-700` on `brand-050` is 5.74:1 — AA at this size.
+ */
+export const billButtonClass = cn(
+  'flex h-touch-waiter min-w-40 items-center justify-center gap-sp-2 rounded-waiter px-sp-5',
+  'text-fs-16 font-bold tracking-title',
+  'border border-brand-500 bg-brand-050 text-brand-700 shadow-el-1',
+  'transition-[transform,box-shadow] duration-80 ease-standard',
+  'active:scale-[0.97] active:shadow-pressed',
+  'disabled:opacity-40 disabled:active:scale-100',
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
 )
 
 /** The secondary action. Same height, quieter weight. */

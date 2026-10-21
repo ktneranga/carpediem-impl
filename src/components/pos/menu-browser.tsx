@@ -1,5 +1,6 @@
 'use client'
 
+import { Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { MenuCategoryRow, MenuItemRow } from '@/app/api/menu/route'
@@ -210,18 +211,35 @@ export function MenuBrowser({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-sp-3" aria-label="Menu">
-      <input
-        type="search"
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        placeholder="Search the menu — two letters is enough"
-        aria-label="Search the menu"
-        className={cn(
-          'h-touch-waiter w-full shrink-0 rounded-control border border-slate-200 bg-white px-sp-4',
-          'text-fs-18 text-slate-900 placeholder:text-slate-400 shadow-el-1',
-          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-        )}
-      />
+      {/* The magnifier sits INSIDE the field, as drawn. It is decoration —
+          the field is typed into, not tapped — so it is `pointer-events-none`
+          and the whole box stays one target.
+
+          56px, down from 80. The design draws 48; 56 is the floor every
+          waiter control in this system clears, and a text field that is hard
+          to hit is hard to hit. The placeholder lost its instruction along
+          with the height: "two letters is enough" is a thing to learn once,
+          not to re-read before every order. */}
+      <div className="relative shrink-0">
+        <Search
+          aria-hidden="true"
+          strokeWidth={2.2}
+          className="pointer-events-none absolute top-1/2 left-sp-4 size-5 -translate-y-1/2 text-slate-600"
+        />
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search menu"
+          aria-label="Search the menu"
+          className={cn(
+            'h-touch-kitchen w-full rounded-control border border-slate-200 bg-white',
+            'pr-sp-4 pl-11',
+            'text-fs-16 text-slate-900 placeholder:text-slate-600',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+          )}
+        />
+      </div>
 
       <MenuCategoryChips
         // Counts are of what the category can be ORDERED from right now — not

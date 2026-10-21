@@ -1,7 +1,9 @@
 'use client'
 
 import { ArrowLeft } from 'lucide-react'
+import { createElement } from 'react'
 import { StaffBadge } from '@/components/pos/staff-badge'
+import { zoneIcon } from '@/lib/design'
 import { cn } from '@/lib/utils'
 
 /**
@@ -34,7 +36,7 @@ export function OrderHeader({
   tableLabel,
   contextLine,
   activeSeatLabel,
-  statusLabel,
+  zoneName,
   staffName,
   clock,
   onBack,
@@ -46,7 +48,11 @@ export function OrderHeader({
   contextLine: string
   /** Null only if a session somehow has no seats; the line is then hidden. */
   activeSeatLabel: string | null
-  statusLabel: string
+  /**
+   * The zone, for the tile beside the title. Null for a counter sale, which
+   * belongs to no zone and gets the generic tile.
+   */
+  zoneName: string | null
   staffName: string
   /** Wall clock, "12:46". Ticks with the caller's minute tick. */
   clock: string
@@ -55,7 +61,7 @@ export function OrderHeader({
 }) {
   return (
     <header className="flex shrink-0 items-start justify-between gap-sp-3 border-b border-slate-200 bg-white px-sp-4 py-sp-3">
-      <div className="flex min-w-0 items-start gap-sp-3">
+      <div className="flex min-w-0 items-center gap-sp-3">
         <button
           type="button"
           onClick={onBack}
@@ -71,6 +77,25 @@ export function OrderHeader({
         >
           <ArrowLeft aria-hidden="true" strokeWidth={2.5} className="size-6" />
         </button>
+
+        {/* The same amber tile the table wears on the floor while it is
+            occupied — which this table is, by construction: the page redirects
+            unless the session is open. It replaces the "Occupied" pill that
+            used to sit on the right, because the pill said in a word what the
+            context line underneath already says with a number ("open 38m"),
+            and the tile carries the zone as well. */}
+        <span
+          aria-hidden="true"
+          className={cn(
+            'flex size-10 shrink-0 items-center justify-center rounded-control',
+            'bg-occupied-edge text-white',
+          )}
+        >
+          {createElement(zoneIcon(zoneName ?? ''), {
+            strokeWidth: 2.2,
+            className: 'size-5',
+          })}
+        </span>
 
         <div className="flex min-w-0 flex-col">
           <div className="flex flex-wrap items-baseline gap-x-sp-3 gap-y-sp-1">
@@ -88,24 +113,10 @@ export function OrderHeader({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-sp-3">
-        {/* The tinted pair, same as the floor cards: a coloured pill ALWAYS
-            carries its word. Colour alone never states a status in this system. */}
-        <span
-          className={cn(
-            'flex items-center gap-sp-2 rounded-control px-sp-3 py-sp-2',
-            'bg-occupied-chip text-fs-14 font-bold text-occupied-ink',
-          )}
-        >
-          <span aria-hidden="true" className="size-2 rounded-pill bg-occupied-band" />
-          {statusLabel}
-        </span>
-
-        {/* Was a plain "Nina 12:46" in a 56px pill while the floor drew the
-            filled circle — the same control, two appearances, on two screens a
-            waiter moves between constantly. One component now. */}
-        <StaffBadge staffName={staffName} clock={clock} onTap={onStaffTap} />
-      </div>
+      {/* Was a plain "Nina 12:46" in a 56px pill while the floor drew the
+          filled circle — the same control, two appearances, on two screens a
+          waiter moves between constantly. One component now. */}
+      <StaffBadge staffName={staffName} clock={clock} onTap={onStaffTap} />
     </header>
   )
 }

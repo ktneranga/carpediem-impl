@@ -1,11 +1,15 @@
 'use client'
 
+import { Receipt, Send } from 'lucide-react'
+import { useState } from 'react'
 import {
   ActionStripShell,
-  primaryButtonClass,
+  billButtonClass,
   secondaryButtonClass,
   sendButtonClass,
 } from '@/components/pos/action-strip-chrome'
+import { MoreMenu } from '@/components/pos/more-menu'
+import { cn } from '@/lib/utils'
 
 /**
  * The order screen's state-driven action bar (UX-DR7).
@@ -86,6 +90,16 @@ export function OrderActionStrip({
   onAddMoreItems,
   onGenerateBill,
 }: OrderActionStripProps) {
+  const [moreOpen, setMoreOpen] = useState(false)
+
+  // What the design's row no longer has room for — and nothing invented to
+  // fill it out. Clear throws away a staged round, so it is marked destructive
+  // and sits last.
+  const moreItems = [
+    ...(onAddMoreItems ? [{ label: 'Add another round', onClick: onAddMoreItems }] : []),
+    ...(onClear ? [{ label: 'Clear this round', onClick: onClear, danger: true }] : []),
+  ]
+
   // Terminal. No buttons at all — not disabled ones, which invite a tap and
   // teach nothing — and a muted shell so it reads as finished rather than as an
   // order waiting for input.
@@ -139,21 +153,24 @@ export function OrderActionStrip({
             working mid-request. */}
         {onAddMoreItems ? (
           <button type="button" onClick={onAddMoreItems} className={secondaryButtonClass}>
-            Add More Items
+            Add another round
           </button>
         ) : null}
         {/* Only with a handler. This rendered unconditionally, so the order
             screen — which has no billing until Epic 6 — showed an enabled
             "Generate Bill" that did nothing: the same dead control the commit
             button below had, found while fixing that one's twin. */}
+        {/* The same control as on the staged bar, so it does not change its
+            name and colour between two states of one screen. */}
         {onGenerateBill ? (
           <button
             type="button"
             disabled={busy}
             onClick={onGenerateBill}
-            className={primaryButtonClass}
+            className={billButtonClass}
           >
-            Generate Bill
+            <Receipt aria-hidden="true" strokeWidth={2.2} className="size-5 shrink-0" />
+            Bill &amp; split
           </button>
         ) : null}
       </ActionStripShell>
@@ -175,48 +192,76 @@ export function OrderActionStrip({
     return (
       <ActionStripShell
         regionLabel="Order actions"
-        // "Not sent" is the eyebrow because it is the one fact that must never
-        // be misread on this screen: the kitchen does not have these yet.
-        eyebrow="Not sent"
-        label={
-          stagedCount === 0
-            ? 'Nothing staged yet'
-            : `${stagedCount} item${stagedCount === 1 ? '' : 's'}`
-        }
-        detail={
-          note ?? (destinationSummary ? `→ ${destinationSummary}` : 'Nothing has gone to the kitchen yet.')
+        // No eyebrow and no label (2026-10-21 design). They read "NOT SENT /
+        // 3 items" on a bar whose own Send button says "Send 3 items", a few
+        // inches from a panel headed "NOT SENT YET" listing the same three
+        // lines. The bar is buttons now; the panel states the facts.
+        //
+        // `note` stays. It is the only thing that says WHY Send is refusing,
+        // and a disabled button with no reason is the defect this file's own
+        // header argues against.
+        detail={note}
+        leading={
+          moreItems.length > 0 ? (
+            <MoreMenu
+              items={moreItems}
+              // Never disabled by `busy`. Backing out has to work even while a
+              // request is in flight — the rule the floor strip's Cancel
+              // controls established after its review found one that stopped
+              // working mid-request.
+              busy={false}
+              open={moreOpen}
+              onOpenChange={setMoreOpen}
+            />
+          ) : null
         }
       >
-        {onClear ? (
+        {/* The bill is reachable from here, as drawn: a waiter asked for the
+            bill mid-round should not have to send first and walk back to the
+            floor. Only with a handler — a dead "Bill & split" is the defect
+            this file keeps catching. */}
+        {onGenerateBill ? (
           <button
             type="button"
-            // Never disabled by `busy`. Backing out has to work even while a
-            // request is in flight — the rule the floor strip's Cancel controls
-            // established after its review found one that stopped working.
-            onClick={onClear}
-            className={secondaryButtonClass}
+            disabled={busy}
+            onClick={onGenerateBill}
+            className={billButtonClass}
           >
-            Clear
+            <Receipt aria-hidden="true" strokeWidth={2.2} className="size-5 shrink-0" />
+            Bill &amp; split
           </button>
         ) : null}
-        {/* No handler, no button. This used to render unconditionally with
-            `onClick={onSubmitOrder}`, so a caller that had not wired submission
-            yet got a fully enabled "Submit Order" that silently did nothing on
-            tap. That is the dead-control defect this file's own header argues
-            against ("NO buttons at all, never disabled ones: a disabled control
-            invites a tap and teaches nothing") — and an undefined handler
-            produced the same thing a no-op would have.
 
-            Story 4.4 stages items without wiring submission; 4.5 passes the
-            handler and Send appears. */}
+        {/* No handler, no button. This used to render unconditionally with
+            `onClick={onSubmitOrder}`, so a caller that had not wired
+            submission yet got a fully enabled "Submit Order" that silently did
+            nothing on tap. Story 4.4 stages items without wiring submission;
+            4.5 passes the handler and Send appears. */}
         {onSubmitOrder ? (
           <button
             type="button"
             disabled={busy || sendBlocked || stagedCount === 0}
             onClick={onSubmitOrder}
-            className={sendButtonClass}
+            className={cn(sendButtonClass, 'flex items-center justify-center gap-sp-3')}
           >
-            {busy ? 'Sending…' : `Send ${stagedCount} to ${destinationSummary ?? 'the kitchen'}`}
+            <Send aria-hidden="true" strokeWidth={2.2} className="size-6 shrink-0" />
+            <span className="flex flex-col items-start leading-tight">
+              <span>
+                {busy
+                  ? 'Sending…'
+                  : stagedCount === 0
+                    ? 'Nothing to send'
+                    : `Send ${stagedCount} item${stagedCount === 1 ? '' : 's'}`}
+              </span>
+              {/* Where it is going, on the button that sends it. A round can
+                  span two production points, and `destinationSummary` is the
+                  caller's already-assembled answer. */}
+              {destinationSummary ? (
+                <span className="text-fs-12 font-semibold tracking-normal opacity-80">
+                  to {destinationSummary}
+                </span>
+              ) : null}
+            </span>
           </button>
         ) : null}
       </ActionStripShell>

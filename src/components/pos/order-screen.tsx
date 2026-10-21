@@ -1273,9 +1273,7 @@ export function OrderScreen({
         activeSeatLabel={
           usesSeats && activeSeat ? (activeSeat.seatNote ?? activeSeat.seatLabel) : null
         }
-        // The screen only renders for an OPEN session — the page redirects
-        // otherwise — so it is occupied by construction, counter sales included.
-        statusLabel="Occupied"
+        zoneName={zoneName}
         staffName={staffName}
         clock={clock}
         onBack={() => router.push('/')}

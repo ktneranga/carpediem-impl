@@ -8,11 +8,19 @@ import { cn } from '@/lib/utils'
  * A sibling of `ZoneChipBar`, not a reuse of it: that component is typed to
  * `Zone` and carries a Counter pill, neither of which means anything here.
  *
- * ── Words and counts, no icons ───────────────────────────────────────────────
- * The 2026-09-16 design dropped the category icons for an uppercase name and an
- * item count. The count is what makes a chip worth reading before tapping it:
- * "PIZZA 2" tells a waiter not to bother scrolling, and "MAINS 4" sets the
- * expectation for what the grid is about to show.
+ * ── The name, and nothing else (2026-10-21 design) ───────────────────────────
+ * These read "PIZZA 2" in uppercase with a live item count. The design draws
+ * "Pizza" in sentence case with no number.
+ *
+ * The count is a real loss and worth naming: it told a waiter not to bother
+ * tapping a category with two items in it. What it cost was a row of chips
+ * that each carried two things to read while the grid underneath carries the
+ * same information in cards you can actually order from — and the count was
+ * never live against 86'd dishes mid-service, only against the fetched menu.
+ * Ask and it comes back; the caller still computes it.
+ *
+ * Still 56px, not the 48px drawn. 56 is the floor every waiter control in this
+ * system clears, and a filter chip is tapped more than most.
  */
 export function MenuCategoryChips({
   categories,
@@ -29,12 +37,9 @@ export function MenuCategoryChips({
   activeCategoryId: string | null
   onSelect: (categoryId: string | null) => void
 }) {
-  const totalItemCount = categories.reduce((total, category) => total + category.itemCount, 0)
-
-  const chips = [
-    { id: null, name: 'All items', itemCount: totalItemCount },
-    ...categories,
-  ]
+  // "All", not "All items": the row is all categories, so the longer label was
+  // only ever disambiguating itself.
+  const chips = [{ id: null, name: 'All' }, ...categories]
 
   return (
     <div
@@ -56,31 +61,20 @@ export function MenuCategoryChips({
             className={cn(
               // The 56px touch token — the floor for waiter controls — and the system's
               // pill radius, not Tailwind's `rounded-full`.
-              'flex h-touch-kitchen shrink-0 items-center gap-sp-2 rounded-pill border px-sp-5',
-              'text-fs-14 font-bold tracking-micro whitespace-nowrap uppercase',
-              'transition-[transform,box-shadow] duration-120 ease-standard',
-              'active:scale-[0.97] active:shadow-pressed',
+              'flex h-touch-kitchen shrink-0 items-center rounded-pill border px-sp-5',
+              'text-fs-16 font-semibold whitespace-nowrap',
+              'transition-[transform,background-color] duration-120 ease-standard',
+              'active:scale-[0.97]',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-              // `brand-700`, not `brand-500`: white on 500 is 3.9:1 and fails AA.
+              // Flat, like the floor's zone tabs: a selected state, not a
+              // control raised above the row. `brand-800`, not `brand-500`:
+              // white on 500 is 3.9:1 and fails AA.
               isActive
-                ? 'border-brand-700 bg-brand-800 text-white shadow-el-2'
-                : 'border-slate-200 bg-white text-slate-600 shadow-el-1',
+                ? 'border-brand-800 bg-brand-800 text-white'
+                : 'border-slate-200 bg-white text-slate-700',
             )}
           >
             {chip.name}
-            {/* Visible, and part of the accessible name — "Mains 4" is the
-                useful announcement, so it is not hidden from screen readers. */}
-            <span
-              className={cn(
-                'tabular-nums font-semibold',
-                // Full white on brand-700 (6.03:1) and slate-600 on white
-                // (7.57:1). `white/70` was 3.85:1 and `slate-400` 2.56:1 — both
-                // below AA for the number the chip exists to show.
-                isActive ? 'text-white' : 'text-slate-600',
-              )}
-            >
-              {chip.itemCount}
-            </span>
           </button>
         )
       })}
