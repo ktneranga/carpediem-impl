@@ -97,7 +97,18 @@ export function ActionStripShell({
       role="region"
       aria-label={regionLabel}
       className={cn(
-        'sticky bottom-0 flex min-h-24 flex-wrap items-center justify-between gap-sp-4',
+        // ── z-20 (2026-10-21) ──────────────────────────────────────────────
+        // `position: sticky` ALWAYS forms a stacking context, so every
+        // z-index inside this bar — including the More menu's — only orders
+        // things against each other, never against the page. The bar itself
+        // had no z-index, so it painted in document order: the menu opened
+        // upward into the column above and the menu cards and order lines
+        // painted straight over it, text through the panel's own white.
+        //
+        // One z-index on the bar lifts it and everything it contains. The
+        // confirmation dialogs are z-50 and still cover it, which is right —
+        // they are modal and this is not.
+        'sticky bottom-0 z-20 flex min-h-24 flex-wrap items-center justify-between gap-sp-4',
         'border-t border-slate-200 px-sp-4 py-sp-3 shadow-el-3',
         muted ? 'bg-slate-100' : 'bg-white',
       )}
