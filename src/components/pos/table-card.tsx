@@ -169,7 +169,13 @@ export function TableCard({
       // implying a togglable state; the action strip carries the consequence.
       aria-current={selected || undefined}
       className={cn(
-        'relative flex h-26 flex-col justify-between overflow-hidden rounded-card border p-sp-3 text-left',
+        // h-33/132px and 12px padding, both measured off the design. It was
+        // h-26/104px: the same three rows in 28px less, so `justify-between`
+        // had almost nothing to distribute and the tile, the label and the
+        // seat count sat in one dense clump. The height is what the padding
+        // needs to be visible — the 12px was already right and did not look
+        // it.
+        'relative flex h-33 flex-col justify-between overflow-hidden rounded-card border p-sp-3 text-left',
         // Only from `sm` up. At two columns a spanning card would be the entire
         // row, which on a phone-width viewport is just a card with no neighbours.
         wide && 'sm:col-span-2',
@@ -207,7 +213,8 @@ export function TableCard({
       <span className="flex items-start justify-between gap-sp-2">
         <span
           className={cn(
-            'flex size-9 shrink-0 items-center justify-center rounded-control',
+            // 40px, measured. The same tile the action strip draws.
+            'flex size-10 shrink-0 items-center justify-center rounded-control',
             // Filled while the table is in use, tinted while it is free. The
             // fill is what reads from across the room.
             status === 'unavailable'
@@ -249,7 +256,7 @@ export function TableCard({
           // the entire top-right. It is never alone: "N seats" sits below it.
           <span
             aria-hidden="true"
-            className="mt-1.5 size-2.5 shrink-0 rounded-pill bg-open-edge"
+            className="mt-1.5 size-3 shrink-0 rounded-pill bg-open-edge"
           />
         )}
       </span>

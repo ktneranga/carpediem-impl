@@ -1350,7 +1350,11 @@ export function TableGrid({
               <section key={section.key}>
                 {section.zoneName ? (
                   <header className="flex items-baseline gap-sp-2 pb-sp-3">
-                    <span className="flex self-center text-slate-500">
+                    {/* brand-700 (#1A6A8C), sampled off the design — not a grey.
+                        The icon is the zone's identity and repeats the tile on
+                        every card in the block beneath it; in slate it read as
+                        decoration beside the heading instead. */}
+                    <span className="flex self-center text-brand-700">
                       {/* `createElement`, not `<Icon />` — `zoneIcon()` returns a
                           component, and using that result as JSX is what the
                           compiler's "cannot create components during render"
@@ -1362,13 +1366,16 @@ export function TableGrid({
                       })}
                     </span>
                     <h2 className="text-fs-16 font-bold text-slate-900">{section.zoneName}</h2>
+                    {/* The design draws this in slate-400. Kept one step
+                        darker: slate-400 on white is 2.56:1 and fails AA, the
+                        same reason the action strip's eyebrow is slate-600. */}
                     <span className="text-fs-12 font-semibold tabular-nums text-slate-500">
                       {section.occupied} of {section.total} occupied
                     </span>
                   </header>
                 ) : null}
 
-                <div className="grid justify-start gap-sp-4 [grid-template-columns:repeat(auto-fill,minmax(152px,174px))]">
+                <div className="grid justify-start gap-sp-3 [grid-template-columns:repeat(auto-fill,minmax(152px,178px))]">
             {section.units.map((unit) => {
               // Every action targets the group's primary row. For a single-table
               // unit that IS the table, so this collapses to the old behaviour.

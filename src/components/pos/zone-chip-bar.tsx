@@ -71,10 +71,22 @@ export function ZoneChipBar({
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
   )
 
-  // brand-700, not brand-500: white text on brand-500 is 3.9:1 and fails AA at
+  // ── FLAT. No shadow on either state (2026-10-21) ───────────────────────────
+  // The active tab carried `shadow-el-2 inset-shadow-top`. The inset is a 1px
+  // white line drawn INSIDE the top edge, which on a solid brand-800 fill reads
+  // as a second, lighter border above the real one — so the selected tab had an
+  // edge treatment the design does not draw at all. Sampling the design down
+  // through both states finds exactly one transition each: white straight to
+  // #12556F when active, and a single #E2E8F0 rule when not.
+  //
+  // The inset belongs on things that are RAISED — a button you press. A tab is
+  // a selected state, not a control sitting above the bar, and the white band
+  // behind it is already doing the separating.
+  //
+  // brand-800, not brand-500: white text on brand-500 is 3.9:1 and fails AA at
   // these sizes — the same trap the --*-band tokens exist to avoid.
-  const activeTab = 'border-brand-800 bg-brand-800 shadow-el-2 inset-shadow-top'
-  const inactiveTab = 'border-slate-200 bg-white shadow-el-1'
+  const activeTab = 'border-brand-800 bg-brand-800'
+  const inactiveTab = 'border-slate-200 bg-white'
 
   const AllIcon = ALL_ZONES_ICON
   // Counter mode overrides the zone filter entirely, so "All zones" is only
@@ -106,7 +118,9 @@ export function ZoneChipBar({
         <span
           className={cn(
             'text-fs-16 font-semibold whitespace-nowrap',
-            isActive ? 'text-white' : 'text-slate-900',
+            // slate-700 unselected, measured — slate-900 made every tab look
+            // half-chosen, which is the one thing a filter bar must not do.
+            isActive ? 'text-white' : 'text-slate-700',
           )}
         >
           {name}
