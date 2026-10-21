@@ -94,9 +94,20 @@ export function ModifierSheet({
         pressStartedOnBackdrop.current = false
       }}
       className={cn(
-        // Pinned to the bottom edge as a sheet, not centred as a dialog.
-        'fixed inset-x-0 top-auto bottom-0 m-0 mx-auto w-full max-w-2xl p-0',
-        'max-h-[85dvh] overflow-y-auto rounded-t-card bg-white shadow-el-4',
+        // ── Centred, not a bottom sheet (Teran, 2026-10-21) ─────────────────
+        // The dialog element is now the whole viewport and transparent; the
+        // panel is the form inside it, centred by flex. Centring the dialog
+        // itself with `top-1/2 -translate-y-1/2` would have landed it high and
+        // left: percentages and viewport units resolve BEFORE the body's 0.9
+        // zoom, so 50% paints at 45%. `h-app`/`w-app` divide the zoom back out
+        // — the same correction the app shell uses.
+        //
+        // It also makes the backdrop press more honest. The handlers below
+        // test `event.target === event.currentTarget`, which used to mean "the
+        // strip of backdrop above the sheet"; it now means anywhere outside
+        // the panel, which is what a waiter aiming to dismiss would hit.
+        'fixed top-0 left-0 m-0 h-app w-app max-h-none max-w-none p-sp-4',
+        'flex items-center justify-center bg-transparent',
         'backdrop:bg-slate-900/50',
       )}
     >
@@ -108,7 +119,12 @@ export function ModifierSheet({
           event.preventDefault()
           onAdd({ quantity, modifierText })
         }}
-        className="flex flex-col gap-sp-4 p-sp-4"
+        // The panel. `max-h-full` against the padded dialog, so a long note
+        // field scrolls inside the card rather than running off the screen.
+        className={cn(
+          'flex max-h-full w-full max-w-2xl flex-col gap-sp-4 overflow-y-auto',
+          'rounded-card bg-white p-sp-4 shadow-el-4',
+        )}
       >
         <div className="flex items-start justify-between gap-sp-3">
           <div className="flex flex-col gap-sp-1">
