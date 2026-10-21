@@ -1254,9 +1254,26 @@ export function OrderScreen({
     lines.length > MAX_ROUND_LINES || lines.some((line) => line.quantity > MAX_LINE_QUANTITY)
 
   // With items on the table, leaving is a walkout — money is owed and nobody
-  // paid it. With nothing ordered, it is an abandonment. The server enforces
-  // this too; the screen only decides which control to show.
-  const isWalkout = itemCount > 0
+  // paid it. With nothing ordered, it is an abandonment.
+  //
+  // ── Counted LIVE, not from the server render (2026-10-21) ────────────────
+  // `itemCount` is a prop, fixed when the page rendered. A waiter who opened
+  // an empty table, sent a round and then closed it was offered "Close table"
+  // — abandoned — because the prop still said zero. The server checks the
+  // same figure for real and refuses: 409, "This order has items on it. Close
+  // it as a walkout, or settle the bill." The close simply failed, on the one
+  // path that most needs to work, and the screen had no way to offer the
+  // walkout it should have offered.
+  //
+  // `submittedRounds` is a live query, so it knows about anything sent since.
+  // Taking the larger of the two covers both directions: the server's count
+  // at load, and whatever this tablet has sent on top of it.
+  const sentItemCount = submittedRounds.reduce(
+    (total, round) => total + round.items.reduce((sum, item) => sum + item.quantity, 0),
+    0,
+  )
+  const liveItemCount = Math.max(itemCount, sentItemCount)
+  const isWalkout = liveItemCount > 0
 
   const closeMutation = useMutation({
     mutationFn: closeTable,
@@ -1847,8 +1864,8 @@ export function OrderScreen({
             <p className="text-fs-16 text-slate-600">
               {/* Every clause label-agnostic — a counter sale has no table to
                   release. */}
-              {tableLabel ? 'This table has' : 'This order has'} {itemCount} item
-              {itemCount === 1 ? '' : 's'} nobody has paid for. Closing records the loss against
+              {tableLabel ? 'This table has' : 'This order has'} {liveItemCount} item
+              {liveItemCount === 1 ? '' : 's'} nobody has paid for. Closing records the loss against
               your name{tableLabel ? ' and releases the table' : ''}. It cannot be undone.
             </p>
             <div className="flex gap-sp-3">
