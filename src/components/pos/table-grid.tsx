@@ -1109,13 +1109,24 @@ export function TableGrid({
     [selectedUnit],
   )
 
-  // Flex column with a flex-1 main, so the strip sits at the BOTTOM of the
-  // viewport on a short floor plan. `sticky bottom-0` alone could not do it —
-  // sticky only shifts an element toward its edge from its static position, it
+  // Flex column PINNED to the viewport, with the grid scrolling inside it, so
+  // the header, the zone bar and the strip all stay put — the way the design
+  // draws it, scrollbar against the grid rather than the page.
+  //
+  // It was `min-h-app`, which only sets a FLOOR: a grid taller than the screen
+  // scrolled the whole page, and the strip, being `sticky bottom-0`, floated
+  // over the last row of cards and cut their labels in half. Grouping the grid
+  // into zone sections made it tall enough to show on an ordinary floor.
+  //
+  // `h-app`, not `h-dvh`: viewport units resolve before the body's 0.9 zoom.
+  //
+  // The strip still needs a flex-1 main above it to sit at the BOTTOM of a
+  // SHORT floor plan. `sticky bottom-0` alone could not do that — sticky only
+  // shifts an element toward its edge from its static position, it
   // never pushes it down to fill min-h-screen, so with one zone of four tables
   // the strip rendered mid-screen with white space beneath it.
   return (
-    <div className="min-h-app flex flex-col">
+    <div className="h-app flex flex-col">
       <FloorHeader
         occupiedCount={totalOccupiedCount}
         openCount={openCount}
@@ -1169,7 +1180,10 @@ export function TableGrid({
         />
       </div>
 
-      <main className="flex flex-1 flex-col gap-sp-4 p-sp-4">
+      {/* `min-h-0` is what makes the overflow work: without it a flex item
+          refuses to shrink below its content, so the scrollbar never appears
+          and the overflow lands on the page instead. */}
+      <main className="flex min-h-0 flex-1 flex-col gap-sp-4 overflow-y-auto p-sp-4">
         {/* Real-time is the only thing keeping this grid true. When it drops, a
             waiter must know the colours may be stale rather than trusting them —
             silence here is worse than an outage they can see. */}
