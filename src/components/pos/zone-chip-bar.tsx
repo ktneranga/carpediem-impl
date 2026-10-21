@@ -112,7 +112,13 @@ export function ZoneChipBar({
       >
         <Icon
           aria-hidden="true"
-          className={cn('size-5 shrink-0', isActive ? 'text-white' : 'text-slate-600')}
+          // brand-700, matching the zone headings over the grid — sampled off
+          // every unselected tab in the design, all four exactly #1A6A8C.
+          // Grey made the icon a bullet in front of the name; in brand it is
+          // the same mark that labels the zone's block of cards and sits on
+          // every card in it, so a waiter can jump tab -> heading -> card
+          // without rereading any of the words.
+          className={cn('size-5 shrink-0', isActive ? 'text-white' : 'text-brand-700')}
           strokeWidth={2}
         />
         <span
