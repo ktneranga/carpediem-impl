@@ -330,16 +330,24 @@ body {
 /* Viewport units are resolved against the REAL viewport, before zoom — so a
    `100dvh` box inside a zoomed body paints at 90% of the screen and leaves a
    strip at the bottom. These divide it back out. Use them instead of
-   `min-h-dvh` / `h-dvh` / `min-h-screen` on any full-height shell. */
-.min-h-app {
+   `min-h-dvh` / `h-dvh` / `min-h-screen` on any full-height shell.
+
+   `@utility`, NOT a plain `.h-app { }` rule, which is how these started.
+   A plain class works when written bare and silently generates NOTHING under
+   a variant: `md:h-app` on the order screen emitted no CSS at all, so that
+   screen only ever had its `min-h-app` floor, the page scrolled instead of
+   the menu, and the sticky action bar sat over the last row of menu cards.
+   Registering them as utilities is what makes `md:`, `lg:` and the rest
+   real. */
+@utility min-h-app {
   min-height: calc(100dvh / var(--app-zoom));
 }
 
-.h-app {
+@utility h-app {
   height: calc(100dvh / var(--app-zoom));
 }
 
-.w-app {
+@utility w-app {
   width: calc(100dvw / var(--app-zoom));
 }
 
