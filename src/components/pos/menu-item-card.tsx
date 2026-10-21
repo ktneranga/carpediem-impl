@@ -74,9 +74,20 @@ export function MenuItemCard({
         // The staged card is outlined in brand, not banded across the top. One
         // ring reads at a glance across a grid of twenty; a 6px bar at the top
         // of a card disappears the moment the card above it has one too.
+        //
+        // TWO pixels, measured off the design: the staged edge carries 1.75x
+        // the ink of a 1px line, in brand-500's exact channel ratio, against
+        // a plain card's single slate-200 hairline. At 1px it read as a card
+        // with a blue border rather than a card that is SELECTED.
+        //
+        // The second pixel is an inset ring, not `border-2`. A border changes
+        // the content box, so the card's text would jump 1px the instant a
+        // dish was staged — on the one card the waiter is tapping, and again
+        // on every further tap as the count rises. The ring is a box-shadow:
+        // same two pixels, nothing moves.
         item.available
           ? isStaged
-            ? 'border-brand-500 bg-white shadow-el-2'
+            ? 'border-brand-500 bg-white shadow-el-2 ring-1 ring-brand-500 ring-inset'
             : 'border-slate-200 bg-white shadow-el-1'
           : // Off today: flat, no shadow. It is not a surface you can act on.
             'border-slate-200 bg-slate-100',
