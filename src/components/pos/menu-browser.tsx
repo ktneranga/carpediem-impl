@@ -286,7 +286,15 @@ export function MenuBrowser({
         // `shrink-0`, so the primary navigation path stays on screen at any menu
         // length — and "Close table" below stays reachable without scrolling past
         // every dish.
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        // `px-sp-1 -mx-sp-1`: four pixels of breathing room INSIDE the scroll
+        // box, pulled straight back out with a negative margin so the cards
+        // stay aligned with the search field above them.
+        //
+        // `overflow-y-auto` forces overflow-x to `auto` as well, so this box
+        // clips horizontally at its own edge. A card flush against that edge
+        // lost its shadow, and with the selected border sitting right on the
+        // clip line the leftmost column read as though it had no left border.
+        <div className="min-h-0 flex-1 overflow-y-auto px-sp-1 -mx-sp-1">
           <div className="flex flex-col gap-sp-4">
             {visible.map((category) => {
               return (

@@ -92,7 +92,15 @@ export function MenuItemCard({
           : // Off today: flat, no shadow. It is not a surface you can act on.
             'border-slate-200 bg-slate-100',
         addable && 'transition-transform duration-80 ease-standard active:scale-[0.98]',
-        'focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-brand-500',
+        // NO focus ring on the article. It had `focus-within`, which fires on
+        // a TAP as well as a keyboard focus — clicking a button focuses it —
+        // so the dish you had just added wore a second brand ring two pixels
+        // outside its selected border, and the card read as double-outlined.
+        //
+        // SELECTED and FOCUSED are different facts and now look different:
+        // selection is the 2px border, which is a state of the ORDER and
+        // persists; focus is an outline on the button below, which is a state
+        // of the KEYBOARD and only ever appears to someone using one.
       )}
     >
       {/* THE WHOLE CARD. Behind everything, so the options glyph wins its own
@@ -102,7 +110,14 @@ export function MenuItemCard({
         <button
           type="button"
           onClick={() => onAdd?.(item)}
-          className="absolute inset-0 z-0 cursor-pointer focus:outline-none"
+          className={cn(
+            'absolute inset-0 z-0 cursor-pointer',
+            // `focus-visible`, not `focus`: a browser only matches it when
+            // the focus came from the keyboard, so a tap leaves no ring. The
+            // button covers the card, so the outline traces the card.
+            'focus:outline-none',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+          )}
         >
           {/* The only text this button has. "Add another" because that is what
               a second tap does — it raises the existing line's quantity. */}
