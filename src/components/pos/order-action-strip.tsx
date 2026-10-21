@@ -158,10 +158,16 @@ export function OrderActionStrip({
     )
   }
 
-  // Settlement has started and the round is no longer the thing being worked on.
-  // Epic 6 owns what replaces these actions; until then the strip's job is to
-  // say plainly that order entry is over, rather than offering buttons that
+  // Settlement has started and the round is no longer the thing being worked
+  // on. Epic 6 owns what replaces these actions; until then the strip's job is
+  // to say plainly that order entry is over, rather than offering buttons that
   // would write to a session being billed.
+  //
+  // It still gets More, and that is not a detail: a billed table is EXACTLY
+  // the table you are about to close. Closing used to be a button at the foot
+  // of the order column, present in every state; when it moved into this menu
+  // this branch was left without one, and a table with a bill on it could not
+  // be released from this screen at all. Table 2 found it.
   if (state === 'settling') {
     return (
       <ActionStripShell
@@ -169,6 +175,7 @@ export function OrderActionStrip({
         eyebrow="Order"
         label="Settling"
         detail="The bill is being prepared. Items cannot be added or changed."
+        leading={moreMenu}
       />
     )
   }
