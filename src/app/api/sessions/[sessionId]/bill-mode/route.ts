@@ -18,10 +18,11 @@ function fail(code: string, message: string, status: number) {
  * Switches an order between One bill and Separate bills (Teran, 2026-10-16).
  *
  * ── Why its own route ───────────────────────────────────────────────────────
- * It is not a seat operation and it is not a close. It rewrites every
- * `order_events.seat_slot_id` on the session when collapsing, which is a
- * heavier thing than anything under `/seats`, and it deserves a name a reader
- * can find.
+ * It is not a seat operation and it is not a close — it is a property of the
+ * ORDER, and it deserves a name a reader can find.
+ *
+ * It used to rewrite every `order_events.seat_slot_id` on the session when
+ * switching to One bill. It no longer moves anything; see `setBillMode`.
  *
  * RBAC is INHERITED from the `/api/sessions` prefix (owner + waiter) in
  * `permissions.ts`, enforced by `proxy.ts` before this handler runs. No role
@@ -55,11 +56,11 @@ export async function PATCH(
   }
 
   try {
-    const result = await db.transaction((tx) =>
+    await db.transaction((tx) =>
       setBillMode(tx, { sessionId: parsedSessionId.data, mode: parsedBody.data.mode }),
     )
     return NextResponse.json(
-      { success: true, data: { mode: parsedBody.data.mode, ...result } },
+      { success: true, data: { mode: parsedBody.data.mode } },
       { status: 200 },
     )
   } catch (error) {

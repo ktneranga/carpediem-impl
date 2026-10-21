@@ -616,91 +616,38 @@ export async function attachedTableIds(tx: Tx, sessionId: string): Promise<strin
  *
  * ── `one` is a NON-SEAT order ────────────────────────────────────────────────
  * Not "an order with one seat shown" — the waiter sees no seat anywhere,
- * including on the kitchen ticket. "Seat 1" stays in `seat_slots` because
- * `openSession` has always created it and every `order_events` row points at a
- * seat; it is simply never named on screen.
+ * including on the kitchen ticket. The seats stay in `seat_slots` and every
+ * `order_events` row keeps pointing at the one it was added on; they are
+ * simply never named on screen.
  *
- * ── Switching to `separate` ──────────────────────────────────────────────────
- * Nothing moves. The picker appears, the existing items are already on Seat 1,
- * and the waiter assigns from there.
+ * ── It MOVES NOTHING (changed 2026-10-21) ────────────────────────────────────
+ * It used to collapse: switching to `one` rewrote every event onto the first
+ * seat and deleted the rest, irreversibly, behind a confirmation warning that
+ * "who ordered what will be lost".
  *
- * ── Switching back to `one` COLLAPSES the grouping ───────────────────────────
- * Every item moves onto the first seat and the extra seats are removed. The
- * grouping is GONE — switching to `separate` again does not restore it.
+ * Teran asked the obvious question — why does choosing ONE BILL ask about
+ * moving things between seats? — and there is no good answer. A consolidated
+ * bill (Story 6.2) sweeps every unbilled event on the session regardless of
+ * which seat it sits on, so the collapse bought nothing: the bill, the total
+ * and the kitchen ticket are identical either way. It was tidying the data to
+ * match the screen, and it charged a destructive, unrepeatable operation and a
+ * scary dialog for the privilege.
  *
- * Teran chose this over refusing the switch (2026-10-16): a waiter who cannot
- * get out of separate-bills mode mid-service is stuck, and that is the worse
- * failure. The cost is that an accidental switch destroys the assignment work,
- * which the screen warns about before calling this.
+ * Now the switch only changes what is DRAWN. Nothing moves, nothing is
+ * deleted, switching back brings the grouping straight back, and there is
+ * nothing to confirm. It also takes with it the `DISABLE TRIGGER` on
+ * `order_events` — by far the riskiest thing this feature did, and the reason
+ * it needed a transaction of its own.
  *
- * ── Why this needs a transaction and a lock ──────────────────────────────────
- * It rewrites `order_events.seat_slot_id` for the whole session. A round
- * committing halfway through would land on a seat this function is about to
- * delete, and the foreign key would take the whole thing down — so it runs
- * under the same `lockOpenSession` every other session write uses.
+ * Still locked: it is a write to an open session, and the lock is what makes
+ * "open" mean anything by the time the update lands.
  */
 export async function setBillMode(
   tx: Tx,
   { sessionId, mode }: { sessionId: string; mode: 'one' | 'separate' },
-): Promise<{ movedItems: number; removedSeats: number }> {
+): Promise<void> {
   await lockOpenSession(tx, sessionId)
-
-  // ── Deliberately NOT short-circuiting on "already in this mode" ──────────
-  // The first version returned early when the stored mode matched, which
-  // looked like a harmless optimisation and was a bug: every session that
-  // existed before migration 0022 is in `one` mode ALREADY, and some of them
-  // have several seats with items spread across them. Asking for `one` on one
-  // of those did nothing at all and reported success, leaving a non-seat order
-  // whose items were still split between people nobody could see.
-  //
-  // The operation is idempotent instead. Collapsing a session that has one
-  // seat moves nothing and removes nothing; running it twice is free.
-  let movedItems = 0
-  let removedSeats = 0
-
-  if (mode === 'one') {
-    // The seat everything collapses onto: the oldest, which is the "Seat 1"
-    // `openSession` created. Ordering by `createdAt` rather than by label
-    // because a label can be edited and the creation order cannot.
-    const seats = await tx
-      .select({ id: seatSlots.id })
-      .from(seatSlots)
-      .where(eq(seatSlots.sessionId, sessionId))
-      .orderBy(asc(seatSlots.createdAt))
-
-    const keep = seats[0]
-    const drop = seats.slice(1).map((seat) => seat.id)
-
-    if (keep && drop.length > 0) {
-      // Events first, then the seats they pointed at — the foreign key is
-      // ON DELETE NO ACTION, so the other order fails.
-      //
-      // `order_events` is append-only, so this UPDATE needs the trigger off
-      // for the statement. It is re-enabled inside the SAME transaction: if
-      // anything below throws, the rollback restores the trigger with it, and
-      // the table is never left writable to anyone else.
-      await tx.execute(sql`ALTER TABLE order_events DISABLE TRIGGER immutable_order_events`)
-      try {
-        const moved = await tx
-          .update(orderEvents)
-          .set({ seatSlotId: keep.id })
-          .where(
-            and(eq(orderEvents.sessionId, sessionId), inArray(orderEvents.seatSlotId, drop)),
-          )
-          .returning({ id: orderEvents.id })
-        movedItems = moved.length
-      } finally {
-        await tx.execute(sql`ALTER TABLE order_events ENABLE TRIGGER immutable_order_events`)
-      }
-
-      await tx.delete(seatSlots).where(inArray(seatSlots.id, drop))
-      removedSeats = drop.length
-    }
-  }
-
   await tx.update(orderSessions).set({ billMode: mode }).where(eq(orderSessions.id, sessionId))
-
-  return { movedItems, removedSeats }
 }
 
 export async function closeSession(

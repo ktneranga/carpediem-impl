@@ -297,10 +297,7 @@ class BillRefusedError extends Error {
 }
 
 /** `PATCH /api/sessions/:id/bill-mode` — the One bill / Separate bills switch. */
-async function setBillModeRequest(
-  sessionId: string,
-  mode: 'one' | 'separate',
-): Promise<{ movedItems: number; removedSeats: number }> {
+async function setBillModeRequest(sessionId: string, mode: 'one' | 'separate'): Promise<void> {
   const response = await fetch(`/api/sessions/${sessionId}/bill-mode`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -311,9 +308,7 @@ async function setBillModeRequest(
   if (response.status === 403) throw new ForbiddenError('Role not permitted')
 
   const payload = await response.json().catch(() => null)
-  if (response.ok && payload?.success) {
-    return payload.data as { movedItems: number; removedSeats: number }
-  }
+  if (response.ok && payload?.success) return
   if (payload?.error?.code === 'SESSION_ALREADY_CLOSED') {
     throw new SessionGoneError('Already closed')
   }
@@ -502,8 +497,6 @@ export function OrderScreen({
   const [noteDraft, setNoteDraft] = useState('')
   const [confirmingSeatRemoval, setConfirmingSeatRemoval] = useState(false)
   const [seatNotice, setSeatNotice] = useState<string | null>(null)
-  /** Open while asking whether to throw away the per-person grouping. */
-  const [collapseConfirm, setCollapseConfirm] = useState(false)
 
   // DERIVED, not synced in an effect. A selection that no longer exists — the
   // seat was removed here, or on the other tablet — falls back to the first
@@ -1137,19 +1130,11 @@ export function OrderScreen({
       setSeatNotice(null)
       return { previous }
     },
-    onSuccess: (result, mode) => {
-      // Collapsing rewrites seats, so the seat list and the round history are
-      // both stale. Say what happened: the waiter has just lost grouping work
-      // and should be told, not left to notice.
+    onSuccess: () => {
+      // Nothing moved, but the seat list is what the screen draws from and the
+      // server is now the authority on the mode. Refetch rather than assume.
       void queryClient.invalidateQueries({ queryKey: seatsQueryKey })
       void queryClient.invalidateQueries({ queryKey: ['orders', sessionId] })
-      if (mode === 'one' && result.removedSeats > 0) {
-        setSeatNotice(
-          `Everything is on one bill now — ${result.movedItems} item${
-            result.movedItems === 1 ? '' : 's'
-          } moved off ${result.removedSeats} person${result.removedSeats === 1 ? '' : 's'}.`,
-        )
-      }
     },
     onError: (error, _mode, context) => {
       // Roll the optimistic flip back. Leaving the chips showing after a
@@ -1173,19 +1158,12 @@ export function OrderScreen({
   })
 
   /**
-   * Switching to One bill THROWS AWAY the grouping, so it is confirmed first —
-   * but only when there is something to lose.
-   *
-   * Teran chose collapse-over-refuse (2026-10-16) precisely so the waiter is
-   * never stuck, which makes an accidental tap the remaining risk. One
-   * confirmation when people exist; none at all on the common path.
+   * No confirmation. The switch moves nothing and deletes nothing — see
+   * `setBillMode` — so switching to One bill and straight back leaves the
+   * order exactly as it was. There is nothing to warn about.
    */
   function requestBillMode(mode: 'one' | 'separate') {
     if (billModeMutation.isPending || mode === billMode) return
-    if (mode === 'one' && seats.length > 1) {
-      setCollapseConfirm(true)
-      return
-    }
     billModeMutation.mutate(mode)
   }
 
@@ -1894,55 +1872,6 @@ export function OrderScreen({
                 )}
               >
                 {busy ? 'Closing…' : 'Yes, walkout'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {/* Switching to One bill destroys the per-person grouping (Teran chose
-          collapse over refuse, 2026-10-16), so it is confirmed — but only when
-          there is something to lose. */}
-      {collapseConfirm ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="collapse-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
-        >
-          <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2">
-            <h2 id="collapse-title" className="text-fs-20 font-extrabold text-slate-900">
-              Put everything on one bill?
-            </h2>
-            <p className="text-fs-16 text-slate-600">
-              {seats.length} people have items on this order. They will all move onto one bill, and
-              who ordered what will be lost. Switching back will not bring it back.
-            </p>
-            <div className="flex gap-sp-3">
-              <button
-                type="button"
-                onClick={() => setCollapseConfirm(false)}
-                className={cn(
-                  'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white',
-                  'text-fs-18 font-bold text-slate-900 shadow-el-1 active:scale-[0.97]',
-                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                )}
-              >
-                Keep separate
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setCollapseConfirm(false)
-                  billModeMutation.mutate('one')
-                }}
-                className={cn(
-                  'h-touch-waiter flex-1 rounded-waiter bg-brand-800 text-fs-18 font-bold text-white',
-                  'shadow-el-2 active:scale-[0.97]',
-                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                )}
-              >
-                One bill
               </button>
             </div>
           </div>

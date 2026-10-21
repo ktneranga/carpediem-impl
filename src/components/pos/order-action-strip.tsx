@@ -174,7 +174,7 @@ export function OrderActionStrip({
         regionLabel="Order actions"
         eyebrow="Order"
         label="Settling"
-        detail="The bill is being prepared. Items cannot be added or changed."
+        detail={note ?? 'The bill is being prepared. Items cannot be added or changed.'}
         leading={moreMenu}
       />
     )
@@ -189,7 +189,12 @@ export function OrderActionStrip({
         regionLabel="Order actions"
         eyebrow="Order"
         label="Order sent"
-        detail="Sent to the kitchen. Add another round, or generate the bill."
+        // `note` first. It is where a failed "Bill & split" reports itself,
+        // and this branch used to pass a fixed string instead — so after a
+        // round was sent, a bill that was refused said NOTHING at all. The
+        // waiter taps, nothing happens, and the button looks broken. The
+        // standing line is the fallback, not the override.
+        detail={note ?? 'Sent to the kitchen. Add another round, or generate the bill.'}
         leading={moreMenu}
       >
         {/* NOT disabled by `busy`. Opening a new round is local and harmless,
@@ -309,7 +314,7 @@ export function OrderActionStrip({
       regionLabel="Order actions"
       eyebrow="Order"
       label="Add items to begin"
-      detail="Nothing staged yet."
+      detail={note ?? 'Nothing staged yet.'}
       // An empty table still has to be closeable — that is most of what
       // closing an empty table IS.
       leading={moreMenu}
