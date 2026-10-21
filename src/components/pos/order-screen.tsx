@@ -1443,9 +1443,6 @@ export function OrderScreen({
         >
           {/* Seats, pinned at the top of the column: "who is this for?" is the
               question before every tap, so it must not scroll away. */}
-          {/* Capped at 45% of the column and scrollable. With eight seats, the
-              note editor and a removal confirmation open, an uncapped section
-              squeezed the round to zero height and pushed the total off-screen. */}
           {/* ── One bill / Separate bills (Teran, 2026-10-16) ───────────────
               The first question of the order, so it sits above everything the
               answer changes. It replaced `zoneUsesSeats` — the zone used to
@@ -1516,10 +1513,18 @@ export function OrderScreen({
               The note editor used to live in it too: opening the editor made
               the section scroll, the scrollbar (~15px on Windows) narrowed the
               auto-fill grid, it dropped a column, and every seat button jumped
-              wider. Reserving the scrollbar space made them permanently wider
-              instead. With the editor outside, a tap on the pencil never adds a
-              scrollbar and the buttons keep their size. */}
-          <section className="flex shrink-0 flex-col gap-sp-3 border-b border-slate-200 p-sp-4 md:max-h-[45%] md:overflow-y-auto">
+              wider. With the editor outside, a tap on the pencil never adds a
+              scrollbar and the buttons keep their size.
+
+              ── The 45% cap is gone (2026-10-21) ──────────────────────────
+              It existed because the seat GRID wrapped: eight seats made four
+              rows, and with the note editor and a removal confirmation open
+              the section squeezed the round to zero height and pushed the
+              total off-screen. The seats are one 56px row that scrolls
+              sideways now, so the section cannot grow with the seat count and
+              has nothing to cap. The editor and the confirmation below it are
+              bounded by their own content. */}
+          <section className="flex shrink-0 flex-col gap-sp-3 border-b border-slate-200 p-sp-4">
             <SeatSelector
               seats={seats}
               activeSeatId={activeSeatId}
