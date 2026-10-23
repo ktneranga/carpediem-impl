@@ -187,14 +187,14 @@ export function OrderActionStrip({
     return (
       <ActionStripShell
         regionLabel="Order actions"
-        eyebrow="Order"
-        label="Order sent"
-        // `note` first. It is where a failed "Bill & split" reports itself,
-        // and this branch used to pass a fixed string instead — so after a
-        // round was sent, a bill that was refused said NOTHING at all. The
-        // waiter taps, nothing happens, and the button looks broken. The
-        // standing line is the fallback, not the override.
-        detail={note ?? 'Sent to the kitchen. Add another round, or generate the bill.'}
+        // No standing text (Teran, 2026-10-23). "ORDER / Order sent / Sent to
+        // the kitchen..." restated what the order column already shows — the
+        // round sits there under its SENT heading — and the buttons beside it
+        // say what can happen next.
+        //
+        // `note` stays. It is where a refused "Bill & split" reports itself;
+        // without it a refusal says nothing and the button looks broken.
+        detail={note}
         leading={moreMenu}
       >
         {/* NOT disabled by `busy`. Opening a new round is local and harmless,
