@@ -40,7 +40,7 @@ import { COUNTER_QUERY_KEY } from '@/components/pos/table-grid'
 import { elapsedMinutesFrom, useMinuteTick } from '@/hooks/use-minute-tick'
 import { useSocketEvent, useSocketRoom } from '@/hooks/use-socket'
 import { signOut } from '@/lib/auth-client'
-import { clockTime, elapsed } from '@/lib/format'
+import { clockTime, elapsed, lkrFromPaisa } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 export type OrderScreenProps = {
@@ -463,6 +463,42 @@ export function OrderScreen({
       round.items.some((item) => item.seatLabel === seatLabel),
     )
   }
+
+  /**
+   * What one seat's bill will say, BEFORE it is created (Teran, 2026-10-23).
+   *
+   * "Bill Seat 1" used to create the bill on the first tap, sight unseen: the
+   * waiter could not see what that person was about to pay, or even confirm it
+   * was the right person — the chip said "thattaya" and the button said
+   * "Seat 1". Now the button carries the total and opens this.
+   *
+   * ── The same arithmetic as the server's `computeBillTotals` ─────────────
+   * Subtotal from the prices AS QUOTED on the events, service only when the
+   * order has a table (a counter sale has had no table service), tax on
+   * subtotal plus service, each rounded once. If this ever disagrees with the
+   * bill, the BILL is right — it is computed in the transaction that writes
+   * it, and it also knows about comps, which this does not.
+   */
+  function seatBillPreview(seatLabel: string) {
+    const items = submittedRounds.flatMap((round) =>
+      round.items.filter((item) => item.seatLabel === seatLabel),
+    )
+    const subtotalPaisa = items.reduce(
+      (total, item) => total + (item.unitPricePaisa ?? 0) * item.quantity,
+      0,
+    )
+    const serviceBp = tableLabel ? serviceChargeBp : 0
+    const servicePaisa = Math.round((subtotalPaisa * serviceBp) / 10_000)
+    const taxPaisa = Math.round(((subtotalPaisa + servicePaisa) * taxRatePercent * 100) / 10_000)
+    return {
+      items,
+      subtotalPaisa,
+      serviceBp,
+      servicePaisa,
+      taxPaisa,
+      totalPaisa: subtotalPaisa + servicePaisa + taxPaisa,
+    }
+  }
   const router = useRouter()
   const queryClient = useQueryClient()
   const minuteTick = useMinuteTick()
@@ -555,6 +591,9 @@ export function OrderScreen({
     ? selectedSeatId
     : (seats.find((seat) => !seatIsBilled(seat.id))?.id ?? seats[0]?.id ?? null)
   const activeSeat = seats.find((seat) => seat.id === activeSeatId) ?? null
+
+  /** The seat whose bill is being previewed before it is created. */
+  const [seatBillPreviewId, setSeatBillPreviewId] = useState<string | null>(null)
 
   // Selecting a different chip closes the panel by construction — no effect,
   // and no stale editor pointing at a seat the waiter has moved on from.
@@ -1560,18 +1599,27 @@ export function OrderScreen({
               <button
                 type="button"
                 disabled={seatBillMutation.isPending}
-                onClick={() => seatBillMutation.mutate(activeSeat.id)}
+                // Opens the preview. The bill is created from there, after the
+                // waiter has seen what it holds.
+                onClick={() => setSeatBillPreviewId(activeSeat.id)}
                 className={cn(
-                  'h-touch-waiter w-full rounded-waiter border-2 border-brand-500 bg-white',
-                  'text-fs-18 font-bold text-brand-700 shadow-el-1',
+                  'flex h-touch-waiter w-full items-center justify-between gap-sp-3 rounded-waiter',
+                  'border-2 border-brand-500 bg-white px-sp-4 shadow-el-1',
                   'transition-transform duration-80 ease-standard active:scale-[0.97]',
                   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                   'disabled:opacity-60',
                 )}
               >
-                {seatBillMutation.isPending
-                  ? 'Billing…'
-                  : `Bill ${activeSeat.seatLabel}`}
+                {/* The NAME the waiter gave this person, not the number — the
+                    chip above says "thattaya", so the button must too. */}
+                <span className="truncate text-fs-18 font-bold text-brand-700">
+                  {seatBillMutation.isPending
+                    ? 'Billing…'
+                    : `Bill ${activeSeat.seatNote ?? activeSeat.seatLabel}`}
+                </span>
+                <span className="shrink-0 text-fs-18 font-extrabold tabular-nums text-slate-900">
+                  {lkrFromPaisa(seatBillPreview(activeSeat.seatLabel).totalPaisa)}
+                </span>
               </button>
             ) : null}
           </section>
@@ -1877,6 +1925,110 @@ export function OrderScreen({
           </div>
         </div>
       ) : null}
+
+      {/* ── One seat's bill, previewed (Teran, 2026-10-23) ─────────────────
+          Creating a bill is not something to do sight unseen: it closes that
+          person's part of the order. The waiter sees exactly what they are
+          about to charge — every item, the service charge, the total — and
+          can read it to the guest before committing. */}
+      {(() => {
+        const seat = seats.find((candidate) => candidate.id === seatBillPreviewId)
+        if (!seat) return null
+        const preview = seatBillPreview(seat.seatLabel)
+        const servicePercent = (preview.serviceBp / 100).toString()
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="seat-bill-title"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
+          >
+            <div className="flex max-h-full w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2">
+              <div className="flex flex-col gap-0.5">
+                <h2 id="seat-bill-title" className="text-fs-20 font-extrabold text-slate-900">
+                  Bill {seat.seatNote ?? seat.seatLabel}
+                </h2>
+                {seat.seatNote ? (
+                  <p className="text-fs-14 text-slate-600">{seat.seatLabel}</p>
+                ) : null}
+              </div>
+
+              <ul className="flex min-h-0 flex-col gap-sp-2 overflow-y-auto">
+                {preview.items.map((item) => (
+                  <li key={item.id} className="flex items-baseline justify-between gap-sp-3">
+                    <span className="min-w-0 text-fs-16 text-slate-900">
+                      {item.name}
+                      {item.quantity > 1 ? (
+                        <span className="text-slate-600"> × {item.quantity}</span>
+                      ) : null}
+                      {item.modifierText ? (
+                        <span className="block text-fs-12 text-slate-600">{item.modifierText}</span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 text-fs-16 font-semibold tabular-nums text-slate-900">
+                      {lkrFromPaisa((item.unitPricePaisa ?? 0) * item.quantity)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="flex flex-col gap-sp-1 border-t border-slate-200 pt-sp-3 text-fs-14">
+                <div className="flex justify-between text-slate-600">
+                  <span>Subtotal</span>
+                  <span className="tabular-nums">{lkrFromPaisa(preview.subtotalPaisa)}</span>
+                </div>
+                {preview.serviceBp > 0 ? (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Service {servicePercent}%</span>
+                    <span className="tabular-nums">{lkrFromPaisa(preview.servicePaisa)}</span>
+                  </div>
+                ) : null}
+                {preview.taxPaisa > 0 ? (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Tax {taxRatePercent}%</span>
+                    <span className="tabular-nums">{lkrFromPaisa(preview.taxPaisa)}</span>
+                  </div>
+                ) : null}
+                <div className="flex items-baseline justify-between pt-sp-1">
+                  <span className="text-fs-16 font-bold text-slate-900">Total</span>
+                  <span className="text-fs-24 font-extrabold tabular-nums text-slate-900">
+                    {lkrFromPaisa(preview.totalPaisa)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex gap-sp-3">
+                <button
+                  type="button"
+                  onClick={() => setSeatBillPreviewId(null)}
+                  className={cn(
+                    'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white',
+                    'text-fs-18 font-bold text-slate-900 shadow-el-1 active:scale-[0.97]',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                  )}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  disabled={seatBillMutation.isPending}
+                  onClick={() => {
+                    setSeatBillPreviewId(null)
+                    seatBillMutation.mutate(seat.id)
+                  }}
+                  className={cn(
+                    'h-touch-waiter flex-1 rounded-waiter bg-brand-800 text-fs-18 font-bold text-white',
+                    'shadow-el-2 active:scale-[0.97] disabled:opacity-60',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                  )}
+                >
+                  Create bill
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* The bar. Its state is `stripState` above — four facts, including the
           Add More Items override.
