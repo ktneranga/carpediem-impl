@@ -112,6 +112,7 @@ export default async function BillPage({
       orderEventId: line.orderEventId,
       name: line.name,
       quantity: line.quantity,
+      unitPricePaisa: line.unitPricePaisa,
       amountPaisa: line.amountPaisa,
       modifierText: line.modifierText,
       destination: stationByEvent.get(line.orderEventId) ?? null,
@@ -126,7 +127,10 @@ export default async function BillPage({
           lines: priced.events.map((event, index) => ({
             orderEventId: event.eventId,
             name: event.itemName ?? 'Unknown item',
-            quantity: event.quantity,
+            // What is still UNBILLED of it — one of a "2×" once the other is
+            // on someone's bill (migration 0025).
+            quantity: priced.lineQuantities[index]!,
+            unitPricePaisa: event.unitPricePaisa ?? 0,
             amountPaisa: priced.lineAmounts[index]!,
             modifierText: event.modifierText,
             destination: event.destination ?? null,

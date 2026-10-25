@@ -39,10 +39,13 @@ const billBodySchema = z.discriminatedUnion('type', [
     pin: z.string().regex(/^\d{4}$/).optional(),
   }),
   // One person's bill from the bill screen's split (Story 6.3): exactly these
-  // items. Capped at the round size, since nobody's share is bigger than that.
+  // units of these items — one cashew of a "2×" is a quantity of 1 (0025).
   z.object({
     type: z.literal('split'),
-    eventIds: z.array(z.string().uuid()).min(1).max(200),
+    items: z
+      .array(z.object({ eventId: z.string().uuid(), quantity: z.number().int().positive() }))
+      .min(1)
+      .max(200),
     personLabel: z.string().trim().min(1).max(40),
     pin: z.string().regex(/^\d{4}$/).optional(),
   }),
@@ -188,7 +191,7 @@ export async function POST(
         ? generateSplitBill(tx, {
             sessionId: session.id,
             staffId: billingStaffId,
-            eventIds: requested.eventIds,
+            items: requested.items,
             personLabel: requested.personLabel,
           })
         : generateConsolidatedBill(tx, { sessionId: session.id, staffId: billingStaffId }),

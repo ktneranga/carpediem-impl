@@ -1,7 +1,7 @@
 import 'server-only'
-import { and, asc, eq, inArray, isNotNull, isNull, notExists, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { db } from '@/server/db'
-import { isUniqueViolation } from '@/server/db/errors'
+import { isCheckViolation, isUniqueViolation } from '@/server/db/errors'
 import {
   billComps,
   billLines,
@@ -248,10 +248,15 @@ async function collectBillable(
   sessionId: string,
   { seatId, eventIds }: { seatId?: string; eventIds?: string[] } = {},
 ) {
+  // Units of this event already on some bill (migration 0025). An event is
+  // billable while this is below its quantity.
+  const billedUnits = sql<number>`coalesce((select sum(${billLines.quantity}) from ${billLines} where ${billLines.orderEventId} = ${orderEvents.id}), 0)::int`
+
   const events = await tx
     .select({
       eventId: orderEvents.id,
       quantity: orderEvents.quantity,
+      billedQuantity: billedUnits,
       unitPricePaisa: orderEvents.unitPricePaisa,
       modifierText: orderEvents.modifierText,
       roundNumber: orderEvents.roundNumber,
@@ -280,20 +285,18 @@ async function collectBillable(
         // This is what lets a consolidated bill cover the REMAINDER after
         // some seats have paid, and what stops a seat bill re-claiming an
         // event a consolidated bill already took.
-        notExists(
-          tx
-            .select({ one: sql`1` })
-            .from(billLines)
-            .where(eq(billLines.orderEventId, orderEvents.id)),
-        ),
+        //
+        // UNITS, since migration 0025: an event of 2 with one unit on a
+        // person's bill still has one to bill.
+        sql`${orderEvents.quantity} > ${billedUnits}`,
         // A seat bill covers one seat. A consolidated bill passes no seat and
         // therefore also picks up events with a NULL `seat_slot_id`, which no
         // seat bill could ever reach.
         ...(seatId ? [eq(orderEvents.seatSlotId, seatId)] : []),
         // A person's bill from the split screen (Story 6.3) covers exactly the
         // events the waiter dragged onto them. Still filtered by UNBILLED
-        // above, so an event already on another bill silently drops out
-        // here — and the caller compares counts to refuse that case.
+        // above, so an event with nothing left drops out here — and the
+        // caller compares counts to refuse that case.
         ...(eventIds ? [inArray(orderEvents.id, eventIds)] : []),
       ),
     )
@@ -493,6 +496,12 @@ export async function generateSeatBill(
 }
 
 /**
+ * Some of a split's items are already billed, more units were asked for than
+ * are left, or an event is not on this session.
+ */
+export class ItemsNotBillableError extends Error {}
+
+/**
  * Prices what a bill WOULD hold, without writing anything.
  *
  * ── One implementation for the preview and the bill ──────────────────────────
@@ -511,8 +520,16 @@ export async function priceBillable(
   {
     sessionId,
     seatId = null,
-    eventIds,
-  }: { sessionId: string; seatId?: string | null; eventIds?: string[] },
+    items,
+  }: {
+    sessionId: string
+    seatId?: string | null
+    /**
+     * A person's share (Story 6.3): these events, and how many units of
+     * each. Absent means every unbilled unit — the whole table, or one seat.
+     */
+    items?: { eventId: string; quantity: number }[]
+  },
 ) {
   const [session] = await tx
     .select({ tenantId: orderSessions.tenantId })
@@ -521,10 +538,32 @@ export async function priceBillable(
     .limit(1)
 
   // 3 — UNBILLED events only, and for one seat when this is a seat bill.
-  const { events, comps, hasTableService } = await collectBillable(tx, sessionId, {
+  const requested = items ? new Map(items.map((item) => [item.eventId, item.quantity])) : null
+  const { events, comps: allComps, hasTableService } = await collectBillable(tx, sessionId, {
     seatId: seatId ?? undefined,
-    eventIds,
+    eventIds: requested ? [...requested.keys()] : undefined,
   })
+
+  // How many units each line bills: what was asked for, or all that is left.
+  // Asking for more than is left is refused whole, never trimmed — a guest
+  // must not be billed for fewer cashews than the screen showed them.
+  const lineQuantities = events.map((event) => {
+    const left = event.quantity - event.billedQuantity
+    const want = requested?.get(event.eventId) ?? left
+    if (want < 1 || want > left) throw new ItemsNotBillableError()
+    return want
+  })
+
+  // A comp follows its item onto the bill that takes the item's LAST unit. An
+  // event split across two bills would otherwise try to attach the same comp
+  // twice, and `idx_bill_comps_comp_record` allows it once. Nothing writes
+  // comps until Epic 7; this keeps the rule honest for when something does.
+  const finishing = new Set(
+    events
+      .filter((event, index) => lineQuantities[index] === event.quantity - event.billedQuantity)
+      .map((event) => event.eventId),
+  )
+  const comps = allComps.filter((comp) => finishing.has(comp.orderEventId))
   const { serviceChargeBp, taxBp } = await readRates(tx, session!.tenantId)
 
   // One party, one rate. `null` means this is the session's first bill, so the
@@ -539,7 +578,7 @@ export async function priceBillable(
   const unpriced = events.find((event) => event.unitPricePaisa === null)
   if (unpriced) throw new UnpricedItemError(unpriced.eventId)
 
-  const lineAmounts = events.map((event) => event.quantity * event.unitPricePaisa!)
+  const lineAmounts = events.map((event, index) => lineQuantities[index]! * event.unitPricePaisa!)
   const grossPaisa = lineAmounts.reduce((total, amount) => total + amount, 0)
 
   // A comp REDUCES the subtotal, so it is stored negative and added. Storing it
@@ -562,41 +601,55 @@ export async function priceBillable(
     hasTableService: pinned === null ? hasTableService : pinned > 0,
   })
 
-  return { tenantId: session!.tenantId, events, comps, lineAmounts, compAmounts, totals }
+  return {
+    tenantId: session!.tenantId,
+    events,
+    comps,
+    lineQuantities,
+    lineAmounts,
+    compAmounts,
+    totals,
+  }
 }
-
-/** Some of a split's items are already on a bill, or are not on this session. */
-export class ItemsNotBillableError extends Error {}
 
 /**
  * One person's bill from the bill screen's split (Story 6.3, FR24).
  *
- * Covers EXACTLY the events the waiter dragged onto that person. The unbilled
+ * Covers EXACTLY the units the waiter moved onto that person — one of a
+ * "2× Devilled Cashew" is fine since migration 0025. The unbilled
  * filter in `collectBillable` drops any that another bill already claimed (or
  * that belong to a different session), so a count mismatch means the screen
  * was out of date — refused whole rather than billing a guest for part of
  * what they were shown.
  *
- * The same guards as every bill: the session lock, the event-level UNIQUE on
- * `bill_lines`, and the pinned service rate, so the first person to pay sets
- * the rate the rest of the party pays.
+ * The same guards as every bill: the session lock, the
+ * `bill_lines_within_event_quantity` trigger, and the pinned service rate, so
+ * the first person to pay sets the rate the rest of the party pays.
  */
 export async function generateSplitBill(
   tx: Tx,
   {
     sessionId,
     staffId,
-    eventIds,
+    items,
     personLabel,
-  }: { sessionId: string; staffId: string; eventIds: string[]; personLabel: string },
+  }: {
+    sessionId: string
+    staffId: string
+    items: { eventId: string; quantity: number }[]
+    personLabel: string
+  },
 ): Promise<BillDetail> {
   await lockOpenSession(tx, sessionId)
 
-  const unique = [...new Set(eventIds)]
-  const { events } = await priceBillable(tx, { sessionId, eventIds: unique })
-  if (events.length !== unique.length) throw new ItemsNotBillableError()
+  // One entry per event; the screen never sends two, and two would be ambiguous.
+  if (new Set(items.map((item) => item.eventId)).size !== items.length) {
+    throw new ItemsNotBillableError()
+  }
+  const { events } = await priceBillable(tx, { sessionId, items })
+  if (events.length !== items.length) throw new ItemsNotBillableError()
 
-  return buildBill(tx, { sessionId, staffId, seatId: null, eventIds: unique, personLabel })
+  return buildBill(tx, { sessionId, staffId, seatId: null, items, personLabel })
 }
 
 async function buildBill(
@@ -605,22 +658,20 @@ async function buildBill(
     sessionId,
     staffId,
     seatId,
-    eventIds,
+    items,
     personLabel = null,
   }: {
     sessionId: string
     staffId: string
     seatId: string | null
-    eventIds?: string[]
+    items?: { eventId: string; quantity: number }[]
     /** Set for a person's split bill (Story 6.3). */
     personLabel?: string | null
   },
 ): Promise<BillDetail> {
-  const type: BillDetail['type'] = seatId ? 'seat' : eventIds ? 'split' : 'consolidated'
-  const { tenantId, events, comps, lineAmounts, compAmounts, totals } = await priceBillable(
-    tx,
-    { sessionId, seatId, eventIds },
-  )
+  const type: BillDetail['type'] = seatId ? 'seat' : items ? 'split' : 'consolidated'
+  const { tenantId, events, comps, lineQuantities, lineAmounts, compAmounts, totals } =
+    await priceBillable(tx, { sessionId, seatId, items })
 
   // 4 — for a seat, "nothing left" is SeatHasNoItemsError; for the session it
   // is NothingToBillError, which since 6.4 also means "everything is already
@@ -674,6 +725,7 @@ async function buildBill(
       events.map((event, index) => ({
         billId: bill!.id,
         orderEventId: event.eventId,
+        quantity: lineQuantities[index]!,
         amountPaisa: lineAmounts[index]!,
         // Snapshotted, not joined at render time (migration 0019). The name a
         // guest was charged under must not change when the owner edits a menu.
@@ -695,11 +747,13 @@ async function buildBill(
     // Two indexes, two meanings. Collapsing them meant a comp already attached
     // to another bill was reported as "this order already has a bill", which is
     // precisely the mis-attribution `isUniqueViolation` exists to prevent.
-    if (isUniqueViolation(error, 'idx_bill_lines_order_event')) {
-      // Another bill got these events first. Its id is not in hand — this
-      // transaction is about to roll back and cannot read it — so the route
-      // re-reads outside the aborted transaction. Step 2 catches this case
-      // normally; reaching here means the lock was bypassed.
+    if (isCheckViolation(error, 'bill_lines_within_event_quantity')) {
+      // Another bill took these units first — the database's own guard, which
+      // replaced `UNIQUE (order_event_id)` in migration 0025. For a person's
+      // share that is "these items are no longer free"; for the table's bill
+      // it is the old meaning, another bill got there first, and the route
+      // re-reads its id outside this aborted transaction.
+      if (type === 'split') throw new ItemsNotBillableError()
       throw new BillAlreadyOpenError('')
     }
     if (isUniqueViolation(error, 'idx_bill_comps_comp_record')) {
@@ -724,7 +778,7 @@ async function buildBill(
     lines: events.map((event, index) => ({
       orderEventId: event.eventId,
       name: event.itemName ?? 'Unknown item',
-      quantity: event.quantity,
+      quantity: lineQuantities[index]!,
       unitPricePaisa: event.unitPricePaisa ?? 0,
       amountPaisa: lineAmounts[index]!,
       seatLabel: event.seatLabel,
@@ -791,7 +845,9 @@ export async function getBill(
         name: billLines.name,
         seatLabel: billLines.seatLabel,
         modifierText: billLines.modifierText,
-        quantity: orderEvents.quantity,
+        // The units THIS bill took, not the event's — a split cashew bills 1
+        // of 2 (migration 0025).
+        quantity: billLines.quantity,
         unitPricePaisa: orderEvents.unitPricePaisa,
         roundNumber: orderEvents.roundNumber,
       })
@@ -904,12 +960,9 @@ export async function hasUnbilledItems(
       and(
         eq(orderEvents.sessionId, sessionId),
         eq(orderEvents.eventType, 'ITEM_ADDED'),
-        notExists(
-          executor
-            .select({ one: sql`1` })
-            .from(billLines)
-            .where(eq(billLines.orderEventId, orderEvents.id)),
-        ),
+        // Units, since migration 0025: one cashew of two on a person's bill
+        // leaves the other unbilled, and the table must not close over it.
+        sql`${orderEvents.quantity} > coalesce((select sum(${billLines.quantity}) from ${billLines} where ${billLines.orderEventId} = ${orderEvents.id}), 0)`,
       ),
     )
     .limit(1)

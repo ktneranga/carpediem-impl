@@ -38,3 +38,24 @@ export function isUniqueViolation(error: unknown, indexName: string): boolean {
   }
   return false
 }
+
+export const PG_CHECK_VIOLATION = '23514'
+
+/**
+ * A CHECK constraint, or a trigger raising `check_violation`, refused a write.
+ *
+ * Matched by NAME, for the reason `isUniqueViolation` is: a bare `23514`
+ * would report an unrelated constraint as this one. Unlike that helper, an
+ * absent constraint name is NOT a match — every check this project raises
+ * names itself, so an unnamed one is something else.
+ */
+export function isCheckViolation(error: unknown, constraintName: string): boolean {
+  for (let current: unknown = error, depth = 0; current && depth < 5; depth += 1) {
+    if (typeof current === 'object' && current !== null && 'code' in current) {
+      const candidate = current as { code?: unknown; constraint?: unknown }
+      if (candidate.code === PG_CHECK_VIOLATION) return candidate.constraint === constraintName
+    }
+    current = (current as { cause?: unknown }).cause
+  }
+  return false
+}

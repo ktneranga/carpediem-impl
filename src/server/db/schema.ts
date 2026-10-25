@@ -629,8 +629,18 @@ export const bills = pgTable('bills', {
 export const billLines = pgTable('bill_lines', {
   id:     uuid('id').primaryKey().defaultRandom(),
   billId: uuid('bill_id').notNull().references(() => bills.id),
-  /** The event this line bills. At most one bill may claim it, ever. */
+  /** The event this line bills — all of it, or part of its quantity. */
   orderEventId: uuid('order_event_id').notNull().references(() => orderEvents.id),
+  /**
+   * How many of the event's units this line bills (migration 0025).
+   *
+   * "2× Devilled Cashew" is ONE order event with quantity 2. Until 0025 a
+   * bill line claimed a whole event, so two guests could not each pay for one
+   * cashew. Now a line bills some of its units, and the event can be spread
+   * across several bills — never past its quantity, which the
+   * `bill_lines_within_event_quantity` trigger enforces in the database.
+   */
+  quantity:     integer('quantity').notNull(),
   /** quantity × unit_price_paisa, as quoted on the event. */
   amountPaisa:  integer('amount_paisa').notNull(),
 
@@ -651,7 +661,14 @@ export const billLines = pgTable('bill_lines', {
   /** The modifier text as billed — "no ice", "extra spicy". */
   modifierText: text('modifier_text'),
 }, (t) => [
-  uniqueIndex('idx_bill_lines_order_event').on(t.orderEventId),
+  // ── No longer UNIQUE on the event (migration 0025) ─────────────────────────
+  // `UNIQUE (order_event_id)` was the no-double-billing invariant while a line
+  // claimed a whole event. With part-quantities it would forbid the thing 0025
+  // exists for, so the invariant moved to a trigger that refuses any line
+  // taking an event's billed units past its ordered quantity. One line per
+  // event per bill is still unique: a bill never lists the same dish twice.
+  uniqueIndex('idx_bill_lines_bill_event').on(t.billId, t.orderEventId),
+  index('idx_bill_lines_order_event').on(t.orderEventId),
   index('idx_bill_lines_bill_id').on(t.billId),
 ])
 

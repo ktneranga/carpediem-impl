@@ -22,6 +22,8 @@ export type BillScreenLine = {
   orderEventId: string
   name: string
   quantity: number
+  /** What one unit costs, as quoted — so a share of a "2×" can be priced. */
+  unitPricePaisa: number
   amountPaisa: number
   modifierText: string | null
   destination: ProductionDestination | null
@@ -132,7 +134,36 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   )
 }
 
-type SplitState = { view: 'whole' | 'split'; persons: Person[]; assigned: Record<string, string> }
+/**
+ * Who has how many of each item (migration 0025).
+ *
+ * Each unbilled line is held as PIECES: "2× Devilled Cashew" starts as one
+ * piece of 2 with no owner, and moving one of them to Person 2 leaves a piece
+ * of 1 behind. Pieces with the same owner always merge, so a column never
+ * shows the same dish twice.
+ */
+type Piece = { owner: string | null; qty: number }
+type SplitState = { view: 'whole' | 'split'; persons: Person[]; allocation: Record<string, Piece[]> }
+
+/** Same-owner pieces merged, empty ones dropped, first-seen order kept. */
+function normalize(pieces: Piece[]): Piece[] {
+  const merged: Piece[] = []
+  for (const piece of pieces) {
+    if (piece.qty <= 0) continue
+    const existing = merged.find((candidate) => candidate.owner === piece.owner)
+    if (existing) existing.qty += piece.qty
+    else merged.push({ ...piece })
+  }
+  return merged
+}
+
+/** A card on the split: one owner's units of one line. Keyed `${eventId}|${owner}`. */
+function cardKey(eventId: string, owner: string | null): string {
+  return `${eventId}|${owner ?? ''}`
+}
+function eventOfCard(key: string): string {
+  return key.slice(0, key.indexOf('|'))
+}
 
 let personCounter = 0
 function newPersonId(): string {
@@ -160,12 +191,12 @@ function splitFromSeats(
   const lines = draft?.lines ?? []
   const used = seats.filter((seat) => lines.some((line) => line.seatSlotId === seat.id))
   const persons = used.map((seat) => ({ id: newPersonId(), label: seat.name }))
-  const assigned: Record<string, string> = {}
+  const allocation: Record<string, Piece[]> = {}
   for (const line of lines) {
     const index = used.findIndex((seat) => seat.id === line.seatSlotId)
-    if (index >= 0) assigned[line.orderEventId] = persons[index]!.id
+    if (index >= 0) allocation[line.orderEventId] = [{ owner: persons[index]!.id, qty: line.quantity }]
   }
-  return { view: 'split', persons, assigned }
+  return { view: 'split', persons, allocation }
 }
 
 /**
@@ -222,18 +253,21 @@ export function BillScreen({
   const [split, setSplit] = useState<SplitState>(() =>
     billMode === 'separate' && draftLines.length > 0
       ? splitFromSeats(draft, seats)
-      : { view: 'whole', persons: [], assigned: {} },
+      : { view: 'whole', persons: [], allocation: {} },
   )
   const [restored, setRestored] = useState(false)
-  const [selected, setSelected] = useState<string | null>(null)
+  /** The card picked up by a tap, and how many of its units "Move here" moves. */
+  const [selected, setSelected] = useState<{ key: string; count: number } | null>(null)
   const [paying, setPaying] = useState<Payable | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
     try {
       const saved = JSON.parse(window.localStorage.getItem(storageKey) ?? 'null') as SplitState | null
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring browser-only state after hydration is exactly this
-      if (saved && (saved.view === 'split' || saved.view === 'whole')) setSplit(saved)
+      if (saved && (saved.view === 'split' || saved.view === 'whole') && saved.allocation) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring browser-only state after hydration is exactly this
+        setSplit(saved)
+      }
     } catch {
       // A private window or blocked storage: start fresh.
     }
@@ -250,32 +284,73 @@ export function BillScreen({
     }
   }, [restored, split, storageKey])
 
-  // Only assignments that still make sense: the event is still unbilled and
-  // the person still exists. A bill settled on another tablet drops out here.
+  // Only allocations that still make sense: the line is still unbilled, its
+  // pieces add up to what is left of it, and every owner still exists. A bill
+  // settled on another tablet changes what is left, and that line falls back
+  // to unassigned rather than showing units nobody can bill.
   const personIds = new Set(split.persons.map((person) => person.id))
-  const ownerOf = (eventId: string): string | null => {
-    const owner = split.assigned[eventId]
-    return owner && personIds.has(owner) ? owner : null
+  const piecesOf = (line: BillScreenLine): Piece[] => {
+    const saved = split.allocation[line.orderEventId]
+    if (!saved || saved.reduce((total, piece) => total + piece.qty, 0) !== line.quantity) {
+      return [{ owner: null, qty: line.quantity }]
+    }
+    return normalize(
+      saved.map((piece) => ({
+        owner: piece.owner && personIds.has(piece.owner) ? piece.owner : null,
+        qty: piece.qty,
+      })),
+    )
   }
-  const unassigned = draftLines.filter((line) => ownerOf(line.orderEventId) === null)
-  const linesFor = (personId: string) =>
-    draftLines.filter((line) => ownerOf(line.orderEventId) === personId)
 
-  function move(eventId: string, target: string | null | 'new') {
+  /** One owner's cards: their units of each line, priced per unit. */
+  const cardsFor = (owner: string | null): BillScreenLine[] =>
+    draftLines.flatMap((line) =>
+      piecesOf(line)
+        .filter((piece) => piece.owner === owner)
+        .map((piece) => ({
+          ...line,
+          orderEventId: cardKey(line.orderEventId, owner),
+          quantity: piece.qty,
+          amountPaisa: piece.qty * line.unitPricePaisa,
+        })),
+    )
+  const unassigned = cardsFor(null)
+  const ownerOfCard = (key: string): string | null => key.slice(key.indexOf('|') + 1) || null
+
+  /**
+   * Moves `count` units of a card to `target` — all of them when no count is
+   * given, which is what a drag does.
+   */
+  function move(key: string, target: string | null | 'new', count?: number) {
     setSelected(null)
+    const eventId = eventOfCard(key)
+    const from = ownerOfCard(key)
+    const line = draftLines.find((candidate) => candidate.orderEventId === eventId)
+    if (!line) return
     setSplit((current) => {
       let persons = current.persons
-      let personId = target
+      let to: string | null = target === 'new' ? null : target
       if (target === 'new') {
         const person = { id: newPersonId(), label: nextPersonLabel(current.persons) }
         persons = [...current.persons, person]
-        personId = person.id
+        to = person.id
       }
-      const assigned = { ...current.assigned }
-      if (personId === null) delete assigned[eventId]
-      else assigned[eventId] = personId
-      return { ...current, persons, assigned }
+      const pieces = piecesOf(line).map((piece) => ({ ...piece }))
+      const source = pieces.find((piece) => piece.owner === from)
+      if (!source) return current
+      const moving = Math.min(count ?? source.qty, source.qty)
+      source.qty -= moving
+      pieces.push({ owner: to, qty: moving })
+      return {
+        ...current,
+        persons,
+        allocation: { ...current.allocation, [eventId]: normalize(pieces) },
+      }
     })
+  }
+
+  function pick(key: string, qty: number) {
+    setSelected((current) => (current?.key === key ? null : { key, count: qty }))
   }
 
   function removePerson(personId: string) {
@@ -283,8 +358,14 @@ export function BillScreen({
     setSplit((current) => ({
       ...current,
       persons: current.persons.filter((person) => person.id !== personId),
-      assigned: Object.fromEntries(
-        Object.entries(current.assigned).filter(([, owner]) => owner !== personId),
+      // Their units go back to the pool, merging with whatever is there.
+      allocation: Object.fromEntries(
+        Object.entries(current.allocation).map(([eventId, pieces]) => [
+          eventId,
+          normalize(
+            pieces.map((piece) => (piece.owner === personId ? { ...piece, owner: null } : piece)),
+          ),
+        ]),
       ),
     }))
   }
@@ -302,14 +383,14 @@ export function BillScreen({
               { id: newPersonId(), label: 'Person 1' },
               { id: newPersonId(), label: 'Person 2' },
             ],
-            assigned: {},
+            allocation: {},
           },
     )
   }
 
   function merge() {
     setSelected(null)
-    setSplit({ view: 'whole', persons: [], assigned: {} })
+    setSplit({ view: 'whole', persons: [], allocation: {} })
   }
 
   const unpaidBills = bills.filter((bill) => bill.paidPaisa < bill.totalPaisa)
@@ -447,13 +528,18 @@ export function BillScreen({
                 total={unassigned.reduce((total, line) => total + line.amountPaisa, 0)}
                 badge={`${itemCount(unassigned)} left`}
                 tone="pending"
-                moveHere={selected && ownerOf(selected) !== null ? () => move(selected, null) : undefined}
-                onDropItem={(eventId) => move(eventId, null)}
+                moveHere={
+                  selected && ownerOfCard(selected.key) !== null
+                    ? () => move(selected.key, null, selected.count)
+                    : undefined
+                }
+                onDropItem={(key) => move(key, null)}
               >
                 <ItemList
                   lines={unassigned}
                   selected={selected}
-                  onSelect={(id) => setSelected((current) => (current === id ? null : id))}
+                  onSelect={pick}
+                  onCount={(count) => setSelected((current) => (current ? { ...current, count } : null))}
                 />
                 <p className="shrink-0 border-t border-occupied-edge px-sp-3 py-sp-2 text-fs-12 font-semibold text-occupied-ink">
                   Give every item to a person before settling the table.
@@ -462,7 +548,7 @@ export function BillScreen({
             ) : null}
 
             {split.persons.map((person) => {
-              const lines = linesFor(person.id)
+              const lines = cardsFor(person.id)
               const totals = priceShare(lines, draft)
               return (
                 <Column
@@ -470,8 +556,12 @@ export function BillScreen({
                   title={person.label}
                   total={totals.totalPaisa}
                   onRemove={() => removePerson(person.id)}
-                  moveHere={selected && ownerOf(selected) !== person.id ? () => move(selected, person.id) : undefined}
-                  onDropItem={(eventId) => move(eventId, person.id)}
+                  moveHere={
+                    selected && ownerOfCard(selected.key) !== person.id
+                      ? () => move(selected.key, person.id, selected.count)
+                      : undefined
+                  }
+                  onDropItem={(key) => move(key, person.id)}
                 >
                   {lines.length === 0 ? (
                     <div className="m-sp-3 flex flex-1 items-center justify-center rounded-card border-2 border-dashed border-slate-200 text-fs-14 font-semibold text-slate-400">
@@ -481,7 +571,10 @@ export function BillScreen({
                     <ItemList
                       lines={lines}
                       selected={selected}
-                      onSelect={(id) => setSelected((current) => (current === id ? null : id))}
+                      onSelect={pick}
+                      onCount={(count) =>
+                        setSelected((current) => (current ? { ...current, count } : null))
+                      }
                     />
                   )}
                   {lines.length > 0 ? (
@@ -511,14 +604,14 @@ export function BillScreen({
                 that starts a new person with it. */}
             <button
               type="button"
-              onClick={() => (selected ? move(selected, 'new') : setSplit((current) => ({
+              onClick={() => (selected ? move(selected.key, 'new', selected.count) : setSplit((current) => ({
                 ...current,
                 persons: [...current.persons, { id: newPersonId(), label: nextPersonLabel(current.persons) }],
               })))}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
-                const eventId = event.dataTransfer.getData('text/plain')
-                if (eventId) move(eventId, 'new')
+                const key = event.dataTransfer.getData('text/plain')
+                if (key) move(key, 'new')
               }}
               className={cn(
                 'flex w-60 shrink-0 flex-col items-center justify-center gap-sp-2 rounded-panel',
@@ -647,7 +740,12 @@ export function BillScreen({
                   : {
                       type: 'split',
                       personLabel: paying.title,
-                      eventIds: paying.lines.map((line) => line.orderEventId),
+                      // Card keys carry the event id; the quantity is this
+                      // person's units of it.
+                      items: paying.lines.map((line) => ({
+                        eventId: eventOfCard(line.orderEventId),
+                        quantity: line.quantity,
+                      })),
                     },
               )
               if (bill.totalPaisa !== expected) {
@@ -810,15 +908,18 @@ function ItemList({
   lines,
   selected = null,
   onSelect,
+  onCount,
 }: {
   lines: BillScreenLine[]
-  selected?: string | null
-  onSelect?: (eventId: string) => void
+  selected?: { key: string; count: number } | null
+  onSelect?: (key: string, qty: number) => void
+  /** Sets how many of the picked card's units "Move here" will move. */
+  onCount?: (count: number) => void
 }) {
   return (
     <ul className="flex min-h-0 flex-1 flex-col gap-sp-2 overflow-y-auto p-sp-3">
       {lines.map((line) => {
-        const isSelected = selected === line.orderEventId
+        const isSelected = selected?.key === line.orderEventId
         const content = (
           <>
             <span className="flex w-full items-baseline justify-between gap-sp-2">
@@ -845,7 +946,7 @@ function ItemList({
                 draggable
                 aria-pressed={isSelected}
                 onDragStart={(event) => event.dataTransfer.setData('text/plain', line.orderEventId)}
-                onClick={() => onSelect(line.orderEventId)}
+                onClick={() => onSelect(line.orderEventId, line.quantity)}
                 className={cn(
                   'flex w-full cursor-grab flex-col items-start gap-sp-1 rounded-card border bg-white p-sp-3 text-left',
                   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
@@ -859,6 +960,36 @@ function ItemList({
                 {content}
               </div>
             )}
+            {/* How many of a "2×" to move. Beside the card, not inside it — a
+                stepper in the card would be a button inside a button. Starts at
+                all of them; step down to split one off. */}
+            {isSelected && onCount && line.quantity > 1 ? (
+              <div className="mt-sp-1 flex items-center justify-between gap-sp-2 rounded-control bg-brand-050 px-sp-3 py-sp-1">
+                <span className="text-fs-14 font-semibold text-brand-700">
+                  Move {selected!.count} of {line.quantity}
+                </span>
+                <span className="flex items-center gap-sp-1">
+                  <button
+                    type="button"
+                    aria-label="Move one fewer"
+                    disabled={selected!.count <= 1}
+                    onClick={() => onCount(selected!.count - 1)}
+                    className="flex size-10 items-center justify-center rounded-control bg-white text-fs-18 font-bold text-brand-700 disabled:opacity-40"
+                  >
+                    −
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Move one more"
+                    disabled={selected!.count >= line.quantity}
+                    onClick={() => onCount(selected!.count + 1)}
+                    className="flex size-10 items-center justify-center rounded-control bg-white text-fs-18 font-bold text-brand-700 disabled:opacity-40"
+                  >
+                    +
+                  </button>
+                </span>
+              </div>
+            ) : null}
           </li>
         )
       })}

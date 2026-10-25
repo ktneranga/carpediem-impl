@@ -602,17 +602,19 @@ async function run() {
     let constraint: string | null = null
     try {
       await sql(
-        `INSERT INTO bill_lines (bill_id, order_event_id, amount_paisa, name)
-         VALUES ($1, $2, 100000, 'Rival claim')`,
+        `INSERT INTO bill_lines (bill_id, order_event_id, quantity, amount_paisa, name)
+         VALUES ($1, $2, 1, 100000, 'Rival claim')`,
         [rival.id, eventId],
       )
     } catch (error: any) {
       code = error?.code ?? null
       constraint = error?.constraint ?? null
     }
-    check('AC-5 a second bill cannot claim a billed event', code === '23505', String(code))
-    check('AC-5 and it fails by the index the service catches BY NAME',
-      constraint === 'idx_bill_lines_order_event', String(constraint))
+    // Since migration 0025 the guard is a trigger, not UNIQUE (order_event_id):
+    // an event may be spread over several bills, never past its quantity.
+    check('AC-5 a second bill cannot claim a billed event', code === '23514', String(code))
+    check('AC-5 and it fails by the constraint the service catches BY NAME',
+      constraint === 'bill_lines_within_event_quantity', String(constraint))
   }
 
   // ══ Code review 2026-10-13 — the findings that had no coverage ═══════════
