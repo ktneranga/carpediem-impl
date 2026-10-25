@@ -1373,11 +1373,14 @@ export function OrderScreen({
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* ── The menu ─────────────────────────────────────────────────────── */}
-        {/* 3 : 1 — the menu takes three parts of the width and the order
-            column one (Teran, 2026-09-16). Flex growth with a zero basis, so
-            the ratio holds at every width; `min-w-80` stops the order column
-            being squeezed below what four seat buttons need on a small tablet. */}
-        <main className="flex min-h-0 flex-1 flex-col p-sp-4 md:min-w-0 md:flex-[3_3_0%]">
+        {/* 2 : 1 — the menu takes two parts of the width and the order
+            column one (Teran, 2026-10-25; was 3 : 1 from 2026-09-16). It
+            matches the bill screen, and the order column now carries the bill
+            switch, the seat row, the lines and the total, which at a quarter
+            of the width left the lines too cramped to manage. Flex growth with
+            a zero basis, so the ratio holds at every width; `min-w-80` stops
+            the order column being squeezed on a small tablet. */}
+        <main className="flex min-h-0 flex-1 flex-col p-sp-4 md:min-w-0 md:flex-[2_2_0%]">
           <MenuBrowser
             onAdd={(item) => stageItem(item, activeSeat)}
             onOpenModifiers={openModifiers}
