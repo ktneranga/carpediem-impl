@@ -162,6 +162,13 @@
       "when": 1792154533053,
       "tag": "0022_wise_micromax",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792935911709,
+      "tag": "0023_volatile_living_lightning",
+      "breakpoints": true
     }
   ]
 }

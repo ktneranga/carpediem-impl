@@ -246,7 +246,7 @@ async function readRates(tx: Tx, tenantId: string) {
 async function collectBillable(
   tx: Tx,
   sessionId: string,
-  { seatId }: { seatId?: string } = {},
+  { seatId, eventIds }: { seatId?: string; eventIds?: string[] } = {},
 ) {
   const events = await tx
     .select({
@@ -257,6 +257,9 @@ async function collectBillable(
       roundNumber: orderEvents.roundNumber,
       itemName: menuItems.name,
       seatLabel: seatSlots.seatLabel,
+      // For the bill screen's station chip only. Never stored on a bill line:
+      // where a dish was cooked is not something a guest is charged for.
+      destination: menuItems.productionDestination,
     })
     .from(orderEvents)
     .leftJoin(menuItems, eq(menuItems.id, orderEvents.menuItemId))
@@ -285,6 +288,11 @@ async function collectBillable(
         // therefore also picks up events with a NULL `seat_slot_id`, which no
         // seat bill could ever reach.
         ...(seatId ? [eq(orderEvents.seatSlotId, seatId)] : []),
+        // A person's bill from the split screen (Story 6.3) covers exactly the
+        // events the waiter dragged onto them. Still filtered by UNBILLED
+        // above, so an event already on another bill silently drops out
+        // here — and the caller compares counts to refuse that case.
+        ...(eventIds ? [inArray(orderEvents.id, eventIds)] : []),
       ),
     )
     .orderBy(asc(orderEvents.createdAt))
@@ -301,9 +309,9 @@ async function collectBillable(
   // per-seat bill gets the same query unchanged: a comp follows the item it
   // reduced. Nothing writes `comp_records` until Epic 7, so this is empty in
   // the demo — which is exactly why it is verified with a hand-inserted row.
-  const eventIds = events.map((event) => event.eventId)
+  const collectedIds = events.map((event) => event.eventId)
   const comps =
-    eventIds.length === 0
+    collectedIds.length === 0
       ? []
       : await tx
           .select({
@@ -313,7 +321,7 @@ async function collectBillable(
             reason: compRecords.reason,
           })
           .from(compRecords)
-          .where(inArray(compRecords.orderEventId, eventIds))
+          .where(inArray(compRecords.orderEventId, collectedIds))
 
   return { events, comps, hasTableService: attachedTable !== undefined }
 }
@@ -478,10 +486,28 @@ export async function generateSeatBill(
   return buildBill(tx, { sessionId, staffId, seatId })
 }
 
-async function buildBill(
+/**
+ * Prices what a bill WOULD hold, without writing anything.
+ *
+ * ── One implementation for the preview and the bill ──────────────────────────
+ * The bill screen shows the table's unbilled items and their total before
+ * anything is recorded (Story 6.5: the bill is written at Settle, not at
+ * "Bill & split"). If the screen did its own arithmetic, the figure a waiter
+ * reads to a guest and the figure that gets stored could drift — so both go
+ * through here, and `buildBill` only adds the INSERTs.
+ *
+ * Must run under `lockOpenSession` when its result is about to be written;
+ * the preview reads it without the lock, which is fine for a number that is
+ * re-derived under the lock at Settle.
+ */
+export async function priceBillable(
   tx: Tx,
-  { sessionId, staffId, seatId }: { sessionId: string; staffId: string; seatId: string | null },
-): Promise<BillDetail> {
+  {
+    sessionId,
+    seatId = null,
+    eventIds,
+  }: { sessionId: string; seatId?: string | null; eventIds?: string[] },
+) {
   const [session] = await tx
     .select({ tenantId: orderSessions.tenantId })
     .from(orderSessions)
@@ -491,19 +517,13 @@ async function buildBill(
   // 3 — UNBILLED events only, and for one seat when this is a seat bill.
   const { events, comps, hasTableService } = await collectBillable(tx, sessionId, {
     seatId: seatId ?? undefined,
+    eventIds,
   })
   const { serviceChargeBp, taxBp } = await readRates(tx, session!.tenantId)
 
   // One party, one rate. `null` means this is the session's first bill, so the
   // live table attachment decides and this bill sets the precedent.
   const pinned = await pinnedServiceBp(tx, sessionId)
-
-  // 4 — for a seat, "nothing left" is SeatHasNoItemsError; for the session it
-  // is NothingToBillError, which since 6.4 also means "everything is already
-  // billed" — the right answer for a fully-settled table.
-  if (events.length === 0) {
-    throw seatId ? new SeatHasNoItemsError() : new NothingToBillError()
-  }
 
   // Priced from the EVENT row, never from the menu: `unit_price_paisa` is what
   // was quoted when the dish was sent, and a mid-service re-price must not
@@ -536,6 +556,30 @@ async function buildBill(
     hasTableService: pinned === null ? hasTableService : pinned > 0,
   })
 
+  return { tenantId: session!.tenantId, events, comps, lineAmounts, compAmounts, totals }
+}
+
+async function buildBill(
+  tx: Tx,
+  {
+    sessionId,
+    staffId,
+    seatId,
+    eventIds,
+  }: { sessionId: string; staffId: string; seatId: string | null; eventIds?: string[] },
+): Promise<BillDetail> {
+  const { tenantId, events, comps, lineAmounts, compAmounts, totals } = await priceBillable(
+    tx,
+    { sessionId, seatId, eventIds },
+  )
+
+  // 4 — for a seat, "nothing left" is SeatHasNoItemsError; for the session it
+  // is NothingToBillError, which since 6.4 also means "everything is already
+  // billed" — the right answer for a fully-settled table.
+  if (events.length === 0) {
+    throw seatId ? new SeatHasNoItemsError() : new NothingToBillError()
+  }
+
   // Before the insert, so `22003` cannot surface as an opaque 500.
   if (totals.totalPaisa > MAX_INT4 || totals.subtotalPaisa > MAX_INT4) {
     throw new BillTooLargeError()
@@ -553,7 +597,7 @@ async function buildBill(
     ;[bill] = await tx
       .insert(bills)
       .values({
-        tenantId: session!.tenantId,
+        tenantId,
         sessionId,
         staffId,
         seatSlotId: seatId,

@@ -668,16 +668,42 @@ export const billComps = pgTable('bill_comps', {
   index('idx_bill_comps_bill_id').on(t.billId),
 ])
 
+/**
+ * Money received against a bill (Story 6.5).
+ *
+ * ── One row per TENDER, not per bill ─────────────────────────────────────────
+ * A split payment — part cash, part card — is two rows on the same bill. A
+ * bill is SETTLED when its rows sum to its `total_paisa`; there is no status
+ * column, for the same reason `bills` has none: a flag would be a second
+ * source of truth about a sum the rows already state.
+ *
+ * ── The amount APPLIED, not the amount tendered ──────────────────────────────
+ * A guest who hands over LKR 5,000 for a LKR 4,510 bill is recorded as 4,510
+ * cash. The 490 change never belonged to the restaurant, and recording the
+ * tender would make every cash bill look overpaid in a shift summary. The
+ * service refuses any payment that would take a bill past its total.
+ *
+ * Append-only (`immutable_payment_records`, migration 0001). A wrong payment
+ * is corrected by a compensating record, never by UPDATE.
+ */
 export const paymentRecords = pgTable('payment_records', {
   id:               uuid('id').primaryKey().defaultRandom(),
   sessionId:        uuid('session_id').notNull().references(() => orderSessions.id),
+  /**
+   * The bill this pays (Story 6.5). NOT NULL: the table was empty when the
+   * column was added, and a payment that settles nothing in particular is
+   * exactly the unreconcilable row a cash-up cannot explain.
+   */
+  billId:           uuid('bill_id').notNull().references(() => bills.id),
   staffId:          uuid('staff_id').notNull().references(() => staff.id),
-  amountPaysa:      integer('amount_paisa').notNull(),
+  /** Integer paisa. The key was `amountPaysa` until 6.5 started writing it. */
+  amountPaisa:      integer('amount_paisa').notNull(),
   method:           paymentMethodEnum('method').notNull(),
   coveredSeatSlots: text('covered_seat_slots'),
   createdAt:        timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_payment_records_session_id').on(t.sessionId),
+  index('idx_payment_records_bill_id').on(t.billId),
 ])
 
 export const compRecords = pgTable('comp_records', {
