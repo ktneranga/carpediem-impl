@@ -317,8 +317,20 @@ export function BillScreen({
 
   useEffect(() => {
     try {
-      const saved = JSON.parse(window.localStorage.getItem(storageKey) ?? 'null') as SplitState | null
-      if (saved && (saved.view === 'split' || saved.view === 'whole') && saved.allocation) {
+      const saved = JSON.parse(window.localStorage.getItem(storageKey) ?? 'null') as
+        | (SplitState & { billMode?: 'one' | 'separate' })
+        | null
+      // Only a split saved under the SAME bill mode (Teran, 2026-10-25). An
+      // order switched to One bill on the order screen must open on the
+      // one-bill view, not on the seat split it had while it was separate —
+      // and switched to Separate bills, on a fresh split by seat. The mode is
+      // the waiter's latest answer; a saved arrangement from before it is not.
+      if (
+        saved &&
+        saved.billMode === billMode &&
+        (saved.view === 'split' || saved.view === 'whole') &&
+        saved.allocation
+      ) {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring browser-only state after hydration is exactly this
         setSplit(saved)
       }
@@ -326,17 +338,17 @@ export function BillScreen({
       // A private window or blocked storage: start fresh.
     }
     setRestored(true)
-  }, [storageKey])
+  }, [billMode, storageKey])
 
   useEffect(() => {
     // Not before the restore, or the default would overwrite what was saved.
     if (!restored) return
     try {
-      window.localStorage.setItem(storageKey, JSON.stringify(split))
+      window.localStorage.setItem(storageKey, JSON.stringify({ ...split, billMode }))
     } catch {
       // Storage is a convenience here, never a requirement.
     }
-  }, [restored, split, storageKey])
+  }, [billMode, restored, split, storageKey])
 
   // Only allocations that still make sense: the line is still unbilled, its
   // pieces add up to what is left of it, and every owner still exists. A bill
