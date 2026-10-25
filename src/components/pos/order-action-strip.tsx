@@ -176,7 +176,16 @@ export function OrderActionStrip({
         label="Settling"
         detail={note ?? 'The bill is being prepared. Items cannot be added or changed.'}
         leading={moreMenu}
-      />
+      >
+        {/* The way to the bill screen, where it is paid. Without it a billed
+            table could reach its bill only by URL (Story 6.5). */}
+        {onGenerateBill ? (
+          <button type="button" onClick={onGenerateBill} className={billButtonClass}>
+            <Receipt aria-hidden="true" strokeWidth={2.2} className="size-5 shrink-0" />
+            Bill &amp; split
+          </button>
+        ) : null}
+      </ActionStripShell>
     )
   }
 

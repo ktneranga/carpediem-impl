@@ -351,46 +351,6 @@ async function billSeat(sessionId: string, seatId: string): Promise<BillDetail> 
   throw new Error('This seat was not billed.')
 }
 
-/** `POST /api/sessions/:id/bills` — Story 6.2. */
-async function generateBill(sessionId: string): Promise<BillDetail> {
-  const response = await fetch(`/api/sessions/${sessionId}/bills`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: 'consolidated' }),
-  })
-
-  if (response.status === 401) {
-    // 401 means two different things on this route. An expired session is
-    // fixed by signing in; a re-auth challenge is not, and redirecting to the
-    // PIN pad for one would throw away the order screen to ask for a PIN the
-    // screen itself should be asking for. Story 2.4 owns that prompt.
-    const challenge = await response.json().catch(() => null)
-    if (challenge?.error?.code === 'REAUTH_REQUIRED' || challenge?.error?.code === 'REAUTH_FAILED') {
-      throw new BillRefusedError(
-        challenge.error.code,
-        challenge.error.message ?? 'This bill needs a PIN.',
-        null,
-      )
-    }
-    throw new SessionExpiredError('Session expired')
-  }
-  if (response.status === 403) throw new ForbiddenError('Role not permitted')
-
-  const payload = await response.json().catch(() => null)
-
-  if (response.ok && payload?.success) return payload.data as BillDetail
-
-  const error = payload?.error ?? {}
-  if (error.code === 'SESSION_ALREADY_CLOSED') throw new SessionGoneError('Already closed')
-  if (typeof error.code === 'string' && response.status < 500) {
-    throw new BillRefusedError(
-      error.code,
-      error.message ?? 'The bill was not generated.',
-      typeof error.billId === 'string' && error.billId !== '' ? error.billId : null,
-    )
-  }
-  throw new Error('The bill was not generated.')
-}
 
 /**
  * Order entry — menu on the left, the order on the right, one bar at the foot.
@@ -1045,65 +1005,6 @@ export function OrderScreen({
    * billed, so the strip moves to `settling` anyway. Leaving it on `submitted`
    * would offer a button that can only fail again.
    */
-  const billMutation = useMutation({
-    mutationFn: () => generateBill(sessionId),
-    onMutate: () => setSendNote(null),
-    onSuccess: (generated) => {
-      // Refetch rather than patching the cache by hand: a consolidated bill
-      // changes BOTH the list and `hasUnbilled`, and the server already knows
-      // both. Patching one and guessing the other is how a screen ends up
-      // disagreeing with the database.
-      void queryClient.invalidateQueries({ queryKey: billQueryKey })
-      void generated
-      // Nothing staged can be sent now; drop it rather than strand it.
-      clearRound()
-      // The round history is unchanged by billing, but the session's state is
-      // not, and the next thing a waiter does is settle. Refetch so anything
-      // derived from the order is current when they get there.
-      void queryClient.invalidateQueries({ queryKey: ['orders', sessionId] })
-      void queryClient.invalidateQueries({ queryKey: ['tables'] })
-      void queryClient.invalidateQueries({ queryKey: COUNTER_QUERY_KEY })
-    },
-    onError: (error) => {
-      if (error instanceof SessionExpiredError) {
-        window.location.assign('/login')
-        return
-      }
-      if (error instanceof ForbiddenError) {
-        setSendNote({ text: 'Your role cannot generate bills.', forLines: null })
-        return
-      }
-      if (error instanceof SessionGoneError) {
-        setClosedDuringSend(true)
-        return
-      }
-      if (error instanceof BillRefusedError) {
-        if (error.code === 'BILL_ALREADY_OPEN') {
-          // The order IS billed — the outcome the waiter wanted — so settle.
-          // Refetch rather than guessing: the 409 carries only an id, and the
-          // query returns the whole document, which is what the strip and 6.4
-          // both need. This also recovers the case where a 201 committed but
-          // its response never arrived, where the retry lands here.
-          //
-          // The message no longer says "on another device". It is equally this
-          // device double-tapping, or this device retrying an unparseable 201,
-          // and naming the wrong cause during an end-of-night dispute is worse
-          // than naming none.
-          void queryClient.invalidateQueries({ queryKey: billQueryKey })
-          clearRound()
-          setSendNote({ text: 'This order already has a bill.', forLines: null })
-          return
-        }
-        if (error.code === 'NOTHING_TO_BILL') {
-          setSendNote({ text: 'Nothing has been ordered yet, so there is no bill.', forLines: null })
-          return
-        }
-        setSendNote({ text: error.message, forLines: null })
-        return
-      }
-      setSendNote({ text: 'Could not generate the bill. Try again.', forLines: null })
-    },
-  })
 
   /**
    * Bill This Seat (Story 6.4).
@@ -2105,7 +2006,7 @@ export function OrderScreen({
         state={stripState}
         stagedCount={stagedItemCount}
         destinationSummary={destinationSummary}
-        busy={sendMutation.isPending || billMutation.isPending}
+        busy={sendMutation.isPending}
         sendBlocked={stagedProblems.size > 0 || overLimit}
         note={
           stagedProblems.size > 0
@@ -2117,7 +2018,10 @@ export function OrderScreen({
               : (sendNoteText ?? undefined)
         }
         onSubmitOrder={lines.length > 0 ? () => sendMutation.mutate() : undefined}
-        onGenerateBill={() => billMutation.mutate()}
+        // Opens the bill screen. It writes nothing — the bill is recorded at
+        // Settle there (Story 6.5), so a waiter who checks the total and comes
+        // back to add a dessert has changed nothing.
+        onGenerateBill={() => router.push(`/orders/${sessionId}/bill`)}
         onClear={
           lines.length === 0
             ? undefined
