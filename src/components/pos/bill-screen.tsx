@@ -2,16 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  ArrowLeft,
-  Banknote,
-  CreditCard,
-  Plus,
-  Receipt,
-  Split,
-  Users,
-  X,
-} from 'lucide-react'
+import { ArrowLeft, Banknote, CreditCard, Delete, Plus, Receipt, Users, X } from 'lucide-react'
 import { lkrFromPaisa } from '@/lib/format'
 import { routeForDestination } from '@/lib/design'
 import { cn } from '@/lib/utils'
@@ -731,7 +722,7 @@ export function BillScreen({
 
       {paying ? (
         <PaymentDialog
-          title={paying.title}
+          title={`${paying.title} · ${tableLabel}`}
           duePaisa={outstandingOf(paying)}
           onCancel={() => setPaying(null)}
           onPay={async (tenders) => {
@@ -1163,26 +1154,28 @@ function Row({ label, value }: { label: string; value: number }) {
   )
 }
 
-/** "1,500.50" -> 150050. Blank or unparseable -> null. */
-function paisaFromInput(text: string): number | null {
-  const cleaned = text.replace(/[,\s]/g, '')
-  if (cleaned === '') return null
-  const value = Number(cleaned)
-  if (!Number.isFinite(value) || value < 0) return null
-  return Math.round(value * 100)
-}
-
 /**
- * Taking the money: cash, card, or part of each.
+ * Taking the money (design 31): method on the left, a number pad on the right.
  *
- * ── Cash records what was APPLIED ────────────────────────────────────────────
- * The waiter types what the guest handed over and the dialog shows the change.
- * What is recorded is the bill's amount, not the note — change never belonged
- * to the restaurant (see `payment_records`).
+ * ── Cash: type what the guest handed over ────────────────────────────────────
+ * RECEIVED fills from the pad (whole rupees; "00" for the round notes), or
+ * from the quick buttons — Exact, then the next round 1,000 and 5,000 above.
+ * Received at or above the total shows the change. What is RECORDED is the
+ * bill's amount, never the note: change never belonged to the restaurant
+ * (see `payment_records`).
  *
- * ── Split ────────────────────────────────────────────────────────────────────
- * The waiter types the cash part; the card part is the rest. Both must be more
- * than zero, or it is not a split.
+ * ── Split is cash that falls short ───────────────────────────────────────────
+ * The design has no third "Split" method, and does not need one. STILL NEEDED
+ * shows what the cash leaves owing; when it is above zero the action becomes
+ * "Take LKR x by card", which records the cash and the card part together.
+ * That is how a split payment actually happens at a table — the guest hands
+ * over what cash they have and cards the rest.
+ *
+ * ── Card ─────────────────────────────────────────────────────────────────────
+ * Charge the total on the machine, then confirm.
+ *
+ * Not drawn yet, rather than drawn dead: TIP (nothing stores a tip — a payment
+ * is capped at the bill) and PRINT RECEIPT (bill printing is not built).
  */
 function PaymentDialog({
   title,
@@ -1195,51 +1188,60 @@ function PaymentDialog({
   onCancel: () => void
   onPay: (tenders: { method: 'cash' | 'card'; amountPaisa: number }[]) => Promise<void>
 }) {
-  const [method, setMethod] = useState<'cash' | 'card' | 'split'>('cash')
-  const [cashText, setCashText] = useState('')
-  const [splitCashText, setSplitCashText] = useState('')
+  const [method, setMethod] = useState<'cash' | 'card'>('cash')
+  // What the pad has typed, in WHOLE RUPEES as a digit string. "Exact" may set
+  // a paisa amount that is not whole rupees, so it is held separately.
+  const [digits, setDigits] = useState('')
+  const [exact, setExact] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const received = paisaFromInput(cashText)
-  const change = received !== null ? received - duePaisa : null
-  const splitCash = paisaFromInput(splitCashText)
-  const splitCard = splitCash !== null ? duePaisa - splitCash : null
+  const received = exact ?? (digits === '' ? null : Number(digits) * 100)
+  const stillNeeded = received === null ? duePaisa : Math.max(duePaisa - received, 0)
+  const change = received !== null && received > duePaisa ? received - duePaisa : 0
 
-  // Quick notes: exact, then the next round 500 / 1,000 / 5,000 above the due.
+  // Quick notes: exact, then the next round 1,000 and 5,000 above the total.
   const quick = Array.from(
-    new Set(
-      [duePaisa, ...[50_000, 100_000, 500_000].map((step) => Math.ceil(duePaisa / step) * step)].filter(
-        (amount) => amount >= duePaisa,
-      ),
-    ),
-  ).slice(0, 4)
+    new Set([100_000, 500_000].map((step) => Math.ceil(duePaisa / step) * step)),
+  ).filter((amount) => amount > duePaisa)
+
+  function press(key: string) {
+    setError(null)
+    setExact(null)
+    setDigits((current) => {
+      if (key === 'back') return current.slice(0, -1)
+      const next = (current + key).replace(/^0+/, '')
+      // Seven digits is LKR 9,999,999 — more cash than anyone carries in.
+      return next.length > 7 ? current : next
+    })
+  }
 
   const tenders: { method: 'cash' | 'card'; amountPaisa: number }[] | null =
     method === 'card'
       ? [{ method: 'card', amountPaisa: duePaisa }]
-      : method === 'cash'
-        ? received !== null && received >= duePaisa
+      : received === null || received === 0
+        ? null
+        : received >= duePaisa
           ? [{ method: 'cash', amountPaisa: duePaisa }]
-          : null
-        : splitCash !== null && splitCash > 0 && splitCard !== null && splitCard > 0
-          ? [
-              { method: 'cash', amountPaisa: splitCash },
-              { method: 'card', amountPaisa: splitCard },
+          : [
+              { method: 'cash', amountPaisa: received },
+              { method: 'card', amountPaisa: duePaisa - received },
             ]
-          : null
 
-  const methods = [
-    { key: 'cash' as const, label: 'Cash', icon: Banknote },
-    { key: 'card' as const, label: 'Card', icon: CreditCard },
-    { key: 'split' as const, label: 'Split', icon: Split },
-  ]
+  const actionLabel = busy
+    ? 'Recording…'
+    : method === 'card'
+      ? `Card payment taken · ${lkrFromPaisa(duePaisa)}`
+      : received === null || received === 0
+        ? 'Enter amount received'
+        : received >= duePaisa
+          ? change > 0
+            ? `Record cash · change ${lkrFromPaisa(change)}`
+            : 'Record cash'
+          : `Take ${lkrFromPaisa(stillNeeded)} by card`
 
-  const inputClass = cn(
-    'h-touch-waiter w-full rounded-control border border-slate-200 bg-white px-sp-4',
-    'text-fs-24 font-bold tabular-nums text-slate-900',
-    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-  )
+  const focusRing =
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500'
 
   return (
     <div
@@ -1248,143 +1250,222 @@ function PaymentDialog({
       aria-labelledby="payment-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
     >
-      <div className="flex max-h-full w-full max-w-md flex-col gap-sp-4 overflow-y-auto rounded-panel bg-white p-sp-5 shadow-el-2">
-        <div className="flex flex-col gap-0.5">
-          <h2 id="payment-title" className="text-fs-24 font-extrabold text-slate-900">
-            Settle {lkrFromPaisa(duePaisa)}
-          </h2>
-          <p className="text-fs-14 text-slate-600">{title}</p>
-        </div>
-
-        <div role="group" aria-label="How the guest is paying" className="flex gap-1 rounded-control bg-slate-100 p-1">
-          {methods.map(({ key, label, icon: Icon }) => (
+      <div className="flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-panel bg-white shadow-el-2">
+        {/* ── Header ───────────────────────────────────────────────────── */}
+        <header className="flex shrink-0 items-start justify-between gap-sp-4 border-b border-slate-200 px-sp-5 py-sp-4">
+          <div className="flex min-w-0 flex-col">
+            <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+              Settle
+            </span>
+            <h2 id="payment-title" className="truncate text-fs-24 font-extrabold text-slate-900">
+              {title}
+            </h2>
+          </div>
+          <div className="flex shrink-0 items-start gap-sp-4">
+            <div className="flex flex-col items-end">
+              <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+                To pay
+              </span>
+              <span className="text-fs-32 font-extrabold tabular-nums text-slate-900">
+                {lkrFromPaisa(duePaisa)}
+              </span>
+            </div>
             <button
-              key={key}
               type="button"
-              aria-pressed={method === key}
-              onClick={() => {
-                setMethod(key)
-                setError(null)
-              }}
+              disabled={busy}
+              onClick={onCancel}
+              aria-label="Close"
               className={cn(
-                'flex h-12 flex-1 items-center justify-center gap-sp-2 rounded-control text-fs-16 font-bold',
-                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                method === key ? 'bg-white text-brand-700 shadow-el-1' : 'text-slate-600',
+                'flex size-touch-standard items-center justify-center rounded-control border border-slate-200 bg-white',
+                'text-slate-900 active:scale-[0.97] disabled:opacity-40',
+                focusRing,
               )}
             >
-              <Icon aria-hidden="true" className="size-5" />
-              {label}
+              <X aria-hidden="true" className="size-5" />
             </button>
-          ))}
-        </div>
+          </div>
+        </header>
 
-        {method === 'cash' ? (
-          <div className="flex flex-col gap-sp-3">
-            <label className="flex flex-col gap-sp-1">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row">
+          {/* ── Left: method and the sum ─────────────────────────────────── */}
+          <section className="flex shrink-0 flex-col gap-sp-4 border-slate-200 bg-slate-50 p-sp-5 md:w-80 md:border-r">
+            <div className="flex flex-col gap-sp-2">
               <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
-                Cash received (LKR)
+                Method
               </span>
-              <input
-                inputMode="decimal"
-                autoFocus
-                value={cashText}
-                onChange={(event) => setCashText(event.target.value)}
-                className={inputClass}
-              />
-            </label>
-            <div className="flex flex-wrap gap-sp-2">
-              {quick.map((amount) => (
-                <button
-                  key={amount}
-                  type="button"
-                  onClick={() => setCashText(String(amount / 100))}
-                  className="h-touch-standard rounded-control border border-slate-200 bg-white px-sp-3 text-fs-14 font-bold text-slate-700 active:scale-[0.97]"
-                >
-                  {amount === duePaisa ? 'Exact' : lkrFromPaisa(amount)}
-                </button>
-              ))}
+              <div role="group" aria-label="How the guest is paying" className="grid grid-cols-2 gap-sp-2">
+                {([
+                  { key: 'cash' as const, label: 'Cash', icon: Banknote },
+                  { key: 'card' as const, label: 'Card', icon: CreditCard },
+                ]).map(({ key, label, icon: Icon }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={method === key}
+                    onClick={() => {
+                      setMethod(key)
+                      setError(null)
+                    }}
+                    className={cn(
+                      'flex h-touch-kitchen items-center justify-center gap-sp-2 rounded-waiter border-2 text-fs-16 font-bold',
+                      'active:scale-[0.97]',
+                      focusRing,
+                      method === key
+                        ? 'border-brand-500 bg-brand-050 text-brand-700'
+                        : 'border-slate-200 bg-white text-slate-700',
+                    )}
+                  >
+                    <Icon aria-hidden="true" className="size-5" />
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="flex items-baseline justify-between rounded-control bg-slate-100 px-sp-4 py-sp-3">
-              <span className="text-fs-16 font-semibold text-slate-600">Change</span>
-              <span className="text-fs-24 font-extrabold tabular-nums text-slate-900">
-                {change !== null && change >= 0 ? lkrFromPaisa(change) : '—'}
-              </span>
-            </div>
-            {change !== null && change < 0 ? (
-              <p className="text-fs-14 font-semibold text-unavailable-ink">
-                {lkrFromPaisa(-change)} short. Take the rest by card with Split.
+
+            <dl className="mt-auto flex flex-col gap-sp-2 border-t border-slate-200 pt-sp-4 text-fs-14 md:mt-0">
+              <div className="flex justify-between">
+                <dt className="text-slate-600">Bill</dt>
+                <dd className="font-semibold tabular-nums text-slate-900">{lkrFromPaisa(duePaisa)}</dd>
+              </div>
+              {method === 'cash' && received !== null && received > 0 && received < duePaisa ? (
+                <>
+                  <div className="flex justify-between">
+                    <dt className="text-slate-600">Cash</dt>
+                    <dd className="font-semibold tabular-nums text-slate-900">{lkrFromPaisa(received)}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-slate-600">Card</dt>
+                    <dd className="font-semibold tabular-nums text-slate-900">
+                      {lkrFromPaisa(stillNeeded)}
+                    </dd>
+                  </div>
+                </>
+              ) : null}
+              <div className="flex justify-between pt-sp-1">
+                <dt className="font-bold text-slate-900">Total</dt>
+                <dd className="font-extrabold tabular-nums text-slate-900">{lkrFromPaisa(duePaisa)}</dd>
+              </div>
+            </dl>
+          </section>
+
+          {/* ── Right: the pad ────────────────────────────────────────────── */}
+          <section className="flex min-w-0 flex-1 flex-col gap-sp-3 p-sp-5">
+            {method === 'cash' ? (
+              <>
+                <div className="grid grid-cols-2 gap-sp-3">
+                  <div
+                    aria-live="polite"
+                    className="flex flex-col rounded-waiter border-2 border-brand-500 bg-white px-sp-4 py-sp-3"
+                  >
+                    <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+                      Received
+                    </span>
+                    <span className="text-fs-32 font-extrabold tabular-nums text-slate-900">
+                      {received === null ? 'LKR —' : lkrFromPaisa(received)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col rounded-waiter bg-slate-100 px-sp-4 py-sp-3">
+                    <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+                      {change > 0 ? 'Change' : 'Still needed'}
+                    </span>
+                    <span
+                      className={cn(
+                        'text-fs-32 font-extrabold tabular-nums',
+                        change > 0 ? 'text-open-ink' : 'text-slate-600',
+                      )}
+                    >
+                      {lkrFromPaisa(change > 0 ? change : stillNeeded)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-sp-2">
+                  {[
+                    { label: 'Exact', set: () => (setDigits(''), setExact(duePaisa)) },
+                    ...quick.map((amount) => ({
+                      label: lkrFromPaisa(amount).replace('LKR ', ''),
+                      set: () => (setExact(null), setDigits(String(amount / 100))),
+                    })),
+                  ].map((option) => (
+                    <button
+                      key={option.label}
+                      type="button"
+                      onClick={() => {
+                        setError(null)
+                        option.set()
+                      }}
+                      className={cn(
+                        'h-touch-standard min-w-24 rounded-control border border-brand-300 bg-brand-050 px-sp-4',
+                        'text-fs-14 font-bold text-brand-700 active:scale-[0.97]',
+                        focusRing,
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid flex-1 grid-cols-3 gap-sp-2">
+                  {['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', 'back'].map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => press(key)}
+                      aria-label={key === 'back' ? 'Delete last digit' : key}
+                      className={cn(
+                        'flex h-touch-kitchen items-center justify-center rounded-waiter border border-slate-200 bg-white',
+                        'text-fs-24 font-bold text-slate-900 active:scale-[0.97] active:bg-slate-100',
+                        focusRing,
+                      )}
+                    >
+                      {key === 'back' ? <Delete aria-hidden="true" className="size-6" /> : key}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center gap-sp-3 rounded-waiter bg-slate-100 p-sp-5 text-center">
+                <CreditCard aria-hidden="true" className="size-10 text-brand-700" />
+                <p className="text-fs-18 font-semibold text-slate-900">
+                  Charge <strong className="tabular-nums">{lkrFromPaisa(duePaisa)}</strong> on the
+                  card machine.
+                </p>
+                <p className="text-fs-14 text-slate-600">Confirm here once it is approved.</p>
+              </div>
+            )}
+
+            {error ? (
+              <p role="alert" className="text-fs-14 font-semibold text-unavailable-ink">
+                {error}
               </p>
             ) : null}
-          </div>
-        ) : method === 'card' ? (
-          <p className="rounded-control bg-slate-100 px-sp-4 py-sp-3 text-fs-16 text-slate-700">
-            Charge <strong className="tabular-nums">{lkrFromPaisa(duePaisa)}</strong> on the card
-            machine, then confirm here.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-sp-3">
-            <label className="flex flex-col gap-sp-1">
-              <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
-                Cash part (LKR)
-              </span>
-              <input
-                inputMode="decimal"
-                autoFocus
-                value={splitCashText}
-                onChange={(event) => setSplitCashText(event.target.value)}
-                className={inputClass}
-              />
-            </label>
-            <div className="flex items-baseline justify-between rounded-control bg-slate-100 px-sp-4 py-sp-3">
-              <span className="text-fs-16 font-semibold text-slate-600">Card part</span>
-              <span className="text-fs-24 font-extrabold tabular-nums text-slate-900">
-                {splitCard !== null && splitCard > 0 ? lkrFromPaisa(splitCard) : '—'}
-              </span>
-            </div>
-          </div>
-        )}
 
-        {error ? (
-          <p role="alert" className="text-fs-14 font-semibold text-unavailable-ink">
-            {error}
-          </p>
-        ) : null}
-
-        <div className="flex gap-sp-3">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onCancel}
-            className={cn(
-              'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white',
-              'text-fs-18 font-bold text-slate-900 shadow-el-1 active:scale-[0.97] disabled:opacity-40',
-              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-            )}
-          >
-            Back
-          </button>
-          <button
-            type="button"
-            disabled={busy || tenders === null}
-            onClick={async () => {
-              if (!tenders) return
-              setBusy(true)
-              setError(null)
-              try {
-                await onPay(tenders)
-              } catch (caught) {
-                setError(caught instanceof Error ? caught.message : 'Could not record the payment.')
-                setBusy(false)
-              }
-            }}
-            className={cn(
-              'h-touch-waiter flex-1 rounded-waiter bg-brand-800 text-fs-18 font-bold text-white shadow-el-2',
-              'active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100',
-              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-            )}
-          >
-            {busy ? 'Recording…' : 'Record payment'}
-          </button>
+            <button
+              type="button"
+              disabled={busy || tenders === null}
+              onClick={async () => {
+                if (!tenders) return
+                setBusy(true)
+                setError(null)
+                try {
+                  await onPay(tenders)
+                } catch (caught) {
+                  setError(caught instanceof Error ? caught.message : 'Could not record the payment.')
+                  setBusy(false)
+                }
+              }}
+              className={cn(
+                'h-touch-waiter shrink-0 rounded-waiter text-fs-18 font-bold',
+                'active:scale-[0.98] disabled:active:scale-100',
+                focusRing,
+                tenders === null || busy
+                  ? 'bg-slate-100 text-slate-400'
+                  : 'bg-brand-800 text-white shadow-el-2',
+              )}
+            >
+              {actionLabel}
+            </button>
+          </section>
         </div>
       </div>
     </div>
