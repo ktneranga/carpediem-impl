@@ -2025,7 +2025,15 @@ export function OrderScreen({
         // Opens the bill screen. It writes nothing — the bill is recorded at
         // Settle there (Story 6.5), so a waiter who checks the total and comes
         // back to add a dessert has changed nothing.
-        onGenerateBill={() => router.push(`/orders/${sessionId}/bill`)}
+        //
+        // Only once something has gone to the kitchen (Teran, 2026-10-25). A
+        // bill covers SENT items; with nothing sent the screen behind this
+        // button could only say "nothing to bill", and staged dishes are not
+        // on any bill until they are sent. The strip renders no button for an
+        // undefined handler, so it is absent rather than dead.
+        onGenerateBill={
+          submittedRounds.length > 0 ? () => router.push(`/orders/${sessionId}/bill`) : undefined
+        }
         onClear={
           lines.length === 0
             ? undefined
