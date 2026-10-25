@@ -1799,7 +1799,7 @@ export function OrderScreen({
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
         >
           <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel border-2 border-unavailable-edge bg-white p-sp-5 shadow-el-2">
-            <h2 id="walkout-title" className="text-fs-20 font-extrabold text-unavailable-ink">
+            <h2 id="walkout-title" className="text-fs-24 font-extrabold text-unavailable-ink">
               Close {displayLabel} as a walkout?
             </h2>
             <p className="text-fs-16 text-slate-600">
@@ -1849,7 +1849,7 @@ export function OrderScreen({
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
         >
           <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2">
-            <h2 id="one-bill-title" className="text-fs-20 font-extrabold text-slate-900">
+            <h2 id="one-bill-title" className="text-fs-24 font-extrabold text-slate-900">
               Switch to one bill?
             </h2>
             <p className="text-fs-16 text-slate-600">
@@ -1907,7 +1907,7 @@ export function OrderScreen({
           >
             <div className="flex max-h-full w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2">
               <div className="flex flex-col gap-0.5">
-                <h2 id="seat-bill-title" className="text-fs-20 font-extrabold text-slate-900">
+                <h2 id="seat-bill-title" className="text-fs-24 font-extrabold text-slate-900">
                   Bill {seat.seatNote ?? seat.seatLabel}
                 </h2>
                 {seat.seatNote ? (

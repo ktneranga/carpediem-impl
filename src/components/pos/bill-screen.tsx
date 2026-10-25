@@ -6,6 +6,7 @@ import { ArrowLeft, Banknote, CreditCard, Receipt, Split, Users } from 'lucide-r
 import { lkrFromPaisa } from '@/lib/format'
 import { routeForDestination } from '@/lib/design'
 import { cn } from '@/lib/utils'
+import { ActionStripShell } from '@/components/pos/action-strip-chrome'
 import type { ProductionDestination } from '@/types/orders'
 
 export type BillScreenLine = {
@@ -217,9 +218,13 @@ export function BillScreen({
           </div>
         ) : payables.length === 1 ? (
           // The design's one-bill layout: lines left, money right.
+          // 2 : 1 — the items get two parts of the width and the money one
+          // (Teran, 2026-10-25), so the list a guest checks is the big thing.
           <div className="flex min-h-0 flex-1 flex-col gap-sp-4 md:flex-row">
-            <LinesCard title={payables[0]!.title} lines={linesOf(payables[0]!)} />
-            <div className="flex shrink-0 flex-col gap-sp-4 md:w-96">
+            <div className="flex min-h-0 flex-col md:min-w-0 md:flex-[2_2_0%]">
+              <LinesCard title={payables[0]!.title} lines={linesOf(payables[0]!)} />
+            </div>
+            <div className="flex shrink-0 flex-col gap-sp-4 md:min-w-0 md:flex-[1_1_0%]">
               <TotalsCard
                 totals={totalsOf(payables[0]!)}
                 paidPaisa={payables[0]!.kind === 'bill' ? payables[0]!.bill.paidPaisa : 0}
@@ -260,23 +265,36 @@ export function BillScreen({
         ) : null}
       </main>
 
-      {/* ── Bottom bar ─────────────────────────────────────────────────────── */}
-      <footer className="flex shrink-0 items-center gap-sp-5 border-t border-slate-200 bg-white px-sp-4 py-sp-3 shadow-el-3">
-        <dl className="grid grid-cols-[auto_auto] gap-x-sp-4 text-fs-14">
-          <dt className="text-slate-600">Settled</dt>
-          <dd className="text-right font-bold tabular-nums text-open-ink">{lkrFromPaisa(settled)}</dd>
-          <dt className="font-semibold text-slate-900">Outstanding</dt>
-          <dd className="text-right font-bold tabular-nums text-slate-900">
-            {lkrFromPaisa(outstanding)}
-          </dd>
-        </dl>
-        <div className="flex items-baseline gap-sp-2 border-l border-slate-200 pl-sp-5">
-          <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">Bill</span>
-          <span className="text-fs-24 font-extrabold tabular-nums text-slate-900">
-            {lkrFromPaisa(billTotal)}
-          </span>
-        </div>
-      </footer>
+      {/* ── Bottom bar ─────────────────────────────────────────────────────────
+          The SAME shell as the order and floor bars, not a look-alike. A
+          hand-built footer came out shorter than both — their height comes from
+          the 80px buttons inside the shell, and this bar has none yet — so the
+          summary is held at that same 80px. */}
+      <ActionStripShell
+        regionLabel="Bill summary"
+        leading={
+          <div className="flex h-touch-waiter items-center gap-sp-5">
+            <dl className="grid grid-cols-[auto_auto] gap-x-sp-4 gap-y-sp-1 text-fs-14">
+              <dt className="text-slate-600">Settled</dt>
+              <dd className="text-right font-bold tabular-nums text-open-ink">
+                {lkrFromPaisa(settled)}
+              </dd>
+              <dt className="font-semibold text-slate-900">Outstanding</dt>
+              <dd className="text-right font-bold tabular-nums text-slate-900">
+                {lkrFromPaisa(outstanding)}
+              </dd>
+            </dl>
+            <div className="flex items-baseline gap-sp-2 border-l border-slate-200 pl-sp-5">
+              <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+                Bill
+              </span>
+              <span className="text-fs-24 font-extrabold tabular-nums text-slate-900">
+                {lkrFromPaisa(billTotal)}
+              </span>
+            </div>
+          </div>
+        }
+      />
 
       {paying ? (
         <PaymentDialog
@@ -347,29 +365,31 @@ function StationChip({ destination }: { destination: ProductionDestination | nul
 function LinesCard({ title, lines }: { title: string; lines: BillScreenLine[] }) {
   return (
     <section className="flex min-h-0 flex-1 flex-col rounded-panel bg-white shadow-el-1">
-      <header className="flex shrink-0 items-baseline justify-between gap-sp-3 border-b border-slate-200 px-sp-4 py-sp-3">
+      <header className="flex shrink-0 items-baseline justify-between gap-sp-3 border-b border-slate-200 px-sp-5 py-sp-4">
         <h2 className="text-fs-18 font-extrabold text-slate-900">{title}</h2>
-        <span className="text-fs-12 font-semibold text-slate-600">
+        <span className="text-fs-14 font-semibold text-slate-600">
           {lines.length} line{lines.length === 1 ? '' : 's'} · {itemCount(lines)} item
           {itemCount(lines) === 1 ? '' : 's'}
         </span>
       </header>
-      <ul className="min-h-0 flex-1 divide-y divide-slate-200 overflow-y-auto px-sp-4">
+      {/* Read aloud to a guest and checked by them across the table, so the
+          rows are sized for that: 18px names, 64px rows. */}
+      <ul className="min-h-0 flex-1 divide-y divide-slate-200 overflow-y-auto px-sp-5">
         {lines.map((line) => (
-          <li key={line.orderEventId} className="flex items-center gap-sp-3 py-sp-3">
-            <span className="w-8 shrink-0 text-fs-14 font-bold text-brand-700 tabular-nums">
+          <li key={line.orderEventId} className="flex min-h-16 items-center gap-sp-4 py-sp-3">
+            <span className="w-10 shrink-0 text-fs-18 font-extrabold text-brand-700 tabular-nums">
               {line.quantity}×
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-fs-16 font-semibold text-slate-900">
+              <span className="block truncate text-fs-18 font-bold text-slate-900">
                 {line.name}
               </span>
               {line.modifierText ? (
-                <span className="block truncate text-fs-12 text-slate-600">{line.modifierText}</span>
+                <span className="block truncate text-fs-14 text-slate-600">{line.modifierText}</span>
               ) : null}
             </span>
             <StationChip destination={line.destination} />
-            <span className="w-24 shrink-0 text-right text-fs-16 font-bold tabular-nums text-slate-900">
+            <span className="w-28 shrink-0 text-right text-fs-18 font-extrabold tabular-nums text-slate-900">
               {lkrFromPaisa(line.amountPaisa)}
             </span>
           </li>
@@ -404,7 +424,7 @@ function TotalsCard({
       ) : null}
       <div className="mt-sp-1 flex items-baseline justify-between gap-sp-3 border-t border-slate-200 pt-sp-3">
         <span className="text-fs-16 font-bold text-slate-900">Total</span>
-        <span className="text-fs-28 font-extrabold tabular-nums text-slate-900">
+        <span className="text-fs-32 font-extrabold tabular-nums text-slate-900">
           {lkrFromPaisa(totals.totalPaisa)}
         </span>
       </div>
@@ -525,7 +545,7 @@ function PaymentDialog({
     >
       <div className="flex max-h-full w-full max-w-md flex-col gap-sp-4 overflow-y-auto rounded-panel bg-white p-sp-5 shadow-el-2">
         <div className="flex flex-col gap-0.5">
-          <h2 id="payment-title" className="text-fs-20 font-extrabold text-slate-900">
+          <h2 id="payment-title" className="text-fs-24 font-extrabold text-slate-900">
             Settle {lkrFromPaisa(duePaisa)}
           </h2>
           <p className="text-fs-14 text-slate-600">{title}</p>
