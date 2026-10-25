@@ -1171,7 +1171,35 @@ function StationChip({ destination }: { destination: ProductionDestination | nul
   )
 }
 
-function LinesCard({ title, lines }: { title: string; lines: BillScreenLine[] }) {
+/**
+ * Identical dishes as one line: same name, unit price, note and station
+ * (Teran, 2026-10-25).
+ *
+ * Two Devilled Cashews ordered for two different seats are two order events —
+ * that is what lets the split give one to each person — but on one bill a
+ * guest should read "2× Devilled Cashew", not the same dish twice. DISPLAY
+ * only: the events stay separate underneath, so splitting again behaves
+ * exactly as before. A different price (a re-price between rounds) or a
+ * different note ("no chilli") keeps the lines apart, because they are not
+ * the same thing on a bill.
+ */
+function groupLines(lines: BillScreenLine[]): BillScreenLine[] {
+  const groups = new Map<string, BillScreenLine>()
+  for (const line of lines) {
+    const key = [line.name, line.unitPricePaisa, line.modifierText ?? '', line.destination ?? ''].join('|')
+    const existing = groups.get(key)
+    if (existing) {
+      existing.quantity += line.quantity
+      existing.amountPaisa += line.amountPaisa
+    } else {
+      groups.set(key, { ...line })
+    }
+  }
+  return [...groups.values()]
+}
+
+function LinesCard({ title, lines: ungrouped }: { title: string; lines: BillScreenLine[] }) {
+  const lines = groupLines(ungrouped)
   return (
     <section className="flex min-h-0 flex-1 flex-col rounded-panel bg-white shadow-el-1">
       <header className="flex shrink-0 items-baseline justify-between gap-sp-3 border-b border-slate-200 px-sp-5 py-sp-4">
