@@ -533,6 +533,8 @@ export function OrderScreen({
   const [noteDraft, setNoteDraft] = useState('')
   const [confirmingSeatRemoval, setConfirmingSeatRemoval] = useState(false)
   const [seatNotice, setSeatNotice] = useState<string | null>(null)
+  /** Open while confirming a switch from Separate bills to One bill. */
+  const [confirmingOneBill, setConfirmingOneBill] = useState(false)
 
   // DERIVED, not synced in an effect. A selection that no longer exists — the
   // seat was removed here, or on the other tablet — falls back to the first
@@ -1197,12 +1199,24 @@ export function OrderScreen({
   })
 
   /**
-   * No confirmation. The switch moves nothing and deletes nothing — see
-   * `setBillMode` — so switching to One bill and straight back leaves the
-   * order exactly as it was. There is nothing to warn about.
+   * Separate bills -> One bill asks first, once the order has more than one
+   * seat (Teran, 2026-10-25): the seat row and every per-person tag vanish
+   * on that tap, and a waiter who did it by accident needs a moment to stop.
+   *
+   * The dialog says what actually happens. Nothing is lost — `setBillMode`
+   * moves and deletes nothing since c21e336 — so it says the seats are
+   * HIDDEN and come back with Separate bills, not that they are gone. A
+   * warning that cried loss would teach the waiter the switch is dangerous
+   * when it is not.
+   *
+   * One bill -> Separate bills never asks: it only adds the seat row.
    */
   function requestBillMode(mode: 'one' | 'separate') {
     if (billModeMutation.isPending || mode === billMode) return
+    if (mode === 'one' && seats.length > 1) {
+      setConfirmingOneBill(true)
+      return
+    }
     billModeMutation.mutate(mode)
   }
 
@@ -1920,6 +1934,53 @@ export function OrderScreen({
                 )}
               >
                 {busy ? 'Closing…' : 'Yes, walkout'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {confirmingOneBill ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="one-bill-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
+        >
+          <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2">
+            <h2 id="one-bill-title" className="text-fs-20 font-extrabold text-slate-900">
+              Switch to one bill?
+            </h2>
+            <p className="text-fs-16 text-slate-600">
+              Everything on this table will go on one bill, and the seats will be hidden. Nothing
+              is deleted — switch back to Separate bills and each person&apos;s items are still on
+              their seat.
+            </p>
+            <div className="flex gap-sp-3">
+              <button
+                type="button"
+                onClick={() => setConfirmingOneBill(false)}
+                className={cn(
+                  'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white',
+                  'text-fs-18 font-bold text-slate-900 shadow-el-1 active:scale-[0.97]',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                )}
+              >
+                Keep separate
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmingOneBill(false)
+                  billModeMutation.mutate('one')
+                }}
+                className={cn(
+                  'h-touch-waiter flex-1 rounded-waiter bg-brand-800 text-fs-18 font-bold text-white',
+                  'shadow-el-2 active:scale-[0.97]',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                )}
+              >
+                One bill
               </button>
             </div>
           </div>
