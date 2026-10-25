@@ -538,7 +538,8 @@ export function OrderScreen({
     sessionBills.map((b) => b.seatSlotId).filter((id): id is string => id !== null),
   )
   /** A consolidated bill sweeps everything, so it closes every seat at once. */
-  const hasConsolidatedBill = sessionBills.some((b) => b.seatSlotId === null)
+  // By type: a person's split bill has no seat either, and is not the table's.
+  const hasConsolidatedBill = sessionBills.some((b) => b.type === 'consolidated')
 
   /** Can anything still be added to this seat? */
   function seatIsBilled(seatId: string): boolean {

@@ -52,7 +52,9 @@ export type BillCompDetail = {
 export type BillDetail = BillTotals & {
   billId: string
   sessionId: string
-  type: 'consolidated' | 'seat'
+  type: 'consolidated' | 'seat' | 'split'
+  /** Who a `split` bill is for, as named on the bill screen. Null otherwise. */
+  personLabel: string | null
   /** The seat this bill covers, or null for a consolidated bill (Story 6.4). */
   seatSlotId: string | null
   /**

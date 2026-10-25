@@ -257,6 +257,8 @@ async function collectBillable(
       roundNumber: orderEvents.roundNumber,
       itemName: menuItems.name,
       seatLabel: seatSlots.seatLabel,
+      // The bill screen pre-splits a Separate-bills order by seat.
+      seatSlotId: orderEvents.seatSlotId,
       // For the bill screen's station chip only. Never stored on a bill line:
       // where a dish was cooked is not something a guest is charged for.
       destination: menuItems.productionDestination,
@@ -347,10 +349,14 @@ export async function findConsolidatedBill(tx: Tx, sessionId: string) {
   // once `payment_records` gains `bill_id`. Until then there are no payments,
   // so every bill is open and these are the same answer. 6.5 NARROWS these
   // queries; it does not replace them.
+  //
+  // By TYPE since Story 6.3, not by "has no seat". A person's split bill has
+  // no seat either, and reading it as consolidated would refuse every later
+  // round and every later bill on a table where one guest had paid.
   const [existing] = await tx
     .select({ id: bills.id })
     .from(bills)
-    .where(and(eq(bills.sessionId, sessionId), isNull(bills.seatSlotId)))
+    .where(and(eq(bills.sessionId, sessionId), eq(bills.type, 'consolidated')))
     .orderBy(asc(bills.createdAt))
     .limit(1)
 
@@ -559,6 +565,40 @@ export async function priceBillable(
   return { tenantId: session!.tenantId, events, comps, lineAmounts, compAmounts, totals }
 }
 
+/** Some of a split's items are already on a bill, or are not on this session. */
+export class ItemsNotBillableError extends Error {}
+
+/**
+ * One person's bill from the bill screen's split (Story 6.3, FR24).
+ *
+ * Covers EXACTLY the events the waiter dragged onto that person. The unbilled
+ * filter in `collectBillable` drops any that another bill already claimed (or
+ * that belong to a different session), so a count mismatch means the screen
+ * was out of date — refused whole rather than billing a guest for part of
+ * what they were shown.
+ *
+ * The same guards as every bill: the session lock, the event-level UNIQUE on
+ * `bill_lines`, and the pinned service rate, so the first person to pay sets
+ * the rate the rest of the party pays.
+ */
+export async function generateSplitBill(
+  tx: Tx,
+  {
+    sessionId,
+    staffId,
+    eventIds,
+    personLabel,
+  }: { sessionId: string; staffId: string; eventIds: string[]; personLabel: string },
+): Promise<BillDetail> {
+  await lockOpenSession(tx, sessionId)
+
+  const unique = [...new Set(eventIds)]
+  const { events } = await priceBillable(tx, { sessionId, eventIds: unique })
+  if (events.length !== unique.length) throw new ItemsNotBillableError()
+
+  return buildBill(tx, { sessionId, staffId, seatId: null, eventIds: unique, personLabel })
+}
+
 async function buildBill(
   tx: Tx,
   {
@@ -566,8 +606,17 @@ async function buildBill(
     staffId,
     seatId,
     eventIds,
-  }: { sessionId: string; staffId: string; seatId: string | null; eventIds?: string[] },
+    personLabel = null,
+  }: {
+    sessionId: string
+    staffId: string
+    seatId: string | null
+    eventIds?: string[]
+    /** Set for a person's split bill (Story 6.3). */
+    personLabel?: string | null
+  },
 ): Promise<BillDetail> {
+  const type: BillDetail['type'] = seatId ? 'seat' : eventIds ? 'split' : 'consolidated'
   const { tenantId, events, comps, lineAmounts, compAmounts, totals } = await priceBillable(
     tx,
     { sessionId, seatId, eventIds },
@@ -601,7 +650,8 @@ async function buildBill(
         sessionId,
         staffId,
         seatSlotId: seatId,
-        type: seatId ? 'seat' : 'consolidated',
+        type,
+        personLabel,
         ...totals,
       })
       .returning({ id: bills.id, createdAt: bills.createdAt })
@@ -661,8 +711,9 @@ async function buildBill(
   return {
     billId: bill!.id,
     sessionId,
-    type: seatId ? 'seat' : 'consolidated',
+    type,
     seatSlotId: seatId,
+    personLabel,
     // Gated on `seatId`. Unconditional, this returned the first collected
     // event's seat on a CONSOLIDATED bill, so POST said `seatLabel: 'S1'` while
     // a GET of the same bill said null — and the POST value came from the live
@@ -712,6 +763,7 @@ export async function getBill(
       serviceChargeBp: bills.serviceChargeBp,
       taxBp: bills.taxBp,
       seatSlotId: bills.seatSlotId,
+      personLabel: bills.personLabel,
       createdAt: bills.createdAt,
     })
     .from(bills)
@@ -777,6 +829,7 @@ export async function getBill(
     // 0019 removed that join and re-adding it here would undo it. A seat
     // bill's lines all carry the same label.
     seatLabel: bill.seatSlotId ? (lines[0]?.seatLabel ?? null) : null,
+    personLabel: bill.personLabel,
     createdAt: bill.createdAt.toISOString(),
     subtotalPaisa: bill.subtotalPaisa,
     serviceChargePaisa: bill.serviceChargePaisa,

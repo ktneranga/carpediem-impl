@@ -1,8 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Banknote, CreditCard, Receipt, Split, Users } from 'lucide-react'
+import {
+  ArrowLeft,
+  Banknote,
+  CreditCard,
+  Plus,
+  Receipt,
+  Split,
+  Users,
+  X,
+} from 'lucide-react'
 import { lkrFromPaisa } from '@/lib/format'
 import { routeForDestination } from '@/lib/design'
 import { cn } from '@/lib/utils'
@@ -16,6 +25,8 @@ export type BillScreenLine = {
   amountPaisa: number
   modifierText: string | null
   destination: ProductionDestination | null
+  /** The seat it was ordered on — only on draft lines, for the seat pre-split. */
+  seatSlotId?: string | null
 }
 
 type Totals = {
@@ -30,8 +41,9 @@ type Totals = {
 /** A bill already recorded, with what has been paid against it. */
 export type BillScreenBill = Totals & {
   billId: string
-  type: 'consolidated' | 'seat'
-  seatLabel: string | null
+  type: 'consolidated' | 'seat' | 'split'
+  /** Who it is for: the person, the seat, or "Whole table". */
+  label: string
   paidPaisa: number
   lines: BillScreenLine[]
 }
@@ -39,30 +51,58 @@ export type BillScreenBill = Totals & {
 /** What no bill covers yet, priced exactly as a bill would be. Nothing stored. */
 export type BillScreenDraft = Totals & { lines: BillScreenLine[] }
 
-/**
- * Something on this screen the waiter can settle: a recorded bill that is not
- * fully paid, or the draft for everything still unbilled.
- */
+/** A person on the split. Lives only on this screen until they settle. */
+type Person = { id: string; label: string }
+
+/** Something the waiter can settle. */
 type Payable =
   | { kind: 'bill'; key: string; title: string; bill: BillScreenBill }
   | { kind: 'draft'; key: 'draft'; title: string; draft: BillScreenDraft }
+  | { kind: 'person'; key: string; title: string; lines: BillScreenLine[]; totals: Totals }
 
 function outstandingOf(payable: Payable): number {
-  return payable.kind === 'bill'
-    ? payable.bill.totalPaisa - payable.bill.paidPaisa
-    : payable.draft.totalPaisa
+  if (payable.kind === 'bill') return payable.bill.totalPaisa - payable.bill.paidPaisa
+  if (payable.kind === 'draft') return payable.draft.totalPaisa
+  return payable.totals.totalPaisa
 }
 
 function totalsOf(payable: Payable): Totals {
-  return payable.kind === 'bill' ? payable.bill : payable.draft
+  if (payable.kind === 'bill') return payable.bill
+  if (payable.kind === 'draft') return payable.draft
+  return payable.totals
 }
 
 function linesOf(payable: Payable): BillScreenLine[] {
-  return payable.kind === 'bill' ? payable.bill.lines : payable.draft.lines
+  if (payable.kind === 'bill') return payable.bill.lines
+  if (payable.kind === 'draft') return payable.draft.lines
+  return payable.lines
 }
 
 function itemCount(lines: BillScreenLine[]): number {
   return lines.reduce((total, line) => total + line.quantity, 0)
+}
+
+/**
+ * A person's share, priced the way the server will price their bill.
+ *
+ * Uses the DRAFT's rates, which `priceBillable` already resolved — including
+ * the pinned service rate, so a party whose first bill carried 10% shows 10%
+ * on every share. Each share is rounded on its own, exactly as its own bill
+ * will be; the shares can therefore differ from the whole-table figure by a
+ * few paisa, which is the correct outcome, not a bug.
+ */
+function priceShare(lines: BillScreenLine[], rates: Totals): Totals {
+  const subtotalPaisa = lines.reduce((total, line) => total + line.amountPaisa, 0)
+  const serviceChargePaisa = Math.round((subtotalPaisa * rates.serviceChargeBp) / 10_000)
+  const taxPaisa = Math.round(((subtotalPaisa + serviceChargePaisa) * rates.taxBp) / 10_000)
+  return {
+    subtotalPaisa,
+    serviceChargePaisa,
+    serviceChargeBp: rates.serviceChargeBp,
+    taxPaisa,
+    taxBp: rates.taxBp,
+    totalPaisa: subtotalPaisa + serviceChargePaisa + taxPaisa,
+  }
 }
 
 class RefusedError extends Error {
@@ -92,17 +132,69 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   )
 }
 
+type SplitState = { view: 'whole' | 'split'; persons: Person[]; assigned: Record<string, string> }
+
+let personCounter = 0
+function newPersonId(): string {
+  personCounter += 1
+  return `p${Date.now().toString(36)}${personCounter}`
+}
+
+function nextPersonLabel(persons: Person[]): string {
+  const used = persons
+    .map((person) => /^Person (\d+)$/.exec(person.label)?.[1])
+    .filter((n): n is string => n !== undefined)
+    .map(Number)
+  return `Person ${Math.max(persons.length, ...used, 0) + 1}`
+}
+
 /**
- * The bill screen (Story 6.5, design 27.png).
+ * Where a Separate-bills order starts: one person per seat that has unbilled
+ * items, named as the waiter named the seat, with those items already on them.
+ * The waiter tagged who had what while ordering; this is where it pays off.
+ */
+function splitFromSeats(
+  draft: BillScreenDraft | null,
+  seats: { id: string; name: string }[],
+): SplitState {
+  const lines = draft?.lines ?? []
+  const used = seats.filter((seat) => lines.some((line) => line.seatSlotId === seat.id))
+  const persons = used.map((seat) => ({ id: newPersonId(), label: seat.name }))
+  const assigned: Record<string, string> = {}
+  for (const line of lines) {
+    const index = used.findIndex((seat) => seat.id === line.seatSlotId)
+    if (index >= 0) assigned[line.orderEventId] = persons[index]!.id
+  }
+  return { view: 'split', persons, assigned }
+}
+
+/**
+ * The bill screen (Story 6.5 and 6.3, designs 27, 28 and 29).
  *
- * One payable — the ordinary case — is drawn as the design draws it: the lines
- * on the left, totals and a single Settle on the right. Several (a seat billed
- * early alongside the rest of the table) are drawn as cards side by side, each
- * with its own Settle, the shape of the design's split screen.
+ * ── Two views of one table ───────────────────────────────────────────────────
+ * WHOLE — lines on the left, money on the right, one Settle, and a "Paying
+ * separately?" card that opens the split.
+ * SPLIT — a column per person, items moved between them, a Settle per person.
+ * "Merge into one bill" goes back. Nothing is recorded by either view: a
+ * person's bill is written when THEY settle, so the split can be rearranged
+ * freely until money changes hands.
  *
- * Not here yet, deliberately, rather than drawn and dead: Split bill (Stories
- * 6.1/6.3, next), Comp a line (Epic 7) and Print bill. "Close table" is not a
- * button because settling the last bill closes the table itself.
+ * A Separate-bills order opens straight into the split, pre-filled from the
+ * seats it was ordered on.
+ *
+ * ── Moving items: drag, or tap then "Move here" ──────────────────────────────
+ * HTML drag-and-drop does not fire for touch, and this runs on tablets. So an
+ * item can also be TAPPED to pick it up, and every other column then offers
+ * "Move here" — which is the design's own hint text. Mouse users can drag.
+ *
+ * Whole items only (6.1): a line of two Lion Lagers goes to one person. Splitting
+ * a single line between people would need a quantity split on an append-only
+ * event, which is not in scope.
+ *
+ * ── The split survives a reload, on this tablet ──────────────────────────────
+ * Kept in localStorage per session, so a waiter who steps back to the order and
+ * returns finds it as they left it. It is NOT shared across tablets; the bills
+ * that come out of it are.
  */
 export function BillScreen({
   sessionId,
@@ -110,46 +202,144 @@ export function BillScreen({
   billMode,
   bills,
   draft,
+  seats,
 }: {
   sessionId: string
   tableLabel: string
   billMode: 'one' | 'separate'
   bills: BillScreenBill[]
   draft: BillScreenDraft | null
+  seats: { id: string; name: string }[]
 }) {
   const router = useRouter()
+  const storageKey = `bill-split:${sessionId}`
+  const draftLines = draft?.lines ?? []
+
+  // The first render is the same on the server and in the browser — the seat
+  // pre-split or the whole view — and the saved split is applied after it.
+  // Reading localStorage in the initialiser made the two disagree whenever a
+  // split had been saved, which React reports as a hydration mismatch.
+  const [split, setSplit] = useState<SplitState>(() =>
+    billMode === 'separate' && draftLines.length > 0
+      ? splitFromSeats(draft, seats)
+      : { view: 'whole', persons: [], assigned: {} },
+  )
+  const [restored, setRestored] = useState(false)
+  const [selected, setSelected] = useState<string | null>(null)
   const [paying, setPaying] = useState<Payable | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  const payables: Payable[] = [
-    ...bills
-      .filter((bill) => bill.paidPaisa < bill.totalPaisa)
-      .map((bill) => ({
-        kind: 'bill' as const,
-        key: bill.billId,
-        title: bill.seatLabel ?? 'Whole table',
-        bill,
-      })),
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(storageKey) ?? 'null') as SplitState | null
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring browser-only state after hydration is exactly this
+      if (saved && (saved.view === 'split' || saved.view === 'whole')) setSplit(saved)
+    } catch {
+      // A private window or blocked storage: start fresh.
+    }
+    setRestored(true)
+  }, [storageKey])
+
+  useEffect(() => {
+    // Not before the restore, or the default would overwrite what was saved.
+    if (!restored) return
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(split))
+    } catch {
+      // Storage is a convenience here, never a requirement.
+    }
+  }, [restored, split, storageKey])
+
+  // Only assignments that still make sense: the event is still unbilled and
+  // the person still exists. A bill settled on another tablet drops out here.
+  const personIds = new Set(split.persons.map((person) => person.id))
+  const ownerOf = (eventId: string): string | null => {
+    const owner = split.assigned[eventId]
+    return owner && personIds.has(owner) ? owner : null
+  }
+  const unassigned = draftLines.filter((line) => ownerOf(line.orderEventId) === null)
+  const linesFor = (personId: string) =>
+    draftLines.filter((line) => ownerOf(line.orderEventId) === personId)
+
+  function move(eventId: string, target: string | null | 'new') {
+    setSelected(null)
+    setSplit((current) => {
+      let persons = current.persons
+      let personId = target
+      if (target === 'new') {
+        const person = { id: newPersonId(), label: nextPersonLabel(current.persons) }
+        persons = [...current.persons, person]
+        personId = person.id
+      }
+      const assigned = { ...current.assigned }
+      if (personId === null) delete assigned[eventId]
+      else assigned[eventId] = personId
+      return { ...current, persons, assigned }
+    })
+  }
+
+  function removePerson(personId: string) {
+    setSelected(null)
+    setSplit((current) => ({
+      ...current,
+      persons: current.persons.filter((person) => person.id !== personId),
+      assigned: Object.fromEntries(
+        Object.entries(current.assigned).filter(([, owner]) => owner !== personId),
+      ),
+    }))
+  }
+
+  function startSplit() {
+    setNotice(null)
+    setSplit(
+      billMode === 'separate' && draftLines.some((line) => line.seatSlotId)
+        ? splitFromSeats(draft, seats)
+        : {
+            view: 'split',
+            // Two people to start (6.3): the commonest split, and an empty
+            // second column shows where items go.
+            persons: [
+              { id: newPersonId(), label: 'Person 1' },
+              { id: newPersonId(), label: 'Person 2' },
+            ],
+            assigned: {},
+          },
+    )
+  }
+
+  function merge() {
+    setSelected(null)
+    setSplit({ view: 'whole', persons: [], assigned: {} })
+  }
+
+  const unpaidBills = bills.filter((bill) => bill.paidPaisa < bill.totalPaisa)
+  const paidBills = bills.filter((bill) => bill.paidPaisa >= bill.totalPaisa)
+
+  const wholePayables: Payable[] = [
+    ...unpaidBills.map((bill) => ({
+      kind: 'bill' as const,
+      key: bill.billId,
+      title: bill.label,
+      bill,
+    })),
     ...(draft
       ? [
           {
             kind: 'draft' as const,
             key: 'draft' as const,
-            // "Whole table" when nothing has been billed yet; once a seat has
-            // its own bill, this is what is left for everyone else.
             title: bills.length === 0 ? 'Whole table' : 'Rest of the table',
             draft,
           },
         ]
       : []),
   ]
-  const paidBills = bills.filter((bill) => bill.paidPaisa >= bill.totalPaisa)
 
   const billTotal =
     bills.reduce((total, bill) => total + bill.totalPaisa, 0) + (draft?.totalPaisa ?? 0)
   const settled = bills.reduce((total, bill) => total + Math.min(bill.paidPaisa, bill.totalPaisa), 0)
   const outstanding = billTotal - settled
-  const allLines = [...bills.flatMap((bill) => bill.lines), ...(draft?.lines ?? [])]
+  const allLines = [...bills.flatMap((bill) => bill.lines), ...draftLines]
+  const inSplit = split.view === 'split' && draft !== null
 
   return (
     <div className="h-app flex flex-col bg-slate-100">
@@ -175,28 +365,55 @@ export function BillScreen({
             </h1>
             <p className="truncate text-fs-12 font-semibold text-slate-600">
               {itemCount(allLines)} item{itemCount(allLines) === 1 ? '' : 's'} ·{' '}
-              {billMode === 'one' ? 'paying together' : 'paying separately'}
+              {inSplit
+                ? `${split.persons.length} ${split.persons.length === 1 ? 'person' : 'people'} · settling separately`
+                : 'paying together'}
             </p>
           </div>
-          <span className="flex shrink-0 items-center gap-sp-1 rounded-pill bg-slate-100 px-sp-3 py-sp-1 text-fs-12 font-bold text-slate-700">
-            {billMode === 'one' ? (
-              <Receipt aria-hidden="true" className="size-4" />
-            ) : (
-              <Users aria-hidden="true" className="size-4" />
+          <span
+            className={cn(
+              'flex shrink-0 items-center gap-sp-1 rounded-pill px-sp-3 py-sp-1 text-fs-12 font-bold',
+              inSplit ? 'bg-brand-050 text-brand-700' : 'bg-slate-100 text-slate-700',
             )}
-            {billMode === 'one' ? 'One bill' : 'Separate bills'}
+          >
+            {inSplit ? (
+              <Users aria-hidden="true" className="size-4" />
+            ) : (
+              <Receipt aria-hidden="true" className="size-4" />
+            )}
+            {inSplit ? 'Separate bills' : 'One bill'}
           </span>
+          {inSplit ? (
+            <p className="hidden min-w-0 text-fs-12 text-slate-600 lg:block">
+              Drag items between people, or tap an item then “Move here”
+            </p>
+          ) : null}
         </div>
 
-        <span
-          className={cn(
-            'flex shrink-0 items-center gap-sp-2 rounded-pill px-sp-4 py-sp-2 text-fs-14 font-bold',
-            outstanding > 0 ? 'bg-occupied-chip text-occupied-ink' : 'bg-open-chip text-open-ink',
-          )}
-        >
-          <span aria-hidden="true" className="size-2 rounded-pill bg-current" />
-          {outstanding > 0 ? `Unpaid ${lkrFromPaisa(outstanding)}` : 'Paid'}
-        </span>
+        <div className="flex shrink-0 items-center gap-sp-3">
+          {inSplit ? (
+            <button
+              type="button"
+              onClick={merge}
+              className={cn(
+                'h-touch-standard rounded-control border border-slate-200 bg-white px-sp-4',
+                'text-fs-14 font-bold text-slate-900 active:scale-[0.97]',
+                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+              )}
+            >
+              Merge into one bill
+            </button>
+          ) : null}
+          <span
+            className={cn(
+              'flex items-center gap-sp-2 rounded-pill px-sp-4 py-sp-2 text-fs-14 font-bold',
+              outstanding > 0 ? 'bg-occupied-chip text-occupied-ink' : 'bg-open-chip text-open-ink',
+            )}
+          >
+            <span aria-hidden="true" className="size-2 rounded-pill bg-current" />
+            {outstanding > 0 ? `Unpaid ${lkrFromPaisa(outstanding)}` : 'Paid'}
+          </span>
+        </div>
       </header>
 
       {/* ── Body ───────────────────────────────────────────────────────────── */}
@@ -210,32 +427,141 @@ export function BillScreen({
           </p>
         ) : null}
 
-        {payables.length === 0 ? (
+        {inSplit ? (
+          // ── SPLIT: a column per person ───────────────────────────────────
+          <div className="flex min-h-0 flex-1 gap-sp-4 overflow-x-auto pb-sp-1">
+            {unpaidBills.map((bill) => (
+              <Column key={bill.billId} title={bill.label} total={bill.totalPaisa - bill.paidPaisa} badge="Billed">
+                <ItemList lines={bill.lines} />
+                <ColumnFooter
+                  totals={bill}
+                  onSettle={() => setPaying({ kind: 'bill', key: bill.billId, title: bill.label, bill })}
+                  due={bill.totalPaisa - bill.paidPaisa}
+                />
+              </Column>
+            ))}
+
+            {unassigned.length > 0 ? (
+              <Column
+                title="Not assigned"
+                total={unassigned.reduce((total, line) => total + line.amountPaisa, 0)}
+                badge={`${itemCount(unassigned)} left`}
+                tone="pending"
+                moveHere={selected && ownerOf(selected) !== null ? () => move(selected, null) : undefined}
+                onDropItem={(eventId) => move(eventId, null)}
+              >
+                <ItemList
+                  lines={unassigned}
+                  selected={selected}
+                  onSelect={(id) => setSelected((current) => (current === id ? null : id))}
+                />
+                <p className="shrink-0 border-t border-occupied-edge px-sp-3 py-sp-2 text-fs-12 font-semibold text-occupied-ink">
+                  Give every item to a person before settling the table.
+                </p>
+              </Column>
+            ) : null}
+
+            {split.persons.map((person) => {
+              const lines = linesFor(person.id)
+              const totals = priceShare(lines, draft)
+              return (
+                <Column
+                  key={person.id}
+                  title={person.label}
+                  total={totals.totalPaisa}
+                  onRemove={() => removePerson(person.id)}
+                  moveHere={selected && ownerOf(selected) !== person.id ? () => move(selected, person.id) : undefined}
+                  onDropItem={(eventId) => move(eventId, person.id)}
+                >
+                  {lines.length === 0 ? (
+                    <div className="m-sp-3 flex flex-1 items-center justify-center rounded-card border-2 border-dashed border-slate-200 text-fs-14 font-semibold text-slate-400">
+                      Drag items here
+                    </div>
+                  ) : (
+                    <ItemList
+                      lines={lines}
+                      selected={selected}
+                      onSelect={(id) => setSelected((current) => (current === id ? null : id))}
+                    />
+                  )}
+                  {lines.length > 0 ? (
+                    <ColumnFooter
+                      totals={totals}
+                      due={totals.totalPaisa}
+                      onSettle={() =>
+                        setPaying({ kind: 'person', key: person.id, title: person.label, lines, totals })
+                      }
+                    />
+                  ) : (
+                    <div className="shrink-0 border-t border-slate-200 p-sp-3">
+                      <button
+                        type="button"
+                        onClick={() => removePerson(person.id)}
+                        className="h-touch-standard w-full rounded-control border border-slate-200 bg-white text-fs-14 font-bold text-slate-600 active:scale-[0.98]"
+                      >
+                        Remove person
+                      </button>
+                    </div>
+                  )}
+                </Column>
+              )
+            })}
+
+            {/* Add person — and, while an item is picked up, a place to drop it
+                that starts a new person with it. */}
+            <button
+              type="button"
+              onClick={() => (selected ? move(selected, 'new') : setSplit((current) => ({
+                ...current,
+                persons: [...current.persons, { id: newPersonId(), label: nextPersonLabel(current.persons) }],
+              })))}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                const eventId = event.dataTransfer.getData('text/plain')
+                if (eventId) move(eventId, 'new')
+              }}
+              className={cn(
+                'flex w-60 shrink-0 flex-col items-center justify-center gap-sp-2 rounded-panel',
+                'border-2 border-dashed border-slate-300 bg-transparent p-sp-4 text-center',
+                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                selected && 'border-brand-500 bg-brand-050',
+              )}
+            >
+              <span className="flex size-12 items-center justify-center rounded-control bg-white shadow-el-1">
+                <Plus aria-hidden="true" className="size-6 text-brand-700" />
+              </span>
+              <span className="text-fs-16 font-bold text-slate-900">
+                {selected ? 'Move to a new person' : 'Add person'}
+              </span>
+              <span className="text-fs-12 text-slate-600">Drop an item here to start a new bill</span>
+            </button>
+          </div>
+        ) : wholePayables.length === 0 ? (
           <div className="flex flex-1 items-center justify-center rounded-panel border border-dashed border-slate-200 bg-white p-sp-5 text-center text-fs-16 text-slate-600">
             {allLines.length === 0
               ? 'Nothing has been sent to the kitchen yet, so there is nothing to bill.'
               : 'Everything on this table is paid.'}
           </div>
-        ) : payables.length === 1 ? (
-          // The design's one-bill layout: lines left, money right.
-          // 2 : 1 — the items get two parts of the width and the money one
-          // (Teran, 2026-10-25), so the list a guest checks is the big thing.
+        ) : wholePayables.length === 1 ? (
+          // ── WHOLE: the design's one-bill layout, 2 : 1 ───────────────────
           <div className="flex min-h-0 flex-1 flex-col gap-sp-4 md:flex-row">
             <div className="flex min-h-0 flex-col md:min-w-0 md:flex-[2_2_0%]">
-              <LinesCard title={payables[0]!.title} lines={linesOf(payables[0]!)} />
+              <LinesCard title={wholePayables[0]!.title} lines={linesOf(wholePayables[0]!)} />
             </div>
             <div className="flex shrink-0 flex-col gap-sp-4 md:min-w-0 md:flex-[1_1_0%]">
               <TotalsCard
-                totals={totalsOf(payables[0]!)}
-                paidPaisa={payables[0]!.kind === 'bill' ? payables[0]!.bill.paidPaisa : 0}
-                onSettle={() => setPaying(payables[0]!)}
+                totals={totalsOf(wholePayables[0]!)}
+                paidPaisa={wholePayables[0]!.kind === 'bill' ? wholePayables[0]!.bill.paidPaisa : 0}
+                onSettle={() => setPaying(wholePayables[0]!)}
               />
+              {wholePayables[0]!.kind === 'draft' && draftLines.length >= 2 ? (
+                <SplitCard onSplit={startSplit} />
+              ) : null}
             </div>
           </div>
         ) : (
-          // Several things to settle: one card each, side by side.
           <div className="grid min-h-0 flex-1 grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] gap-sp-4">
-            {payables.map((payable) => (
+            {wholePayables.map((payable) => (
               <div key={payable.key} className="flex min-h-0 flex-col gap-sp-3">
                 <LinesCard title={payable.title} lines={linesOf(payable)} />
                 <TotalsCard
@@ -243,13 +569,16 @@ export function BillScreen({
                   paidPaisa={payable.kind === 'bill' ? payable.bill.paidPaisa : 0}
                   onSettle={() => setPaying(payable)}
                 />
+                {payable.kind === 'draft' && draftLines.length >= 2 ? (
+                  <SplitCard onSplit={startSplit} />
+                ) : null}
               </div>
             ))}
           </div>
         )}
 
         {paidBills.length > 0 ? (
-          <section className="flex flex-col gap-sp-2">
+          <section className="flex shrink-0 flex-col gap-sp-2">
             <h2 className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">Paid</h2>
             <ul className="flex flex-wrap gap-sp-2">
               {paidBills.map((bill) => (
@@ -257,7 +586,7 @@ export function BillScreen({
                   key={bill.billId}
                   className="rounded-control bg-open-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-open-ink"
                 >
-                  {bill.seatLabel ?? 'Whole table'} · {lkrFromPaisa(bill.totalPaisa)}
+                  {bill.label} · {lkrFromPaisa(bill.totalPaisa)}
                 </li>
               ))}
             </ul>
@@ -302,29 +631,36 @@ export function BillScreen({
           duePaisa={outstandingOf(paying)}
           onCancel={() => setPaying(null)}
           onPay={async (tenders) => {
-            // A draft becomes a bill only now, at Settle. If the total the
-            // server writes differs from the one shown — a round landed in
-            // between — stop rather than charge the guest a figure they were
-            // not quoted.
+            // A draft or a person's share becomes a bill only now, at Settle.
+            // If the total the server writes differs from the one shown — a
+            // round landed, or another tablet billed one of these items — stop
+            // rather than charge the guest a figure they were not quoted.
             let billId: string
-            if (paying.kind === 'draft') {
+            if (paying.kind === 'bill') {
+              billId = paying.bill.billId
+            } else {
+              const expected = outstandingOf(paying)
               const bill = await postJson<{ billId: string; totalPaisa: number }>(
                 `/api/sessions/${sessionId}/bills`,
-                { type: 'consolidated' },
+                paying.kind === 'draft'
+                  ? { type: 'consolidated' }
+                  : {
+                      type: 'split',
+                      personLabel: paying.title,
+                      eventIds: paying.lines.map((line) => line.orderEventId),
+                    },
               )
-              if (bill.totalPaisa !== paying.draft.totalPaisa) {
+              if (bill.totalPaisa !== expected) {
                 setPaying(null)
                 setNotice(
-                  `The bill came to ${lkrFromPaisa(bill.totalPaisa)}, not ${lkrFromPaisa(
-                    paying.draft.totalPaisa,
-                  )} — something was added. Check it and settle again.`,
+                  `${paying.title}'s bill came to ${lkrFromPaisa(bill.totalPaisa)}, not ${lkrFromPaisa(
+                    expected,
+                  )}. It has been recorded — check it below and settle it.`,
                 )
                 router.refresh()
                 return
               }
               billId = bill.billId
-            } else {
-              billId = paying.bill.billId
             }
 
             const result = await postJson<{ sessionClosed: boolean }>(
@@ -333,16 +669,231 @@ export function BillScreen({
             )
             setPaying(null)
             if (result.sessionClosed) {
-              // Settled and the table is free. The floor is where the waiter
-              // goes next, and the card there is already back to open.
+              try {
+                window.localStorage.removeItem(storageKey)
+              } catch {
+                // Nothing to clean up, then.
+              }
               router.push('/')
               return
             }
+            // That person is paid: their column goes, and their items are on a
+            // bill now, so the draft the server sends back no longer has them.
+            if (paying.kind === 'person') removePerson(paying.key)
             setNotice(null)
             router.refresh()
           }}
         />
       ) : null}
+    </div>
+  )
+}
+
+function SplitCard({ onSplit }: { onSplit: () => void }) {
+  return (
+    <section className="flex shrink-0 flex-col gap-sp-3 rounded-panel border-2 border-dashed border-slate-300 p-sp-4">
+      <div className="flex items-center gap-sp-3">
+        <span className="flex size-10 items-center justify-center rounded-control bg-brand-050">
+          <Users aria-hidden="true" className="size-5 text-brand-700" />
+        </span>
+        <h3 className="text-fs-16 font-extrabold text-slate-900">Paying separately?</h3>
+      </div>
+      <p className="text-fs-14 text-slate-600">
+        Split into one bill per person, then drag each item to whoever is paying for it.
+      </p>
+      <button
+        type="button"
+        onClick={onSplit}
+        className={cn(
+          'h-touch-kitchen rounded-waiter border border-brand-300 bg-brand-050 text-fs-16 font-bold text-brand-700',
+          'active:scale-[0.98]',
+          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+        )}
+      >
+        Split bill
+      </button>
+    </section>
+  )
+}
+
+/** One column of the split: a person, the unassigned pool, or a recorded bill. */
+function Column({
+  title,
+  total,
+  badge,
+  tone = 'person',
+  onRemove,
+  moveHere,
+  onDropItem,
+  children,
+}: {
+  title: string
+  total: number
+  badge?: string
+  tone?: 'person' | 'pending'
+  onRemove?: () => void
+  /** Present while an item from ANOTHER column is picked up. */
+  moveHere?: () => void
+  onDropItem?: (eventId: string) => void
+  children: React.ReactNode
+}) {
+  const [over, setOver] = useState(false)
+  return (
+    <section
+      onDragOver={
+        onDropItem
+          ? (event) => {
+              event.preventDefault()
+              setOver(true)
+            }
+          : undefined
+      }
+      onDragLeave={() => setOver(false)}
+      onDrop={
+        onDropItem
+          ? (event) => {
+              event.preventDefault()
+              setOver(false)
+              const eventId = event.dataTransfer.getData('text/plain')
+              if (eventId) onDropItem(eventId)
+            }
+          : undefined
+      }
+      className={cn(
+        'flex w-72 shrink-0 flex-col overflow-hidden rounded-panel',
+        tone === 'pending'
+          ? 'border-2 border-dashed border-occupied-edge bg-occupied-body'
+          : 'border border-slate-200 bg-white shadow-el-1',
+        over && 'ring-2 ring-brand-500',
+      )}
+    >
+      <header className="flex shrink-0 items-center justify-between gap-sp-2 border-b border-slate-200 px-sp-3 py-sp-3">
+        <div className="flex min-w-0 items-center gap-sp-2">
+          <h2 className="truncate text-fs-16 font-extrabold text-slate-900">{title}</h2>
+          {badge ? (
+            <span className="shrink-0 rounded-pill bg-occupied-chip px-sp-2 py-0.5 text-fs-12 font-bold tracking-micro text-occupied-ink uppercase">
+              {badge}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-sp-1">
+          <span className="text-fs-16 font-extrabold tabular-nums text-slate-900">
+            {lkrFromPaisa(total)}
+          </span>
+          {onRemove ? (
+            <button
+              type="button"
+              onClick={onRemove}
+              aria-label={`Remove ${title}`}
+              className="flex size-9 items-center justify-center rounded-control text-slate-400 hover:text-slate-700"
+            >
+              <X aria-hidden="true" className="size-4" />
+            </button>
+          ) : null}
+        </div>
+      </header>
+      {moveHere ? (
+        <button
+          type="button"
+          onClick={moveHere}
+          className="m-sp-3 mb-0 h-touch-standard shrink-0 rounded-control bg-brand-800 text-fs-14 font-bold text-white active:scale-[0.98]"
+        >
+          Move here
+        </button>
+      ) : null}
+      {children}
+    </section>
+  )
+}
+
+function ItemList({
+  lines,
+  selected = null,
+  onSelect,
+}: {
+  lines: BillScreenLine[]
+  selected?: string | null
+  onSelect?: (eventId: string) => void
+}) {
+  return (
+    <ul className="flex min-h-0 flex-1 flex-col gap-sp-2 overflow-y-auto p-sp-3">
+      {lines.map((line) => {
+        const isSelected = selected === line.orderEventId
+        const content = (
+          <>
+            <span className="flex w-full items-baseline justify-between gap-sp-2">
+              <span className="min-w-0 truncate text-fs-16 font-bold text-slate-900">
+                <span className="text-brand-700">{line.quantity}×</span> {line.name}
+              </span>
+              <span className="shrink-0 text-fs-14 font-bold tabular-nums text-slate-900">
+                {lkrFromPaisa(line.amountPaisa)}
+              </span>
+            </span>
+            <span className="flex items-center gap-sp-2">
+              <StationChip destination={line.destination} />
+              {line.modifierText ? (
+                <span className="truncate text-fs-12 text-slate-600">{line.modifierText}</span>
+              ) : null}
+            </span>
+          </>
+        )
+        return (
+          <li key={line.orderEventId}>
+            {onSelect ? (
+              <button
+                type="button"
+                draggable
+                aria-pressed={isSelected}
+                onDragStart={(event) => event.dataTransfer.setData('text/plain', line.orderEventId)}
+                onClick={() => onSelect(line.orderEventId)}
+                className={cn(
+                  'flex w-full cursor-grab flex-col items-start gap-sp-1 rounded-card border bg-white p-sp-3 text-left',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                  isSelected ? 'border-brand-500 ring-2 ring-brand-500' : 'border-slate-200',
+                )}
+              >
+                {content}
+              </button>
+            ) : (
+              <div className="flex flex-col gap-sp-1 rounded-card border border-slate-200 bg-white p-sp-3">
+                {content}
+              </div>
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function ColumnFooter({
+  totals,
+  due,
+  onSettle,
+}: {
+  totals: Totals
+  due: number
+  onSettle: () => void
+}) {
+  return (
+    <div className="flex shrink-0 flex-col gap-sp-2 border-t border-slate-200 bg-slate-50 p-sp-3">
+      {totals.serviceChargeBp > 0 ? (
+        <div className="flex justify-between text-fs-12 text-slate-600">
+          <span>{lkrFromPaisa(totals.subtotalPaisa)} + service</span>
+          <span className="tabular-nums">{lkrFromPaisa(totals.serviceChargePaisa)}</span>
+        </div>
+      ) : null}
+      <button
+        type="button"
+        onClick={onSettle}
+        className={cn(
+          'h-touch-kitchen rounded-waiter bg-brand-800 text-fs-16 font-bold text-white shadow-el-2',
+          'active:scale-[0.98]',
+          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+        )}
+      >
+        Settle {lkrFromPaisa(due)}
+      </button>
     </div>
   )
 }

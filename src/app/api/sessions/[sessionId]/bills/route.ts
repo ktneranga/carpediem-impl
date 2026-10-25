@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { bills, orderSessions, staff, tenantConfig } from '@/server/db/schema'
@@ -11,7 +11,9 @@ import {
   CompAlreadyBilledError,
   CompsExceedOrderError,
   generateConsolidatedBill,
+  generateSplitBill,
   hasUnbilledItems,
+  ItemsNotBillableError,
   loadSessionBills,
   MissingTenantConfigError,
   NothingToBillError,
@@ -31,10 +33,20 @@ const sessionIdSchema = z.string().uuid()
  * `pin` is optional at the schema level and REQUIRED at runtime when the tenant
  * has `financial_action_reauth` on — see below.
  */
-const billBodySchema = z.object({
-  type: z.literal('consolidated'),
-  pin: z.string().regex(/^\d{4}$/).optional(),
-})
+const billBodySchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('consolidated'),
+    pin: z.string().regex(/^\d{4}$/).optional(),
+  }),
+  // One person's bill from the bill screen's split (Story 6.3): exactly these
+  // items. Capped at the round size, since nobody's share is bigger than that.
+  z.object({
+    type: z.literal('split'),
+    eventIds: z.array(z.string().uuid()).min(1).max(200),
+    personLabel: z.string().trim().min(1).max(40),
+    pin: z.string().regex(/^\d{4}$/).optional(),
+  }),
+])
 
 function fail(code: string, message: string, status: number, extra?: Record<string, unknown>) {
   return NextResponse.json(
@@ -170,12 +182,27 @@ export async function POST(
       billingStaffId = person.id
     }
 
+    const requested = parsedBody.data
     const bill = await db.transaction((tx) =>
-      generateConsolidatedBill(tx, { sessionId: session.id, staffId: billingStaffId }),
+      requested.type === 'split'
+        ? generateSplitBill(tx, {
+            sessionId: session.id,
+            staffId: billingStaffId,
+            eventIds: requested.eventIds,
+            personLabel: requested.personLabel,
+          })
+        : generateConsolidatedBill(tx, { sessionId: session.id, staffId: billingStaffId }),
     )
 
     return NextResponse.json({ success: true, data: bill }, { status: 201 })
   } catch (error) {
+    if (error instanceof ItemsNotBillableError) {
+      return fail(
+        'ITEMS_NOT_BILLABLE',
+        'Some of these items are already on another bill. Refresh and try again.',
+        409,
+      )
+    }
     if (error instanceof NothingToBillError) {
       // After Story 6.4 the commonest way to reach this is a table whose
       // seats have ALL been billed individually — not an empty order. Saying
@@ -207,7 +234,7 @@ export async function POST(
             // row on a part-settled table is usually a SEAT bill, so this
             // handed the client a seat bill's id for a consolidated 409. The
             // 6.2 review predicted this in a comment; 6.4 is the moment.
-            .where(and(eq(bills.sessionId, sessionId), isNull(bills.seatSlotId)))
+            .where(and(eq(bills.sessionId, sessionId), eq(bills.type, 'consolidated')))
             .orderBy(asc(bills.createdAt))
             .limit(1)
           billId = winner?.id ?? ''

@@ -117,11 +117,11 @@ export const printJobStatusEnum = pgEnum('print_job_status', [
  * What a bill covers (Story 6.2).
  *
  * `consolidated` is the whole session. `seat` is Story 6.4 — one seat settling
- * independently while the rest of the table keeps ordering. A `person` split
- * (Story 6.3, drag-to-assign) is deferred post-demo and is NOT in this enum:
- * adding a value nothing writes would be a promise the code does not keep.
+ * independently while the rest of the table keeps ordering. `split` is one
+ * person's bill from the bill screen's split (Story 6.3, brought forward
+ * 2026-10-25): exactly the items the waiter dragged onto them, no seat.
  */
-export const billTypeEnum = pgEnum('bill_type', ['consolidated', 'seat'])
+export const billTypeEnum = pgEnum('bill_type', ['consolidated', 'seat', 'split'])
 
 // ── Foundation ────────────────────────────────────────────────────────────────
 
@@ -583,6 +583,13 @@ export const bills = pgTable('bills', {
    * NULL slot.
    */
   seatSlotId: uuid('seat_slot_id').references(() => seatSlots.id),
+
+  /**
+   * Who a `split` bill is for, as the waiter named them on the bill screen —
+   * "Person 2", or the seat's note when the split started from seats.
+   * Snapshotted like everything else on a bill. Null for the other types.
+   */
+  personLabel: text('person_label'),
 
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

@@ -169,6 +169,13 @@
       "when": 1792935911709,
       "tag": "0023_volatile_living_lightning",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792937367524,
+      "tag": "0024_remarkable_salo",
+      "breakpoints": true
     }
   ]
 }

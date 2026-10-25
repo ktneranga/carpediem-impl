@@ -1,8 +1,15 @@
 import { redirect } from 'next/navigation'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/server/db'
-import { menuItems, orderEvents, orderSessions, orderSessionTables, tables } from '@/server/db/schema'
+import {
+  menuItems,
+  orderEvents,
+  orderSessions,
+  orderSessionTables,
+  seatSlots,
+  tables,
+} from '@/server/db/schema'
 import { loadSessionBills, priceBillable } from '@/server/services/bill.service'
 import { loadSessionPayments } from '@/server/services/payment.service'
 import { BillScreen, type BillScreenBill, type BillScreenDraft } from '@/components/pos/bill-screen'
@@ -58,11 +65,19 @@ export default async function BillPage({
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
   const tableLabel = labels.length > 0 ? labels.join(' + ') : 'Counter'
 
-  const [recorded, payments, priced] = await Promise.all([
+  const [recorded, payments, priced, seatRows] = await Promise.all([
     loadSessionBills(db, sessionId),
     loadSessionPayments(db, sessionId),
     db.transaction((tx) => priceBillable(tx, { sessionId })),
+    db
+      .select({ id: seatSlots.id, seatLabel: seatSlots.seatLabel, seatNote: seatSlots.seatNote })
+      .from(seatSlots)
+      .where(eq(seatSlots.sessionId, sessionId))
+      .orderBy(asc(seatSlots.createdAt), asc(seatSlots.id)),
   ])
+  // What the waiter called each person on the order screen — the note when
+  // there is one. A Separate-bills order opens the split with these names.
+  const seats = seatRows.map((seat) => ({ id: seat.id, name: seat.seatNote ?? seat.seatLabel }))
 
   // The station chip on a recorded bill's lines. Bills snapshot the name and
   // price but not where it was cooked — a guest is not charged for that — so
@@ -83,7 +98,9 @@ export default async function BillPage({
   const bills: BillScreenBill[] = recorded.map((bill) => ({
     billId: bill.billId,
     type: bill.type,
-    seatLabel: bill.seatLabel,
+    // The name the bill is FOR: the person on a split bill, the seat on a
+    // seat bill, nobody in particular on the table's.
+    label: bill.personLabel ?? bill.seatLabel ?? 'Whole table',
     subtotalPaisa: bill.subtotalPaisa,
     serviceChargePaisa: bill.serviceChargePaisa,
     serviceChargeBp: bill.serviceChargeBp,
@@ -113,6 +130,7 @@ export default async function BillPage({
             amountPaisa: priced.lineAmounts[index]!,
             modifierText: event.modifierText,
             destination: event.destination ?? null,
+            seatSlotId: event.seatSlotId,
           })),
         }
 
@@ -124,6 +142,7 @@ export default async function BillPage({
       billMode={rows[0]!.billMode}
       bills={bills}
       draft={draft}
+      seats={seats}
     />
   )
 }
