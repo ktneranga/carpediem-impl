@@ -179,12 +179,27 @@ function dropIdAt(x: number, y: number): string | undefined {
   return element?.dataset.drop
 }
 
-/** A card on the split: one owner's units of one line. Keyed `${eventId}|${owner}`. */
-function cardKey(eventId: string, owner: string | null): string {
-  return `${eventId}|${owner ?? ''}`
+/**
+ * What makes two lines "the same dish" on a bill: name, unit price, note and
+ * station. Used by the whole-table list and by the split's cards alike, so the
+ * two views never disagree about what counts as one line.
+ */
+function dishKey(line: BillScreenLine): string {
+  return [line.name, line.unitPricePaisa, line.modifierText ?? '', line.destination ?? ''].join('|')
 }
-function eventOfCard(key: string): string {
-  return key.slice(0, key.indexOf('|'))
+
+/**
+ * A card on the split: ONE OWNER's units of ONE DISH — possibly drawn from
+ * several order events. Keyed `${owner}::${dishKey}`.
+ *
+ * Two Devilled Cashews ordered for two seats are two events; moved onto the
+ * same person they are one "2×" card, not the same dish twice (Teran,
+ * 2026-10-25). The card remembers its events (`members`), so moving one of
+ * them takes a unit from one event, and settling bills each event for its
+ * own units.
+ */
+function cardKey(owner: string | null, dish: string): string {
+  return `${owner ?? ''}::${dish}`
 }
 
 let personCounter = 0
@@ -342,19 +357,33 @@ export function BillScreen({
   }
 
   /** One owner's cards: their units of each line, priced per unit. */
-  const cardsFor = (owner: string | null): BillScreenLine[] =>
-    draftLines.flatMap((line) =>
-      piecesOf(line)
-        .filter((piece) => piece.owner === owner)
-        .map((piece) => ({
+  // Every card on the split, built once per render: each owner's units of
+  // each dish, and which events (and how many of each) a card is made of.
+  const members = new Map<string, { eventId: string; qty: number }[]>()
+  const cardsByOwner = new Map<string | null, BillScreenLine[]>()
+  for (const line of draftLines) {
+    for (const piece of piecesOf(line)) {
+      const key = cardKey(piece.owner, dishKey(line))
+      const cards = cardsByOwner.get(piece.owner) ?? []
+      const card = cards.find((candidate) => candidate.orderEventId === key)
+      if (card) {
+        card.quantity += piece.qty
+        card.amountPaisa += piece.qty * line.unitPricePaisa
+      } else {
+        cards.push({
           ...line,
-          orderEventId: cardKey(line.orderEventId, owner),
+          orderEventId: key,
           quantity: piece.qty,
           amountPaisa: piece.qty * line.unitPricePaisa,
-        })),
-    )
+        })
+      }
+      cardsByOwner.set(piece.owner, cards)
+      members.set(key, [...(members.get(key) ?? []), { eventId: line.orderEventId, qty: piece.qty }])
+    }
+  }
+  const cardsFor = (owner: string | null): BillScreenLine[] => cardsByOwner.get(owner) ?? []
   const unassigned = cardsFor(null)
-  const ownerOfCard = (key: string): string | null => key.slice(key.indexOf('|') + 1) || null
+  const ownerOfCard = (key: string): string | null => key.slice(0, key.indexOf('::')) || null
 
   /**
    * Moves `count` units of a card to `target` — all of them when no count is
@@ -362,10 +391,9 @@ export function BillScreen({
    */
   function move(key: string, target: string | null | 'new', count?: number) {
     setSelected(null)
-    const eventId = eventOfCard(key)
     const from = ownerOfCard(key)
-    const line = draftLines.find((candidate) => candidate.orderEventId === eventId)
-    if (!line) return
+    const parts = members.get(key)
+    if (!parts) return
     setSplit((current) => {
       let persons = current.persons
       let to: string | null = target === 'new' ? null : target
@@ -374,17 +402,24 @@ export function BillScreen({
         persons = [...current.persons, person]
         to = person.id
       }
-      const pieces = piecesOf(line).map((piece) => ({ ...piece }))
-      const source = pieces.find((piece) => piece.owner === from)
-      if (!source) return current
-      const moving = Math.min(count ?? source.qty, source.qty)
-      source.qty -= moving
-      pieces.push({ owner: to, qty: moving })
-      return {
-        ...current,
-        persons,
-        allocation: { ...current.allocation, [eventId]: normalize(pieces) },
+      // Take the units from the card's events in order until `count` is met:
+      // "Move 1 of 2" on a card made of two events moves one unit of one.
+      let left = count ?? parts.reduce((total, part) => total + part.qty, 0)
+      const allocation = { ...current.allocation }
+      for (const part of parts) {
+        if (left <= 0) break
+        const line = draftLines.find((candidate) => candidate.orderEventId === part.eventId)
+        if (!line) continue
+        const pieces = piecesOf(line).map((piece) => ({ ...piece }))
+        const source = pieces.find((piece) => piece.owner === from)
+        if (!source) continue
+        const moving = Math.min(left, source.qty)
+        source.qty -= moving
+        pieces.push({ owner: to, qty: moving })
+        allocation[part.eventId] = normalize(pieces)
+        left -= moving
       }
+      return { ...current, persons, allocation }
     })
   }
 
@@ -853,12 +888,14 @@ export function BillScreen({
                   : {
                       type: 'split',
                       personLabel: paying.title,
-                      // Card keys carry the event id; the quantity is this
-                      // person's units of it.
-                      items: paying.lines.map((line) => ({
-                        eventId: eventOfCard(line.orderEventId),
-                        quantity: line.quantity,
-                      })),
+                      // A card may hold several events; the bill takes each
+                      // event for exactly this person's units of it.
+                      items: paying.lines.flatMap((line) =>
+                        (members.get(line.orderEventId) ?? []).map((part) => ({
+                          eventId: part.eventId,
+                          quantity: part.qty,
+                        })),
+                      ),
                     },
               )
               if (bill.totalPaisa !== expected) {
@@ -1186,7 +1223,7 @@ function StationChip({ destination }: { destination: ProductionDestination | nul
 function groupLines(lines: BillScreenLine[]): BillScreenLine[] {
   const groups = new Map<string, BillScreenLine>()
   for (const line of lines) {
-    const key = [line.name, line.unitPricePaisa, line.modifierText ?? '', line.destination ?? ''].join('|')
+    const key = dishKey(line)
     const existing = groups.get(key)
     if (existing) {
       existing.quantity += line.quantity
