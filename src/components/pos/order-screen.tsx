@@ -40,7 +40,7 @@ import { COUNTER_QUERY_KEY } from '@/components/pos/table-grid'
 import { elapsedMinutesFrom, useMinuteTick } from '@/hooks/use-minute-tick'
 import { useSocketEvent, useSocketRoom } from '@/hooks/use-socket'
 import { signOut } from '@/lib/auth-client'
-import { clockTime, elapsed, lkrFromPaisa } from '@/lib/format'
+import { clockTime, elapsed } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 export type OrderScreenProps = {
@@ -280,22 +280,6 @@ async function closeTable(input: { sessionId: string; reason: 'abandoned' | 'wal
   return body.data as { sessionId: string }
 }
 
-/**
- * A bill the server refused for a reason the waiter can act on.
- *
- * Carries the code and `billId` where the server sent one, so "this order
- * already has a bill" can eventually open that bill rather than only saying so.
- */
-class BillRefusedError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly billId: string | null,
-  ) {
-    super(message)
-  }
-}
-
 /** `PATCH /api/sessions/:id/bill-mode` — the One bill / Separate bills switch. */
 async function setBillModeRequest(sessionId: string, mode: 'one' | 'separate'): Promise<void> {
   const response = await fetch(`/api/sessions/${sessionId}/bill-mode`, {
@@ -313,42 +297,6 @@ async function setBillModeRequest(sessionId: string, mode: 'one' | 'separate'): 
     throw new SessionGoneError('Already closed')
   }
   throw new Error(payload?.error?.message ?? 'Could not change how this order is billed.')
-}
-
-/** `POST /api/sessions/:id/seats/:seatId/bill` — Story 6.4. */
-async function billSeat(sessionId: string, seatId: string): Promise<BillDetail> {
-  const response = await fetch(`/api/sessions/${sessionId}/seats/${seatId}/bill`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
-  })
-
-  if (response.status === 401) {
-    const challenge = await response.json().catch(() => null)
-    if (challenge?.error?.code === 'REAUTH_REQUIRED' || challenge?.error?.code === 'REAUTH_FAILED') {
-      throw new BillRefusedError(
-        challenge.error.code,
-        challenge.error.message ?? 'This bill needs a PIN.',
-        null,
-      )
-    }
-    throw new SessionExpiredError('Session expired')
-  }
-  if (response.status === 403) throw new ForbiddenError('Role not permitted')
-
-  const payload = await response.json().catch(() => null)
-  if (response.ok && payload?.success) return payload.data as BillDetail
-
-  const error = payload?.error ?? {}
-  if (error.code === 'SESSION_ALREADY_CLOSED') throw new SessionGoneError('Already closed')
-  if (typeof error.code === 'string' && response.status < 500) {
-    throw new BillRefusedError(
-      error.code,
-      error.message ?? 'This seat was not billed.',
-      typeof error.billId === 'string' && error.billId !== '' ? error.billId : null,
-    )
-  }
-  throw new Error('This seat was not billed.')
 }
 
 
@@ -410,55 +358,7 @@ export function OrderScreen({
    */
   const usesSeats = billMode === 'separate'
 
-  /**
-   * Has this seat had anything SENT to the kitchen?
-   *
-   * Matched on the seat LABEL, which is what `SubmittedItemRow` carries. Only
-   * decides whether to OFFER the action — the server is the authority on
-   * whether the seat has anything left to bill, and answers
-   * `422 SEAT_HAS_NO_ITEMS` if not.
-   */
-  function seatHasSentItems(seatLabel: string): boolean {
-    return submittedRounds.some((round) =>
-      round.items.some((item) => item.seatLabel === seatLabel),
-    )
-  }
 
-  /**
-   * What one seat's bill will say, BEFORE it is created (Teran, 2026-10-23).
-   *
-   * "Bill Seat 1" used to create the bill on the first tap, sight unseen: the
-   * waiter could not see what that person was about to pay, or even confirm it
-   * was the right person — the chip said "thattaya" and the button said
-   * "Seat 1". Now the button carries the total and opens this.
-   *
-   * ── The same arithmetic as the server's `computeBillTotals` ─────────────
-   * Subtotal from the prices AS QUOTED on the events, service only when the
-   * order has a table (a counter sale has had no table service), tax on
-   * subtotal plus service, each rounded once. If this ever disagrees with the
-   * bill, the BILL is right — it is computed in the transaction that writes
-   * it, and it also knows about comps, which this does not.
-   */
-  function seatBillPreview(seatLabel: string) {
-    const items = submittedRounds.flatMap((round) =>
-      round.items.filter((item) => item.seatLabel === seatLabel),
-    )
-    const subtotalPaisa = items.reduce(
-      (total, item) => total + (item.unitPricePaisa ?? 0) * item.quantity,
-      0,
-    )
-    const serviceBp = tableLabel ? serviceChargeBp : 0
-    const servicePaisa = Math.round((subtotalPaisa * serviceBp) / 10_000)
-    const taxPaisa = Math.round(((subtotalPaisa + servicePaisa) * taxRatePercent * 100) / 10_000)
-    return {
-      items,
-      subtotalPaisa,
-      serviceBp,
-      servicePaisa,
-      taxPaisa,
-      totalPaisa: subtotalPaisa + servicePaisa + taxPaisa,
-    }
-  }
   const router = useRouter()
   const queryClient = useQueryClient()
   const minuteTick = useMinuteTick()
@@ -555,8 +455,6 @@ export function OrderScreen({
     : (seats.find((seat) => !seatIsBilled(seat.id))?.id ?? seats[0]?.id ?? null)
   const activeSeat = seats.find((seat) => seat.id === activeSeatId) ?? null
 
-  /** The seat whose bill is being previewed before it is created. */
-  const [seatBillPreviewId, setSeatBillPreviewId] = useState<string | null>(null)
 
   // Selecting a different chip closes the panel by construction — no effect,
   // and no stale editor pointing at a seat the waiter has moved on from.
@@ -711,15 +609,6 @@ export function OrderScreen({
   /** Clear asks first when there is more than one line to lose. */
   const [confirmingClear, setConfirmingClear] = useState(false)
 
-  /**
-   * The waiter tapped "Add More Items" on a session whose rounds are all sent.
-   *
-   * Purely presentational: it moves the strip off `submitted` and opens an empty
-   * staging area. Nothing is written, and the round NUMBER is not decided here —
-   * that happens inside Story 4.5's submit transaction, because a number chosen
-   * on the client is a number two tablets can choose identically.
-   */
-  const [addingMore, setAddingMore] = useState(false)
 
   const { data: submittedRounds, error: ordersError } = useQuery({
     queryKey: ['orders', sessionId],
@@ -828,8 +717,6 @@ export function OrderScreen({
       return
     }
     addLine(item, { seatSlotId: seat.id, seatLabel: seatName(seat), ...options })
-    // A round is being built again, so "Add More Items" has done its job.
-    setAddingMore(false)
   }
 
   function openModifiers(item: MenuItemRow) {
@@ -899,7 +786,6 @@ export function OrderScreen({
       // error and no undo — the guest's food simply never reached the kitchen.
       // Anything staged meanwhile stays, as the next round.
       clearSentLines(sentLineIds)
-      setAddingMore(false)
       if (response.replayed) {
         // 200, not 201: this round was already on the order. Said out loud,
         // because the history gains nothing and a silent Send reads as a
@@ -1007,56 +893,6 @@ export function OrderScreen({
    * would offer a button that can only fail again.
    */
 
-  /**
-   * Bill This Seat (Story 6.4).
-   *
-   * Deliberately NOT merged with `billMutation`: the two refuse for different
-   * reasons and say different things. A shared handler would have to branch on
-   * every code anyway, and the 6.2 review's lesson was that collapsing two
-   * causes into one message is how a waiter is told the wrong thing.
-   */
-  const seatBillMutation = useMutation({
-    mutationFn: (seatId: string) => billSeat(sessionId, seatId),
-    onMutate: () => setSeatNotice(null),
-    onSuccess: () => {
-      // Refetch: a seat bill changes the list AND possibly `hasUnbilled` (it
-      // may have been the last unbilled seat). The server knows both.
-      void queryClient.invalidateQueries({ queryKey: billQueryKey })
-      void queryClient.invalidateQueries({ queryKey: ['orders', sessionId] })
-      void queryClient.invalidateQueries({ queryKey: ['tables'] })
-    },
-    onError: (error) => {
-      if (error instanceof SessionExpiredError) {
-        window.location.assign('/login')
-        return
-      }
-      if (error instanceof ForbiddenError) {
-        setSeatNotice('Your role cannot generate bills.')
-        return
-      }
-      if (error instanceof SessionGoneError) {
-        setClosedDuringSend(true)
-        return
-      }
-      if (error instanceof BillRefusedError) {
-        if (error.code === 'SEAT_ALREADY_BILLED') {
-          // Not a failure — the outcome the waiter wanted. Refetch so the
-          // chip shows it.
-          void queryClient.invalidateQueries({ queryKey: billQueryKey })
-          setSeatNotice('This seat already has a bill.')
-          return
-        }
-        // Every other refusal still means this screen's picture of the bills
-        // may be wrong — 422 SEAT_HAS_NO_ITEMS usually means another tablet
-        // swept this seat into a consolidated bill. Refetch, or the chip keeps
-        // offering a button that can only fail the same way.
-        void queryClient.invalidateQueries({ queryKey: billQueryKey })
-        setSeatNotice(error.message)
-        return
-      }
-      setSeatNotice('Could not bill this seat. Try again.')
-    },
-  })
 
   /**
    * The One bill / Separate bills switch.
@@ -1125,14 +961,14 @@ export function OrderScreen({
   function clearRound() {
     clear()
     setConfirmingClear(false)
-    setAddingMore(false)
   }
 
-  // Four facts, in priority order. Something staged → `items-added`. Nothing
-  // staged but rounds already sent → `submitted`, UNLESS the waiter tapped Add
-  // More Items, which asks for an empty round → `empty`. Nothing at all →
-  // `empty`. `addingMore` is cleared again by the next stage or by Clear, so
-  // the strip can return to `submitted`; it used to be a one-way latch.
+  // Three facts, in priority order. Something staged → `items-added`. Nothing
+  // staged but rounds already sent → `submitted`. Nothing at all → `empty`.
+  //
+  // There is no "Add another round" step any more (Teran, 2026-10-25): tapping
+  // a dish after a send starts the next round, which is what the button did
+  // with an extra tap in front of it.
   //
   // ── `settling` means A CONSOLIDATED BILL EXISTS (Teran, 2026-10-15) ───────
   // One bill for the whole table means the table is done. One bill for one
@@ -1173,7 +1009,7 @@ export function OrderScreen({
       ? 'settling'
       : lines.length > 0
         ? 'items-added'
-        : submittedRounds.length > 0 && !addingMore
+        : submittedRounds.length > 0
           ? 'submitted'
           : 'empty'
 
@@ -1502,45 +1338,6 @@ export function OrderScreen({
               onAddSeat={() => addSeatMutation.mutate()}
             />
 
-            {/* ── Bill This Seat (Story 6.4, AC-12) ──────────────────────────
-                Only where seats MEAN something. Bean Bags, Sun Beds, Rooftop
-                and counter sales hide the seat section entirely and every item
-                lands on Seat 1, so "split by seat" there is a control that can
-                only confuse — `deferred-work.md` assigns that call to this
-                story by name.
-
-                Hidden rather than disabled once the seat is billed: the action
-                no longer applies, and a greyed button invites the waiter to
-                wonder what would un-grey it (the rule the action strip follows
-                for Submit). */}
-            {usesSeats && activeSeat && !hasConsolidatedBill && !billedSeatIds.has(activeSeat.id)
-              && seatHasSentItems(activeSeat.seatLabel) ? (
-              <button
-                type="button"
-                disabled={seatBillMutation.isPending}
-                // Opens the preview. The bill is created from there, after the
-                // waiter has seen what it holds.
-                onClick={() => setSeatBillPreviewId(activeSeat.id)}
-                className={cn(
-                  'flex h-touch-waiter w-full items-center justify-between gap-sp-3 rounded-waiter',
-                  'border-2 border-brand-500 bg-white px-sp-4 shadow-el-1',
-                  'transition-transform duration-80 ease-standard active:scale-[0.97]',
-                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                  'disabled:opacity-60',
-                )}
-              >
-                {/* The NAME the waiter gave this person, not the number — the
-                    chip above says "thattaya", so the button must too. */}
-                <span className="truncate text-fs-18 font-bold text-brand-700">
-                  {seatBillMutation.isPending
-                    ? 'Billing…'
-                    : `Bill ${activeSeat.seatNote ?? activeSeat.seatLabel}`}
-                </span>
-                <span className="shrink-0 text-fs-18 font-extrabold tabular-nums text-slate-900">
-                  {lkrFromPaisa(seatBillPreview(activeSeat.seatLabel).totalPaisa)}
-                </span>
-              </button>
-            ) : null}
           </section>
 
           {/* The note editor and seat notices, uncapped. `empty:hidden` drops
@@ -1892,110 +1689,6 @@ export function OrderScreen({
         </div>
       ) : null}
 
-      {/* ── One seat's bill, previewed (Teran, 2026-10-23) ─────────────────
-          Creating a bill is not something to do sight unseen: it closes that
-          person's part of the order. The waiter sees exactly what they are
-          about to charge — every item, the service charge, the total — and
-          can read it to the guest before committing. */}
-      {(() => {
-        const seat = seats.find((candidate) => candidate.id === seatBillPreviewId)
-        if (!seat) return null
-        const preview = seatBillPreview(seat.seatLabel)
-        const servicePercent = (preview.serviceBp / 100).toString()
-        return (
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="seat-bill-title"
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
-          >
-            <div className="flex max-h-full w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2">
-              <div className="flex flex-col gap-0.5">
-                <h2 id="seat-bill-title" className="text-fs-24 font-extrabold text-slate-900">
-                  Bill {seat.seatNote ?? seat.seatLabel}
-                </h2>
-                {seat.seatNote ? (
-                  <p className="text-fs-14 text-slate-600">{seat.seatLabel}</p>
-                ) : null}
-              </div>
-
-              <ul className="flex min-h-0 flex-col gap-sp-2 overflow-y-auto">
-                {preview.items.map((item) => (
-                  <li key={item.id} className="flex items-baseline justify-between gap-sp-3">
-                    <span className="min-w-0 text-fs-16 text-slate-900">
-                      {item.name}
-                      {item.quantity > 1 ? (
-                        <span className="text-slate-600"> × {item.quantity}</span>
-                      ) : null}
-                      {item.modifierText ? (
-                        <span className="block text-fs-12 text-slate-600">{item.modifierText}</span>
-                      ) : null}
-                    </span>
-                    <span className="shrink-0 text-fs-16 font-semibold tabular-nums text-slate-900">
-                      {lkrFromPaisa((item.unitPricePaisa ?? 0) * item.quantity)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="flex flex-col gap-sp-1 border-t border-slate-200 pt-sp-3 text-fs-14">
-                <div className="flex justify-between text-slate-600">
-                  <span>Subtotal</span>
-                  <span className="tabular-nums">{lkrFromPaisa(preview.subtotalPaisa)}</span>
-                </div>
-                {preview.serviceBp > 0 ? (
-                  <div className="flex justify-between text-slate-600">
-                    <span>Service {servicePercent}%</span>
-                    <span className="tabular-nums">{lkrFromPaisa(preview.servicePaisa)}</span>
-                  </div>
-                ) : null}
-                {preview.taxPaisa > 0 ? (
-                  <div className="flex justify-between text-slate-600">
-                    <span>Tax {taxRatePercent}%</span>
-                    <span className="tabular-nums">{lkrFromPaisa(preview.taxPaisa)}</span>
-                  </div>
-                ) : null}
-                <div className="flex items-baseline justify-between pt-sp-1">
-                  <span className="text-fs-16 font-bold text-slate-900">Total</span>
-                  <span className="text-fs-24 font-extrabold tabular-nums text-slate-900">
-                    {lkrFromPaisa(preview.totalPaisa)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex gap-sp-3">
-                <button
-                  type="button"
-                  onClick={() => setSeatBillPreviewId(null)}
-                  className={cn(
-                    'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white',
-                    'text-fs-18 font-bold text-slate-900 shadow-el-1 active:scale-[0.97]',
-                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                  )}
-                >
-                  Back
-                </button>
-                <button
-                  type="button"
-                  disabled={seatBillMutation.isPending}
-                  onClick={() => {
-                    setSeatBillPreviewId(null)
-                    seatBillMutation.mutate(seat.id)
-                  }}
-                  className={cn(
-                    'h-touch-waiter flex-1 rounded-waiter bg-brand-800 text-fs-18 font-bold text-white',
-                    'shadow-el-2 active:scale-[0.97] disabled:opacity-60',
-                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                  )}
-                >
-                  Create bill
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
       {/* The bar. Its state is `stripState` above — four facts, including the
           Add More Items override.
 
@@ -2040,11 +1733,6 @@ export function OrderScreen({
             : lines.length === 1
               ? clearRound
               : () => setConfirmingClear(true)
-        }
-        onAddMoreItems={
-          // Opening a round writes nothing: the round NUMBER is decided inside
-          // Story 4.5's submit transaction.
-          submittedRounds.length > 0 && lines.length === 0 ? () => setAddingMore(true) : undefined
         }
         // Closing from the bar as well as from the column, as the design's
         // More menu draws it. Same handler, same confirmation: a walkout is

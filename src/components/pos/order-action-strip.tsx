@@ -5,7 +5,6 @@ import { useState } from 'react'
 import {
   ActionStripShell,
   billButtonClass,
-  secondaryButtonClass,
   sendButtonClass,
 } from '@/components/pos/action-strip-chrome'
 import { MoreMenu } from '@/components/pos/more-menu'
@@ -74,7 +73,6 @@ export type OrderActionStripProps = {
   busy?: boolean
   onSubmitOrder?: () => void
   onClear?: () => void
-  onAddMoreItems?: () => void
   onGenerateBill?: () => void
   /**
    * Ends the sitting. Wording is the caller's because only it knows whether
@@ -93,7 +91,6 @@ export function OrderActionStrip({
   busy = false,
   onSubmitOrder,
   onClear,
-  onAddMoreItems,
   onGenerateBill,
   onCloseTable,
   closeLabel = 'Close table',
@@ -206,16 +203,9 @@ export function OrderActionStrip({
         detail={note}
         leading={moreMenu}
       >
-        {/* NOT disabled by `busy`. Opening a new round is local and harmless,
-            and it is the only way out if a Generate Bill request hangs — the
-            same rule that keeps Clear reachable in `items-added`, which was
-            written after the floor strip's review found a Cancel that stopped
-            working mid-request. */}
-        {onAddMoreItems ? (
-          <button type="button" onClick={onAddMoreItems} className={secondaryButtonClass}>
-            Add another round
-          </button>
-        ) : null}
+        {/* No "Add another round" (Teran, 2026-10-25): tapping a dish after a
+            send starts the next round, so the button was an extra tap in front
+            of something that already worked. */}
         {/* Only with a handler. This rendered unconditionally, so the order
             screen — which has no billing until Epic 6 — showed an enabled
             "Generate Bill" that did nothing: the same dead control the commit
