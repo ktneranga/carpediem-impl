@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Banknote, CreditCard, Delete, Plus, Receipt, Users, X } from 'lucide-react'
+import { ArrowLeft, Banknote, CreditCard, Delete, Plus, Receipt, Split, Users, X } from 'lucide-react'
 import { lkrFromPaisa } from '@/lib/format'
 import { routeForDestination } from '@/lib/design'
 import { cn } from '@/lib/utils'
@@ -1164,12 +1164,13 @@ function Row({ label, value }: { label: string; value: number }) {
  * bill's amount, never the note: change never belonged to the restaurant
  * (see `payment_records`).
  *
- * ── Split is cash that falls short ───────────────────────────────────────────
- * The design has no third "Split" method, and does not need one. STILL NEEDED
- * shows what the cash leaves owing; when it is above zero the action becomes
- * "Take LKR x by card", which records the cash and the card part together.
- * That is how a split payment actually happens at a table — the guest hands
- * over what cash they have and cards the rest.
+ * ── Cash + card: part of each (FR28-30, Story 6.5) ───────────────────────────
+ * Its own method, as the docs specify. The design drew only Cash and Card, and
+ * a split hidden inside "cash that falls short" was not one a waiter could
+ * find (Teran, 2026-10-25). The pad types the CASH part and the CARD part is
+ * the rest; both must be above zero. Cash that falls short in Cash mode does
+ * not split by itself: its action switches to Cash + card, keeping the
+ * amount, so a split is always confirmed on purpose.
  *
  * ── Card ─────────────────────────────────────────────────────────────────────
  * Charge the total on the machine, then confirm.
@@ -1188,7 +1189,7 @@ function PaymentDialog({
   onCancel: () => void
   onPay: (tenders: { method: 'cash' | 'card'; amountPaisa: number }[]) => Promise<void>
 }) {
-  const [method, setMethod] = useState<'cash' | 'card'>('cash')
+  const [method, setMethod] = useState<'cash' | 'card' | 'split'>('cash')
   // What the pad has typed, in WHOLE RUPEES as a digit string. "Exact" may set
   // a paisa amount that is not whole rupees, so it is held separately.
   const [digits, setDigits] = useState('')
@@ -1216,29 +1217,42 @@ function PaymentDialog({
     })
   }
 
+  const cash = received ?? 0
+  const hasCash = cash > 0
+  // Cash in Cash mode that does not cover the bill: the action offers a split.
+  const cashShort = method === 'cash' && hasCash && cash < duePaisa
+
   const tenders: { method: 'cash' | 'card'; amountPaisa: number }[] | null =
     method === 'card'
       ? [{ method: 'card', amountPaisa: duePaisa }]
-      : received === null || received === 0
-        ? null
-        : received >= duePaisa
+      : method === 'cash'
+        ? hasCash && cash >= duePaisa
           ? [{ method: 'cash', amountPaisa: duePaisa }]
-          : [
-              { method: 'cash', amountPaisa: received },
-              { method: 'card', amountPaisa: duePaisa - received },
+          : null
+        : hasCash && cash < duePaisa
+          ? [
+              { method: 'cash', amountPaisa: cash },
+              { method: 'card', amountPaisa: duePaisa - cash },
             ]
+          : null
 
   const actionLabel = busy
     ? 'Recording…'
     : method === 'card'
       ? `Card payment taken · ${lkrFromPaisa(duePaisa)}`
-      : received === null || received === 0
-        ? 'Enter amount received'
-        : received >= duePaisa
-          ? change > 0
-            ? `Record cash · change ${lkrFromPaisa(change)}`
-            : 'Record cash'
-          : `Take ${lkrFromPaisa(stillNeeded)} by card`
+      : method === 'cash'
+        ? !hasCash
+          ? 'Enter amount received'
+          : cashShort
+            ? `${lkrFromPaisa(stillNeeded)} short · pay the rest by card`
+            : change > 0
+              ? `Record cash · change ${lkrFromPaisa(change)}`
+              : 'Record cash'
+        : !hasCash
+          ? 'Enter the cash part'
+          : cash >= duePaisa
+            ? 'Cash covers it all · use Cash'
+            : `Record ${lkrFromPaisa(cash)} cash + ${lkrFromPaisa(stillNeeded)} card`
 
   const focusRing =
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500'
@@ -1297,6 +1311,7 @@ function PaymentDialog({
                 {([
                   { key: 'cash' as const, label: 'Cash', icon: Banknote },
                   { key: 'card' as const, label: 'Card', icon: CreditCard },
+                  { key: 'split' as const, label: 'Cash + card', icon: Split },
                 ]).map(({ key, label, icon: Icon }) => (
                   <button
                     key={key}
@@ -1308,6 +1323,9 @@ function PaymentDialog({
                     }}
                     className={cn(
                       'flex h-touch-kitchen items-center justify-center gap-sp-2 rounded-waiter border-2 text-fs-16 font-bold',
+                      // The third choice spans the row rather than sitting as
+                      // half a row waiting for a partner.
+                      key === 'split' && 'col-span-2',
                       'active:scale-[0.97]',
                       focusRing,
                       method === key
@@ -1327,11 +1345,11 @@ function PaymentDialog({
                 <dt className="text-slate-600">Bill</dt>
                 <dd className="font-semibold tabular-nums text-slate-900">{lkrFromPaisa(duePaisa)}</dd>
               </div>
-              {method === 'cash' && received !== null && received > 0 && received < duePaisa ? (
+              {method === 'split' && hasCash && cash < duePaisa ? (
                 <>
                   <div className="flex justify-between">
                     <dt className="text-slate-600">Cash</dt>
-                    <dd className="font-semibold tabular-nums text-slate-900">{lkrFromPaisa(received)}</dd>
+                    <dd className="font-semibold tabular-nums text-slate-900">{lkrFromPaisa(cash)}</dd>
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-slate-600">Card</dt>
@@ -1350,7 +1368,7 @@ function PaymentDialog({
 
           {/* ── Right: the pad ────────────────────────────────────────────── */}
           <section className="flex min-w-0 flex-1 flex-col gap-sp-3 p-sp-5">
-            {method === 'cash' ? (
+            {method !== 'card' ? (
               <>
                 <div className="grid grid-cols-2 gap-sp-3">
                   <div
@@ -1358,7 +1376,7 @@ function PaymentDialog({
                     className="flex flex-col rounded-waiter border-2 border-brand-500 bg-white px-sp-4 py-sp-3"
                   >
                     <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
-                      Received
+                      {method === 'split' ? 'Cash part' : 'Received'}
                     </span>
                     <span className="text-fs-32 font-extrabold tabular-nums text-slate-900">
                       {received === null ? 'LKR —' : lkrFromPaisa(received)}
@@ -1366,20 +1384,20 @@ function PaymentDialog({
                   </div>
                   <div className="flex flex-col rounded-waiter bg-slate-100 px-sp-4 py-sp-3">
                     <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
-                      {change > 0 ? 'Change' : 'Still needed'}
+                      {method === 'split' ? 'Card part' : change > 0 ? 'Change' : 'Still needed'}
                     </span>
                     <span
                       className={cn(
                         'text-fs-32 font-extrabold tabular-nums',
-                        change > 0 ? 'text-open-ink' : 'text-slate-600',
+                        method === 'cash' && change > 0 ? 'text-open-ink' : 'text-slate-600',
                       )}
                     >
-                      {lkrFromPaisa(change > 0 ? change : stillNeeded)}
+                      {lkrFromPaisa(method === 'cash' && change > 0 ? change : stillNeeded)}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-sp-2">
+                <div className={cn('flex flex-wrap gap-sp-2', method === 'split' && 'hidden')}>
                   {[
                     { label: 'Exact', set: () => (setDigits(''), setExact(duePaisa)) },
                     ...quick.map((amount) => ({
@@ -1442,8 +1460,14 @@ function PaymentDialog({
 
             <button
               type="button"
-              disabled={busy || tenders === null}
+              disabled={busy || (tenders === null && !cashShort)}
               onClick={async () => {
+                // Short cash in Cash mode: switch to Cash + card with the
+                // amount kept, so the split is confirmed there on purpose.
+                if (cashShort) {
+                  setMethod('split')
+                  return
+                }
                 if (!tenders) return
                 setBusy(true)
                 setError(null)
@@ -1458,9 +1482,11 @@ function PaymentDialog({
                 'h-touch-waiter shrink-0 rounded-waiter text-fs-18 font-bold',
                 'active:scale-[0.98] disabled:active:scale-100',
                 focusRing,
-                tenders === null || busy
+                busy || (tenders === null && !cashShort)
                   ? 'bg-slate-100 text-slate-400'
-                  : 'bg-brand-800 text-white shadow-el-2',
+                  : cashShort
+                    ? 'border-2 border-brand-500 bg-brand-050 text-brand-700'
+                    : 'bg-brand-800 text-white shadow-el-2',
               )}
             >
               {actionLabel}
