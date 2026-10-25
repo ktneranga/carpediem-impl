@@ -349,6 +349,12 @@ export function BillScreen({
     })
   }
 
+  /** A drop's payload: the card key, and a count when the card was picked. */
+  function moveDropped(payload: string, target: string | null | 'new') {
+    const [key, count] = payload.split('#')
+    if (key) move(key, target, count ? Number(count) : undefined)
+  }
+
   function pick(key: string, qty: number) {
     setSelected((current) => (current?.key === key ? null : { key, count: qty }))
   }
@@ -533,7 +539,7 @@ export function BillScreen({
                     ? () => move(selected.key, null, selected.count)
                     : undefined
                 }
-                onDropItem={(key) => move(key, null)}
+                onDropItem={(payload) => moveDropped(payload, null)}
               >
                 <ItemList
                   lines={unassigned}
@@ -561,7 +567,7 @@ export function BillScreen({
                       ? () => move(selected.key, person.id, selected.count)
                       : undefined
                   }
-                  onDropItem={(key) => move(key, person.id)}
+                  onDropItem={(payload) => moveDropped(payload, person.id)}
                 >
                   {lines.length === 0 ? (
                     <div className="m-sp-3 flex flex-1 items-center justify-center rounded-card border-2 border-dashed border-slate-200 text-fs-14 font-semibold text-slate-400">
@@ -610,8 +616,8 @@ export function BillScreen({
               })))}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
-                const key = event.dataTransfer.getData('text/plain')
-                if (key) move(key, 'new')
+                const payload = event.dataTransfer.getData('text/plain')
+                if (payload) moveDropped(payload, 'new')
               }}
               className={cn(
                 'flex w-60 shrink-0 flex-col items-center justify-center gap-sp-2 rounded-panel',
@@ -945,7 +951,16 @@ function ItemList({
                 type="button"
                 draggable
                 aria-pressed={isSelected}
-                onDragStart={(event) => event.dataTransfer.setData('text/plain', line.orderEventId)}
+                // A drag of the PICKED card carries the count chosen on its
+                // stepper. It used to carry only the card, so setting "Move 1
+                // of 2" and then dragging moved both — the stepper was ignored
+                // on exactly the path a mouse user takes.
+                onDragStart={(event) =>
+                  event.dataTransfer.setData(
+                    'text/plain',
+                    isSelected ? `${line.orderEventId}#${selected!.count}` : line.orderEventId,
+                  )
+                }
                 onClick={() => onSelect(line.orderEventId, line.quantity)}
                 className={cn(
                   'flex w-full cursor-grab flex-col items-start gap-sp-1 rounded-card border bg-white p-sp-3 text-left',
