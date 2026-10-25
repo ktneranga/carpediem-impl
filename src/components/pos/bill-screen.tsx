@@ -1565,8 +1565,32 @@ function PaymentDialog({
                     aria-live="polite"
                     className="flex flex-col rounded-waiter border-2 border-brand-500 bg-white px-sp-4 py-sp-3"
                   >
-                    <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
-                      {method === 'split' ? 'Cash part' : 'Received'}
+                    <span className="flex items-center justify-between gap-sp-2">
+                      <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+                        {method === 'split' ? 'Cash part' : 'Received'}
+                      </span>
+                      {/* Clear (Teran, 2026-10-25): back to empty in one tap,
+                          rather than a delete per digit. Only while there is
+                          something to clear. */}
+                      {received !== null ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDigits('')
+                            setExact(null)
+                            setError(null)
+                          }}
+                          className={cn(
+                            // The standard 44px touch floor, even tucked in
+                            // a corner: a missed Clear is a wrong amount.
+                            'h-touch-standard rounded-control border border-slate-200 bg-white px-sp-4',
+                            'text-fs-12 font-bold text-slate-700 active:scale-[0.97]',
+                            focusRing,
+                          )}
+                        >
+                          Clear
+                        </button>
+                      ) : null}
                     </span>
                     <span className="text-fs-32 font-extrabold tabular-nums text-slate-900">
                       {received === null ? 'LKR —' : lkrFromPaisa(received)}
