@@ -171,30 +171,47 @@ function newPersonId(): string {
   return `p${Date.now().toString(36)}${personCounter}`
 }
 
+/**
+ * A new column's name: the next seat number, in the order screen's words
+ * (Teran, 2026-10-25) — columns are seats, not "Person 3". Counts past every
+ * column already there, whatever it is called, so a note like "thattaya" in
+ * Seat 1's place still yields "Seat 2", never a duplicate.
+ */
 function nextPersonLabel(persons: Person[]): string {
   const used = persons
-    .map((person) => /^Person (\d+)$/.exec(person.label)?.[1])
+    .map((person) => /^Seat (\d+)$/.exec(person.label)?.[1])
     .filter((n): n is string => n !== undefined)
     .map(Number)
-  return `Person ${Math.max(persons.length, ...used, 0) + 1}`
+  return `Seat ${Math.max(persons.length, ...used, 0) + 1}`
 }
 
 /**
- * Where a Separate-bills order starts: one person per seat that has unbilled
- * items, named as the waiter named the seat, with those items already on them.
- * The waiter tagged who had what while ordering; this is where it pays off.
+ * The split's columns: one per seat, named as the order screen names them
+ * (Teran, 2026-10-25) — "thattaya", "Seat 2" — and never fewer than two, the
+ * commonest split (6.3).
+ *
+ * `assignBySeat` puts each item on the seat it was ordered on. True for a
+ * Separate-bills order, where the waiter tagged who had what while ordering
+ * and this is where it pays off. False for One bill, where every item sits on
+ * Seat 1 only because the database needs a seat — dropping them all on Seat
+ * 1's column would be a guess, so they start unassigned.
  */
 function splitFromSeats(
   draft: BillScreenDraft | null,
   seats: { id: string; name: string }[],
+  assignBySeat: boolean,
 ): SplitState {
   const lines = draft?.lines ?? []
-  const used = seats.filter((seat) => lines.some((line) => line.seatSlotId === seat.id))
-  const persons = used.map((seat) => ({ id: newPersonId(), label: seat.name }))
+  const persons: Person[] = seats.map((seat) => ({ id: newPersonId(), label: seat.name }))
+  while (persons.length < 2) persons.push({ id: newPersonId(), label: nextPersonLabel(persons) })
   const allocation: Record<string, Piece[]> = {}
-  for (const line of lines) {
-    const index = used.findIndex((seat) => seat.id === line.seatSlotId)
-    if (index >= 0) allocation[line.orderEventId] = [{ owner: persons[index]!.id, qty: line.quantity }]
+  if (assignBySeat) {
+    for (const line of lines) {
+      const index = seats.findIndex((seat) => seat.id === line.seatSlotId)
+      if (index >= 0) {
+        allocation[line.orderEventId] = [{ owner: persons[index]!.id, qty: line.quantity }]
+      }
+    }
   }
   return { view: 'split', persons, allocation }
 }
@@ -252,7 +269,7 @@ export function BillScreen({
   // split had been saved, which React reports as a hydration mismatch.
   const [split, setSplit] = useState<SplitState>(() =>
     billMode === 'separate' && draftLines.length > 0
-      ? splitFromSeats(draft, seats)
+      ? splitFromSeats(draft, seats, true)
       : { view: 'whole', persons: [], allocation: {} },
   )
   const [restored, setRestored] = useState(false)
@@ -378,20 +395,7 @@ export function BillScreen({
 
   function startSplit() {
     setNotice(null)
-    setSplit(
-      billMode === 'separate' && draftLines.some((line) => line.seatSlotId)
-        ? splitFromSeats(draft, seats)
-        : {
-            view: 'split',
-            // Two people to start (6.3): the commonest split, and an empty
-            // second column shows where items go.
-            persons: [
-              { id: newPersonId(), label: 'Person 1' },
-              { id: newPersonId(), label: 'Person 2' },
-            ],
-            allocation: {},
-          },
-    )
+    setSplit(splitFromSeats(draft, seats, billMode === 'separate'))
   }
 
   function merge() {
@@ -620,7 +624,8 @@ export function BillScreen({
                 if (payload) moveDropped(payload, 'new')
               }}
               className={cn(
-                'flex w-60 shrink-0 flex-col items-center justify-center gap-sp-2 rounded-panel',
+                // About two-thirds of a column, as drawn.
+                'flex min-w-48 shrink-0 basis-[calc(16%-12px)] flex-col items-center justify-center gap-sp-2 rounded-panel',
                 'border-2 border-dashed border-slate-300 bg-transparent p-sp-4 text-center',
                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                 selected && 'border-brand-500 bg-brand-050',
@@ -864,7 +869,10 @@ function Column({
           : undefined
       }
       className={cn(
-        'flex w-72 shrink-0 flex-col overflow-hidden rounded-panel',
+        // A quarter of the row, as drawn — four columns fill the screen in
+        // design 28. A fixed 288px read as narrow on a wide display; 288px
+        // stays the floor so a small tablet scrolls rather than crushes.
+        'flex min-w-72 shrink-0 basis-[calc(25%-12px)] flex-col overflow-hidden rounded-panel',
         tone === 'pending'
           ? 'border-2 border-dashed border-occupied-edge bg-occupied-body'
           : 'border border-slate-200 bg-white shadow-el-1',
