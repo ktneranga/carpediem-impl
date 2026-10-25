@@ -1,8 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Banknote, CreditCard, Delete, Plus, Receipt, Split, Users, X } from 'lucide-react'
+import {
+  ArrowLeft,
+  Banknote,
+  CreditCard,
+  Delete,
+  GripVertical,
+  Plus,
+  Receipt,
+  Split,
+  Users,
+  X,
+} from 'lucide-react'
 import { lkrFromPaisa } from '@/lib/format'
 import { routeForDestination } from '@/lib/design'
 import { cn } from '@/lib/utils'
@@ -146,6 +157,26 @@ function normalize(pieces: Piece[]): Piece[] {
     else merged.push({ ...piece })
   }
   return merged
+}
+
+/**
+ * A card being dragged (design 32): which card, how many of its units, where
+ * the pointer is, and the drop target under it — `none` for Not assigned, a
+ * person's id, or `new` for Add person.
+ */
+type DragState = {
+  key: string
+  count: number
+  line: BillScreenLine
+  x: number
+  y: number
+  over: string | undefined
+}
+
+/** The drop target under a point: the nearest `[data-drop]` ancestor. */
+function dropIdAt(x: number, y: number): string | undefined {
+  const element = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-drop]')
+  return element?.dataset.drop
 }
 
 /** A card on the split: one owner's units of one line. Keyed `${eventId}|${owner}`. */
@@ -357,14 +388,88 @@ export function BillScreen({
     })
   }
 
-  /** A drop's payload: the card key, and a count when the card was picked. */
-  function moveDropped(payload: string, target: string | null | 'new') {
-    const [key, count] = payload.split('#')
-    if (key) move(key, target, count ? Number(count) : undefined)
+  // ── Dragging, on POINTER events (design 32) ─────────────────────────────
+  // HTML drag-and-drop never fires for touch, and this runs on tablets: the
+  // first version could only be dragged with a mouse. Pointer events cover a
+  // finger and a mouse alike. A press that moves under 8px is a TAP and picks
+  // the card for "Move here"; past 8px it becomes a drag, a tilted copy of the
+  // card follows the pointer, and the column under it lights up.
+  const [drag, setDrag] = useState<DragState | null>(null)
+  const pending = useRef<{ key: string; count: number; line: BillScreenLine; x: number; y: number } | null>(null)
+  const dragged = useRef(false)
+  // `move` closes over this render's split; the window listeners are attached
+  // once, so they reach the current one through a ref.
+  const moveRef = useRef(move)
+  useEffect(() => {
+    moveRef.current = move
+  })
+
+  useEffect(() => {
+    function onMove(event: PointerEvent) {
+      const press = pending.current
+      if (!press) return
+      if (!dragged.current) {
+        if (Math.hypot(event.clientX - press.x, event.clientY - press.y) < 8) return
+        dragged.current = true
+      }
+      setDrag({
+        key: press.key,
+        count: press.count,
+        line: press.line,
+        x: event.clientX,
+        y: event.clientY,
+        over: dropIdAt(event.clientX, event.clientY),
+      })
+    }
+    function onUp(event: PointerEvent) {
+      const press = pending.current
+      pending.current = null
+      if (!press || !dragged.current) {
+        dragged.current = false
+        return
+      }
+      setDrag(null)
+      const over = dropIdAt(event.clientX, event.clientY)
+      if (over !== undefined) moveRef.current(press.key, over === 'none' ? null : over, press.count)
+      // The click that follows this pointerup must not also pick the card.
+      setTimeout(() => {
+        dragged.current = false
+      }, 0)
+    }
+    function onCancel() {
+      pending.current = null
+      dragged.current = false
+      setDrag(null)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+    }
+  }, [])
+
+  /** A press on a card: maybe a tap, maybe the start of a drag. */
+  function press(key: string, count: number, line: BillScreenLine, x: number, y: number) {
+    pending.current = { key, count, line, x, y }
+    dragged.current = false
   }
 
   function pick(key: string, qty: number) {
+    // The click at the end of a drag is not a tap.
+    if (dragged.current) return
     setSelected((current) => (current?.key === key ? null : { key, count: qty }))
+  }
+
+  /** What every draggable list needs from here. */
+  const dragProps = {
+    selected,
+    onSelect: pick,
+    onPress: press,
+    draggingKey: drag?.key ?? null,
+    onCount: (count: number) => setSelected((current) => (current ? { ...current, count } : null)),
   }
 
   function removePerson(personId: string) {
@@ -534,14 +639,10 @@ export function BillScreen({
                     ? () => move(selected.key, null, selected.count)
                     : undefined
                 }
-                onDropItem={(payload) => moveDropped(payload, null)}
+                dropId="none"
+                isOver={drag?.over === 'none'}
               >
-                <ItemList
-                  lines={unassigned}
-                  selected={selected}
-                  onSelect={pick}
-                  onCount={(count) => setSelected((current) => (current ? { ...current, count } : null))}
-                />
+                <ItemList lines={unassigned} {...dragProps} />
                 <p className="shrink-0 border-t border-occupied-edge px-sp-3 py-sp-2 text-fs-12 font-semibold text-occupied-ink">
                   Give every item to a person before settling the table.
                 </p>
@@ -556,27 +657,23 @@ export function BillScreen({
                   key={person.id}
                   title={person.label}
                   total={totals.totalPaisa}
+                  // Items waiting on this person to pay, as drawn.
+                  badge={lines.length > 0 ? 'Awaiting' : undefined}
                   onRemove={() => removePerson(person.id)}
                   moveHere={
                     selected && ownerOfCard(selected.key) !== person.id
                       ? () => move(selected.key, person.id, selected.count)
                       : undefined
                   }
-                  onDropItem={(payload) => moveDropped(payload, person.id)}
+                  dropId={person.id}
+                  isOver={drag?.over === person.id}
                 >
                   {lines.length === 0 ? (
                     <div className="m-sp-3 flex flex-1 items-center justify-center rounded-card border-2 border-dashed border-slate-200 text-fs-14 font-semibold text-slate-400">
                       Drag items here
                     </div>
                   ) : (
-                    <ItemList
-                      lines={lines}
-                      selected={selected}
-                      onSelect={pick}
-                      onCount={(count) =>
-                        setSelected((current) => (current ? { ...current, count } : null))
-                      }
-                    />
+                    <ItemList lines={lines} {...dragProps} />
                   )}
                   {lines.length > 0 ? (
                     <ColumnFooter
@@ -609,17 +706,13 @@ export function BillScreen({
                 ...current,
                 persons: [...current.persons, { id: newPersonId(), label: nextPersonLabel(current.persons) }],
               })))}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                const payload = event.dataTransfer.getData('text/plain')
-                if (payload) moveDropped(payload, 'new')
-              }}
+              data-drop="new"
               className={cn(
                 // About two-thirds of a column, as drawn.
                 'flex min-w-48 shrink-0 basis-[calc(16%-12px)] flex-col items-center justify-center gap-sp-2 rounded-panel',
                 'border-2 border-dashed border-slate-300 bg-transparent p-sp-4 text-center',
                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                selected && 'border-brand-500 bg-brand-050',
+                (selected || drag?.over === 'new') && 'border-brand-500 bg-brand-050',
               )}
             >
               <span className="flex size-12 items-center justify-center rounded-control bg-white shadow-el-1">
@@ -688,6 +781,24 @@ export function BillScreen({
           </section>
         ) : null}
       </main>
+
+      {/* The card in flight: a tilted copy following the pointer, as design 32
+          draws it. Pointer-transparent, so the column under it is what the
+          drop lands in. */}
+      {drag ? (
+        <div
+          aria-hidden="true"
+          style={{ left: drag.x - 130, top: drag.y - 28 }}
+          className="pointer-events-none fixed z-[60] flex w-64 -rotate-2 items-baseline justify-between gap-sp-2 rounded-card border-2 border-brand-500 bg-white p-sp-3 shadow-el-2"
+        >
+          <span className="min-w-0 truncate text-fs-16 font-bold text-slate-900">
+            <span className="text-brand-700">{drag.count}×</span> {drag.line.name}
+          </span>
+          <span className="shrink-0 text-fs-14 font-bold tabular-nums text-slate-900">
+            {lkrFromPaisa(drag.count * drag.line.unitPricePaisa)}
+          </span>
+        </div>
+      ) : null}
 
       {/* ── Bottom bar ─────────────────────────────────────────────────────────
           The SAME shell as the order and floor bars, not a look-alike. A
@@ -824,7 +935,8 @@ function Column({
   tone = 'person',
   onRemove,
   moveHere,
-  onDropItem,
+  dropId,
+  isOver = false,
   children,
 }: {
   title: string
@@ -834,31 +946,15 @@ function Column({
   onRemove?: () => void
   /** Present while an item from ANOTHER column is picked up. */
   moveHere?: () => void
-  onDropItem?: (eventId: string) => void
+  /** Makes the column a drop target: `none`, a person's id. */
+  dropId?: string
+  /** A dragged card is over this column. */
+  isOver?: boolean
   children: React.ReactNode
 }) {
-  const [over, setOver] = useState(false)
   return (
     <section
-      onDragOver={
-        onDropItem
-          ? (event) => {
-              event.preventDefault()
-              setOver(true)
-            }
-          : undefined
-      }
-      onDragLeave={() => setOver(false)}
-      onDrop={
-        onDropItem
-          ? (event) => {
-              event.preventDefault()
-              setOver(false)
-              const eventId = event.dataTransfer.getData('text/plain')
-              if (eventId) onDropItem(eventId)
-            }
-          : undefined
-      }
+      data-drop={dropId}
       className={cn(
         // A quarter of the row, as drawn — four columns fill the screen in
         // design 28. A fixed 288px read as narrow on a wide display; 288px
@@ -867,7 +963,8 @@ function Column({
         tone === 'pending'
           ? 'border-2 border-dashed border-occupied-edge bg-occupied-body'
           : 'border border-slate-200 bg-white shadow-el-1',
-        over && 'ring-2 ring-brand-500',
+        // The design marks the target with a brand edge along the top.
+        isOver && 'border-t-4 border-t-brand-500',
       )}
     >
       <header className="flex shrink-0 items-center justify-between gap-sp-2 border-b border-slate-200 px-sp-3 py-sp-3">
@@ -914,12 +1011,18 @@ function ItemList({
   selected = null,
   onSelect,
   onCount,
+  onPress,
+  draggingKey = null,
 }: {
   lines: BillScreenLine[]
   selected?: { key: string; count: number } | null
   onSelect?: (key: string, qty: number) => void
   /** Sets how many of the picked card's units "Move here" will move. */
   onCount?: (count: number) => void
+  /** A press that may become a drag. */
+  onPress?: (key: string, count: number, line: BillScreenLine, x: number, y: number) => void
+  /** The card currently being dragged, dimmed where it sits. */
+  draggingKey?: string | null
 }) {
   return (
     <ul className="flex min-h-0 flex-1 flex-col gap-sp-2 overflow-y-auto p-sp-3">
@@ -935,10 +1038,16 @@ function ItemList({
                 {lkrFromPaisa(line.amountPaisa)}
               </span>
             </span>
-            <span className="flex items-center gap-sp-2">
+            <span className="flex w-full items-center gap-sp-2">
               <StationChip destination={line.destination} />
+              {/* Everything on a bill has gone to the kitchen — that is what
+                  makes it billable — and the design says so on the card. */}
+              <span className="text-fs-12 font-bold tracking-micro text-open-ink uppercase">Sent</span>
               {line.modifierText ? (
                 <span className="truncate text-fs-12 text-slate-600">{line.modifierText}</span>
+              ) : null}
+              {onPress ? (
+                <GripVertical aria-hidden="true" className="ml-auto size-4 shrink-0 text-slate-400" />
               ) : null}
             </span>
           </>
@@ -948,23 +1057,27 @@ function ItemList({
             {onSelect ? (
               <button
                 type="button"
-                draggable
                 aria-pressed={isSelected}
                 // A drag of the PICKED card carries the count chosen on its
-                // stepper. It used to carry only the card, so setting "Move 1
-                // of 2" and then dragging moved both — the stepper was ignored
-                // on exactly the path a mouse user takes.
-                onDragStart={(event) =>
-                  event.dataTransfer.setData(
-                    'text/plain',
-                    isSelected ? `${line.orderEventId}#${selected!.count}` : line.orderEventId,
+                // stepper — "Move 1 of 2", then drag, moves one.
+                onPointerDown={(event) => {
+                  if (event.button !== 0 || !onPress) return
+                  onPress(
+                    line.orderEventId,
+                    isSelected ? selected!.count : line.quantity,
+                    line,
+                    event.clientX,
+                    event.clientY,
                   )
-                }
+                }}
                 onClick={() => onSelect(line.orderEventId, line.quantity)}
                 className={cn(
-                  'flex w-full cursor-grab flex-col items-start gap-sp-1 rounded-card border bg-white p-sp-3 text-left',
+                  // `touch-none`: on a tablet a finger on a card drags it rather
+                  // than scrolling the column. The column scrolls from its gaps.
+                  'flex w-full cursor-grab touch-none flex-col items-start gap-sp-1 rounded-card border bg-white p-sp-3 text-left select-none',
                   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                   isSelected ? 'border-brand-500 ring-2 ring-brand-500' : 'border-slate-200',
+                  draggingKey === line.orderEventId && 'opacity-50',
                 )}
               >
                 {content}
