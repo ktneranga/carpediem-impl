@@ -582,6 +582,13 @@ export function TableGrid({
   /** The Bar list narrowed to late, unpaid tabs (Teran, 2026-10-30). */
   const [lateTabsOnly, setLateTabsOnly] = useState(false)
   /**
+   * Newest or oldest tab first (Teran, 2026-10-30). Oldest first puts the
+   * longest-open tabs — the late, possibly unpaid ones — on top, and is always
+   * available; the late bar at the foot only appears once a tab is past two
+   * hours.
+   */
+  const [tabOrder, setTabOrder] = useState<'newest' | 'oldest'>('newest')
+  /**
    * Counter orders have no `tableId`, so they cannot ride on `selectedTableId`.
    * Forcing them through it would mean inventing a fake table id — the exact
    * table-shaped assumption this story exists to remove.
@@ -1308,7 +1315,9 @@ export function TableGrid({
               // that marks a table "Still open? Check" — so the word means one
               // thing everywhere.
               const tabs = [...(counterSessions ?? [])].sort((a, b) =>
-                b.openedAt.localeCompare(a.openedAt),
+                tabOrder === 'newest'
+                  ? b.openedAt.localeCompare(a.openedAt)
+                  : a.openedAt.localeCompare(b.openedAt),
               )
               const late = tabs.filter((tab) =>
                 isStale(elapsedMinutesFrom(tab.openedAt, minuteTick)),
@@ -1325,6 +1334,41 @@ export function TableGrid({
 
               return (
                 <>
+              {/* The list's own header: how many, and which end is on top. */}
+              <div className="flex items-center justify-between gap-sp-3">
+                <span className="text-fs-14 font-bold text-slate-600">
+                  {showingLate ? 'Late unpaid tabs' : 'Open tabs'} · {shown.length}
+                </span>
+                <div
+                  role="group"
+                  aria-label="Order the tabs"
+                  className="flex gap-1 rounded-control bg-slate-100 p-1"
+                >
+                  {([
+                    { key: 'newest' as const, label: 'Newest first' },
+                    { key: 'oldest' as const, label: 'Oldest first' },
+                  ]).map(({ key, label }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      aria-pressed={tabOrder === key}
+                      onClick={(event) => {
+                        setTabOrder(key)
+                        // Back to the top, where the chosen end now is.
+                        event.currentTarget.closest('main')?.scrollTo({ top: 0, behavior: 'smooth' })
+                      }}
+                      className={cn(
+                        'h-touch-standard rounded-control px-sp-4 text-fs-14 font-bold',
+                        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                        tabOrder === key ? 'bg-white text-brand-700 shadow-el-1' : 'text-slate-600',
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <ul className="flex flex-col gap-sp-2">
                 {shown.map((counter) => {
                   // Server-assigned day sequence, plus the start time.
