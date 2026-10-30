@@ -1,6 +1,7 @@
 'use client'
 
 import { createElement, useCallback, useEffect, useMemo, useState } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FloorHeader } from '@/components/pos/floor-header'
@@ -578,6 +579,8 @@ export function TableGrid({
    * must never appear inside one or under "All zones".
    */
   const [counterMode, setCounterMode] = useState(false)
+  /** The Bar list narrowed to late, unpaid tabs (Teran, 2026-10-30). */
+  const [lateTabsOnly, setLateTabsOnly] = useState(false)
   /**
    * Counter orders have no `tableId`, so they cannot ride on `selectedTableId`.
    * Forcing them through it would mean inventing a fake table id — the exact
@@ -1293,11 +1296,37 @@ export function TableGrid({
               {counterSale.isPending ? 'Starting…' : 'New tab'}
             </button>
 
-            {(counterSessions ?? []).length === 0 ? (
-              <p className="text-fs-16 text-slate-600">No open bar tabs. Tap + to start one.</p>
-            ) : (
+            {(() => {
+              // ── Newest first, late ones a tap away (Teran, 2026-10-30) ────
+              // The list was oldest-first, on the reasoning that the longest
+              // wait needs attention first. At a bar that is backwards: the tab
+              // being worked on is the one just opened, and the old ones are
+              // guests who stayed — or left without paying. So the newest sit
+              // on top, and the late ones get a bar of their own at the foot.
+              //
+              // "Late" is the floor's own threshold — two hours, the same rule
+              // that marks a table "Still open? Check" — so the word means one
+              // thing everywhere.
+              const tabs = [...(counterSessions ?? [])].sort((a, b) =>
+                b.openedAt.localeCompare(a.openedAt),
+              )
+              const late = tabs.filter((tab) =>
+                isStale(elapsedMinutesFrom(tab.openedAt, minuteTick)),
+              )
+              // Derived, so the filter lets go by itself once nothing is late.
+              const showingLate = lateTabsOnly && late.length > 0
+              const shown = showingLate ? late : tabs
+
+              if (tabs.length === 0) {
+                return (
+                  <p className="text-fs-16 text-slate-600">No open bar tabs. Tap + to start one.</p>
+                )
+              }
+
+              return (
+                <>
               <ul className="flex flex-col gap-sp-2">
-                {(counterSessions ?? []).map((counter) => {
+                {shown.map((counter) => {
                   // Server-assigned day sequence, plus the start time.
                   //
                   // Neither alone is enough. A position in THIS list shifts as
@@ -1308,6 +1337,7 @@ export function TableGrid({
                   const label = `${tabTitle(counter)} · ${clockTime(counter.openedAt)}`
                   const minutes = elapsedMinutesFrom(counter.openedAt, minuteTick)
                   const isSelected = counter.sessionId === selectedCounterId
+                  const isLate = isStale(minutes)
 
                   return (
                     <li key={counter.sessionId}>
@@ -1322,12 +1352,24 @@ export function TableGrid({
                           'active:scale-[0.99] active:shadow-pressed',
                           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                           isSelected
-                            ? 'border-brand-500 bg-white shadow-selected'
-                            : 'border-slate-200 bg-white shadow-el-1',
+                            ? cn('border-brand-500 shadow-selected', isLate ? 'bg-unavailable-body' : 'bg-white')
+                            : isLate
+                              ? 'border-unavailable-edge bg-unavailable-body shadow-el-1'
+                              : 'border-slate-200 bg-white shadow-el-1',
                         )}
                       >
-                        <span className="truncate text-fs-16 font-bold tracking-title text-slate-900">
-                          {label}
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate text-fs-16 font-bold tracking-title text-slate-900">
+                            {label}
+                          </span>
+                          {/* The table card's wording: most of the time the
+                              answer is "yes, still here", so it asks rather
+                              than accuses. */}
+                          {isLate ? (
+                            <span className="truncate text-fs-12 font-bold text-unavailable-band">
+                              Still open? Check
+                            </span>
+                          ) : null}
                         </span>
 
                         <span className="flex shrink-0 items-center gap-sp-3">
@@ -1347,7 +1389,40 @@ export function TableGrid({
                   )
                 })}
               </ul>
-            )}
+
+              {/* Pinned to the foot of the scrolling list, so the late tabs are
+                  reachable however many new ones are stacked above them. Only
+                  when something IS late — a permanent "0 late" trains people to
+                  stop reading it. */}
+              {late.length > 0 ? (
+                <button
+                  type="button"
+                  aria-pressed={showingLate}
+                  onClick={() => setLateTabsOnly((current) => !current)}
+                  className={cn(
+                    'sticky bottom-0 flex min-h-touch-waiter items-center justify-between gap-sp-4',
+                    'rounded-control border-2 px-sp-4 py-sp-2 text-left shadow-el-2',
+                    'transition-transform duration-120 ease-standard active:scale-[0.99]',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                    showingLate
+                      ? 'border-brand-500 bg-brand-050 text-brand-700'
+                      : 'border-unavailable-edge bg-unavailable-body text-unavailable-ink',
+                  )}
+                >
+                  <span className="flex items-center gap-sp-2 text-fs-16 font-bold">
+                    <AlertTriangle aria-hidden="true" strokeWidth={2.5} className="size-5 shrink-0" />
+                    {showingLate
+                      ? `Showing ${late.length} late unpaid ${late.length === 1 ? 'tab' : 'tabs'}`
+                      : `${late.length} unpaid ${late.length === 1 ? 'tab' : 'tabs'} open over 2 h`}
+                  </span>
+                  <span className="shrink-0 text-fs-16 font-bold">
+                    {showingLate ? 'Show all' : 'View ›'}
+                  </span>
+                </button>
+              ) : null}
+                </>
+              )
+            })()}
           </div>
         ) : isPending ? (
           <p className="text-fs-16 text-slate-600">Loading tables…</p>
