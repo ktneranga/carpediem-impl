@@ -16,6 +16,7 @@ import bcrypt from 'bcryptjs'
 import { Pool } from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { menuCategories, menuItems, staff, tables, tenantConfig, tenants, zones } from './schema'
+import { BAR_MENU } from './bar-menu'
 
 const BCRYPT_COST = 10 // architecture.md:205 — not 8, not 12
 
@@ -124,15 +125,12 @@ const SEED_MENU: {
       { name: 'Seafood Pizza', pricePaisa: 210000, destination: 'pizza_kitchen', portionCount: 10 },
     ],
   },
-  {
-    category: 'Drinks',
-    items: [
-      { name: 'Lion Lager', pricePaisa: 55000, destination: 'bar', portionCount: 48 },
-      { name: 'Arrack & Soda', pricePaisa: 70000, destination: 'bar' },
-      { name: 'King Coconut', pricePaisa: 35000, destination: 'bar', portionCount: 25 },
-      { name: 'Fresh Lime Soda', pricePaisa: 40000, destination: 'bar' },
-    ],
-  },
+  // ── The bar (Teran, 2026-10-30) ────────────────────────────────────────
+  // Six categories in place of one "Drinks", because a bar tab's menu IS these
+  // categories. SAMPLE items at Teran's example prices — cocktail 2,500,
+  // mocktail 1,500, a shot 1,000 — until the back office manages the menu.
+  // `seed-bar-menu.ts` applies the same list to a database seeded before this.
+  ...BAR_MENU,
 ]
 
 async function main() {
