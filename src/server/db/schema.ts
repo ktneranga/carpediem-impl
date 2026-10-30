@@ -328,6 +328,15 @@ export const orderSessions = pgTable('order_sessions', {
    * default this starts from.
    */
   billMode:         billModeEnum('bill_mode').notNull().default('one'),
+  /**
+   * A bar tab's nickname — "white shirt", "bald man" (Teran, 2026-10-30).
+   *
+   * Staff cannot ask a guest's name, so they describe them, and the guest is
+   * found by that description when they come back to pay. STAFF-ONLY, like a
+   * seat note: it is never printed on a guest's bill. Null for a table order,
+   * and for a tab opened without one (it is then just "Tab 7").
+   */
+  tabLabel:         text('tab_label'),
 }, (t) => [
   index('idx_order_sessions_tenant_id').on(t.tenantId),
   index('idx_order_sessions_table_id').on(t.tableId),

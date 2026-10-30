@@ -183,6 +183,13 @@
       "when": 1792938557144,
       "tag": "0025_rich_human_fly",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793356528328,
+      "tag": "0026_glorious_steel_serpent",
+      "breakpoints": true
     }
   ]
 }

@@ -64,6 +64,7 @@ export default async function OrderPage({
       openedAt: orderSessions.openedAt,
       coverCount: orderSessions.coverCount,
       billMode: orderSessions.billMode,
+      tabLabel: orderSessions.tabLabel,
       kind: orderSessions.kind,
       primaryTableId: orderSessions.tableId,
       tableId: tables.id,
@@ -182,6 +183,7 @@ export default async function OrderPage({
       staffName={staffRow?.name ?? 'Unknown'}
       zoneName={primary?.zoneName ?? null}
       tableLabel={tableLabel}
+      tabLabel={session.tabLabel}
       capacity={capacity}
       coverCount={session.coverCount}
       openedAt={session.openedAt.toISOString()}

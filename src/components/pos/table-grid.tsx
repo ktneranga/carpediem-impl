@@ -40,6 +40,18 @@ export type CounterSession = {
    * rename every later one each time an earlier one closed.
    */
   sequence: number
+  /** The bar tab's nickname — "white shirt". Staff-only. */
+  tabLabel: string | null
+}
+
+/**
+ * How a bar tab is named on screen: "Tab 7 · white shirt", or "Tab 7".
+ *
+ * The number is the day sequence, which never moves; the nickname is what staff
+ * recognise. Both, because two guests in white shirts is an ordinary evening.
+ */
+export function tabTitle(tab: { sequence: number; tabLabel: string | null }): string {
+  return tab.tabLabel ? `Tab ${tab.sequence} · ${tab.tabLabel}` : `Tab ${tab.sequence}`
 }
 
 
@@ -299,12 +311,13 @@ async function unmergeTable(tableId: string): Promise<void> {
  * No table is involved, so this cannot be a 409 — see the route's note on why
  * counter sessions are deliberately unconstrained.
  */
-async function startCounterSale(): Promise<{ sessionId: string }> {
+async function startCounterSale(tabLabel: string): Promise<{ sessionId: string }> {
   const response = await fetch('/api/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(tabLabel.trim() ? { tabLabel: tabLabel.trim() } : {}),
   })
-  if (!response.ok) await throwFromResponse(response, 'Could not start the counter sale')
+  if (!response.ok) await throwFromResponse(response, 'Could not start the bar tab')
   const body = await response.json()
   return body.data as { sessionId: string }
 }
@@ -599,6 +612,10 @@ export function TableGrid({
     enabled: canOpenCounterSales,
     refetchOnMount: 'always',
   })
+
+  /** Open while naming a new bar tab. */
+  const [namingTab, setNamingTab] = useState(false)
+  const [tabNameDraft, setTabNameDraft] = useState('')
 
   const counterSale = useMutation({
     mutationFn: startCounterSale,
@@ -1074,7 +1091,7 @@ export function TableGrid({
     return {
       sessionId: found.sessionId,
       // Matches the list row exactly — same sequence, same time.
-      label: `Counter #${found.sequence} · ${clockTime(found.openedAt)}`,
+      label: `${tabTitle(found)} · ${clockTime(found.openedAt)}`,
       elapsedMinutes: elapsedMinutesFrom(found.openedAt, minuteTick),
       itemCount: found.itemCount,
     }
@@ -1097,7 +1114,7 @@ export function TableGrid({
     const found = counterSessions[index]
     return {
       sessionId: found.sessionId,
-      label: `Counter #${found.sequence} · ${clockTime(found.openedAt)}`,
+      label: `${tabTitle(found)} · ${clockTime(found.openedAt)}`,
       tableLabels: seatTableIds.map(
         (id) => tables.find((table) => table.id === id)?.label ?? '',
       ),
@@ -1133,16 +1150,6 @@ export function TableGrid({
         staleCount={staleCount}
         staffName={staffName}
         clock={clock}
-        showCounterSale={canOpenCounterSales}
-        counterActive={counterMode}
-        onCounterSale={() => {
-          // Going to the counter list abandons an in-progress seating — unlike
-          // a zone change, this leaves the tables entirely.
-          endMergeMode()
-          setSelectedTableId(null)
-          setActiveZoneId(null)
-          setCounterMode(true)
-        }}
         // The only way off this screen for a waiter ending a shift. Sign-out
         // was once unreachable from the whole application.
         onStaffTap={signOut}
@@ -1173,10 +1180,24 @@ export function TableGrid({
             setActiveZoneId(id)
             setSelectedTableId(null)
           }}
-          // Still passed though there is no Counter tab any more: while the
-          // counter list is showing, NO zone is being looked at, so "All zones"
-          // must not light up as though one were.
+          // While the bar is showing, NO zone is being looked at, so "All
+          // zones" must not light up as though one were.
           counterActive={counterMode}
+          bar={
+            canOpenCounterSales
+              ? {
+                  openCount: (counterSessions ?? []).length,
+                  onSelect: () => {
+                    // Going to the bar abandons an in-progress seating — unlike
+                    // a zone change, this leaves the tables entirely.
+                    endMergeMode()
+                    setSelectedTableId(null)
+                    setActiveZoneId(null)
+                    setCounterMode(true)
+                  },
+                }
+              : undefined
+          }
         />
       </div>
 
@@ -1252,7 +1273,10 @@ export function TableGrid({
               disabled={counterSale.isPending || isNavigating}
               onClick={() => {
                 if (counterSale.isPending || isNavigating) return
-                counterSale.mutate()
+                // Asks for the nickname first. "Skip" opens it unnamed, so a
+                // quick sale costs one extra tap and no typing.
+                setTabNameDraft('')
+                setNamingTab(true)
               }}
               className={cn(
                 'flex h-touch-waiter items-center justify-center gap-sp-2 rounded-control',
@@ -1266,11 +1290,11 @@ export function TableGrid({
               <span aria-hidden className="text-fs-18 leading-none">
                 +
               </span>
-              {counterSale.isPending ? 'Starting…' : 'New counter sale'}
+              {counterSale.isPending ? 'Starting…' : 'New tab'}
             </button>
 
             {(counterSessions ?? []).length === 0 ? (
-              <p className="text-fs-16 text-slate-600">No counter sales. Tap + to start one.</p>
+              <p className="text-fs-16 text-slate-600">No open bar tabs. Tap + to start one.</p>
             ) : (
               <ul className="flex flex-col gap-sp-2">
                 {(counterSessions ?? []).map((counter) => {
@@ -1281,7 +1305,7 @@ export function TableGrid({
                   // in the same minute read identically, which is ordinary at a
                   // busy bar. The sequence is fixed at creation from the full
                   // day's history, and the time is what staff say out loud.
-                  const label = `Counter #${counter.sequence} · ${clockTime(counter.openedAt)}`
+                  const label = `${tabTitle(counter)} · ${clockTime(counter.openedAt)}`
                   const minutes = elapsedMinutesFrom(counter.openedAt, minuteTick)
                   const isSelected = counter.sessionId === selectedCounterId
 
@@ -1529,6 +1553,77 @@ export function TableGrid({
           </div>
         )}
       </main>
+
+      {/* ── Naming a new bar tab (Teran, 2026-10-30) ─────────────────────────
+          Staff cannot ask a guest's name, so they describe them — "white
+          shirt", "bald man" — and find the tab by it when the guest comes back
+          to pay. Optional: "Skip" opens an unnamed tab, which is a quick sale.
+          A real form, so the tablet keyboard's Enter starts the tab. */}
+      {namingTab ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="new-tab-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              setNamingTab(false)
+              counterSale.mutate(tabNameDraft)
+            }}
+            className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2"
+          >
+            <h2 id="new-tab-title" className="text-fs-24 font-extrabold text-slate-900">
+              New bar tab
+            </h2>
+            <label className="flex flex-col gap-sp-1">
+              <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+                Who is it for? — staff only
+              </span>
+              <input
+                type="text"
+                autoFocus
+                value={tabNameDraft}
+                maxLength={40}
+                placeholder="white shirt, bald man…"
+                onChange={(event) => setTabNameDraft(event.target.value)}
+                className={cn(
+                  'h-touch-waiter rounded-control border border-slate-200 bg-white px-sp-4',
+                  'text-fs-18 font-semibold text-slate-900',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                )}
+              />
+              <span className="text-fs-12 text-slate-600">
+                Never printed on the guest&apos;s bill. Leave it empty for a quick sale.
+              </span>
+            </label>
+            <div className="flex gap-sp-3">
+              <button
+                type="button"
+                onClick={() => setNamingTab(false)}
+                className={cn(
+                  'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white',
+                  'text-fs-18 font-bold text-slate-900 shadow-el-1 active:scale-[0.97]',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                )}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className={cn(
+                  'h-touch-waiter flex-1 rounded-waiter bg-brand-800 text-fs-18 font-bold text-white',
+                  'shadow-el-2 active:scale-[0.97]',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                )}
+              >
+                {tabNameDraft.trim() ? 'Start tab' : 'Skip — quick sale'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       {/* Sticky at the bottom, outside <main> so it does not scroll with the
           grid. Present in every state — including "nothing selected" — so the

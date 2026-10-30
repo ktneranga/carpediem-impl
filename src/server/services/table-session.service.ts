@@ -172,14 +172,22 @@ export async function openSession(
  */
 export async function openCounterSession(
   tx: Tx,
-  { tenantId, staffId }: { tenantId: string; staffId: string },
+  {
+    tenantId,
+    staffId,
+    tabLabel = null,
+  }: { tenantId: string; staffId: string; tabLabel?: string | null },
 ): Promise<{ id: string; openedAt: Date }> {
   const [created] = await tx
     .insert(orderSessions)
     // No tableId and no order_session_tables rows. `kind` is what makes this a
     // counter sale — never the absence of join rows, which a table session
     // passes through transiently while un-merging.
-    .values({ tenantId, kind: 'counter', openedByStaffId: staffId })
+    //
+    // On the floor this is a BAR TAB since 2026-10-30; `tabLabel` is its
+    // nickname ("white shirt"). `kind` stays 'counter' — renaming the enum
+    // value would rewrite every historical session for a word.
+    .values({ tenantId, kind: 'counter', openedByStaffId: staffId, tabLabel })
     .returning({ id: orderSessions.id, openedAt: orderSessions.openedAt })
 
   await writeAuditEvent(tx, { sessionId: created.id, staffId, eventType: 'SESSION_OPENED' })

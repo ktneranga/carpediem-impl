@@ -1,6 +1,5 @@
 'use client'
 
-import { ConciergeBell } from 'lucide-react'
 import { StaffBadge } from '@/components/pos/staff-badge'
 import { cn } from '@/lib/utils'
 
@@ -33,9 +32,6 @@ export function FloorHeader({
   staleCount,
   staffName,
   clock,
-  showCounterSale,
-  counterActive,
-  onCounterSale,
   onStaffTap,
 }: {
   occupiedCount: number
@@ -48,9 +44,6 @@ export function FloorHeader({
    * Kitchen staff cannot open, read or close counter sales — `/api/sessions`
    * is owner + waiter — so they are not offered the button.
    */
-  showCounterSale: boolean
-  counterActive: boolean
-  onCounterSale: () => void
   onStaffTap: () => void
 }) {
   return (
@@ -84,31 +77,8 @@ export function FloorHeader({
           ))}
         </ul>
 
-        {/* Counter sale was a TAB in the zone bar. It is not a zone — a counter
-            order occupies no table and appears under no zone filter — so
-            sitting among them implied a place on the floor it does not have.
-            As a header button it reads as what it is: the one action here that
-            is not about a table. */}
-        {showCounterSale ? (
-          <button
-            type="button"
-            aria-pressed={counterActive}
-            onClick={onCounterSale}
-            className={cn(
-              'flex h-touch-standard items-center gap-sp-2 rounded-control px-sp-4',
-              'border text-fs-14 font-bold',
-              'transition-[transform,box-shadow] duration-80 ease-standard',
-              'active:scale-[0.97] active:shadow-pressed',
-              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-              counterActive
-                ? 'border-brand-800 bg-brand-800 text-white shadow-el-2'
-                : 'border-brand-500 bg-brand-050 text-brand-700 shadow-el-1',
-            )}
-          >
-            <ConciergeBell aria-hidden="true" strokeWidth={2.2} className="size-4 shrink-0" />
-            Counter sale
-          </button>
-        ) : null}
+        {/* No Counter sale button (2026-10-30): it became the Bar tab in the
+            zone bar, beside Rooftop. */}
 
         <StaffBadge staffName={staffName} clock={clock} onTap={onStaffTap} />
       </div>

@@ -42,6 +42,7 @@ export default async function BillPage({
   const rows = await db
     .select({
       billMode: orderSessions.billMode,
+      tabLabel: orderSessions.tabLabel,
       tableLabel: tables.label,
     })
     .from(orderSessions)
@@ -63,7 +64,14 @@ export default async function BillPage({
     .map((row) => row.tableLabel)
     .filter((label): label is string => label !== null)
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-  const tableLabel = labels.length > 0 ? labels.join(' + ') : 'Counter'
+  // A bar tab by its nickname — this screen is staff-facing, so the nickname
+  // is fine here; it is the PRINTED bill it must never reach.
+  const tableLabel =
+    labels.length > 0
+      ? labels.join(' + ')
+      : rows[0]!.tabLabel
+        ? `Tab · ${rows[0]!.tabLabel}`
+        : 'Bar tab'
 
   const [recorded, payments, priced, seatRows] = await Promise.all([
     loadSessionBills(db, sessionId),

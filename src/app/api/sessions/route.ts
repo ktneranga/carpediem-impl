@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { and, asc, eq, gte, inArray, isNull, or } from 'drizzle-orm'
+import { z } from 'zod'
 import { dishCount } from '@/server/orders/item-count'
 import { db } from '@/server/db'
 import {
@@ -37,11 +38,33 @@ function fail(code: string, message: string, status: number) {
  * policy until then, and default-allow would have made this reachable by
  * kitchen staff with nothing erroring.
  */
+/**
+ * Optional body: a bar tab's nickname (Teran, 2026-10-30). An empty body still
+ * opens an unnamed tab, so a quick sale costs no typing.
+ */
+const openBodySchema = z
+  .object({ tabLabel: z.string().trim().max(40).optional() })
+  .optional()
+
 export async function POST(request: Request) {
   const staffId = request.headers.get('x-staff-id')
   if (!staffId) {
     return fail('UNAUTHENTICATED', 'Sign in required', 401)
   }
+
+  // No body at all is fine; a body that is not the right shape is not.
+  const raw = await request.text()
+  let body: unknown
+  try {
+    body = raw.trim() === '' ? undefined : JSON.parse(raw)
+  } catch {
+    return fail('INVALID_BODY', 'Request body must be JSON', 400)
+  }
+  const parsedBody = openBodySchema.safeParse(body)
+  if (!parsedBody.success) {
+    return fail('INVALID_BODY', 'A tab name is at most 40 characters', 400)
+  }
+  const tabLabel = parsedBody.data?.tabLabel || null
 
   try {
     // Single-tenant-per-stack (NFR-SC1), same as /api/tables.
@@ -51,7 +74,7 @@ export async function POST(request: Request) {
     }
 
     const session = await db.transaction((tx) =>
-      openCounterSession(tx, { tenantId: tenant.id, staffId }),
+      openCounterSession(tx, { tenantId: tenant.id, staffId, tabLabel }),
     )
 
     // No `table:status_changed` — a counter sale changes no table's status, and
@@ -132,6 +155,7 @@ export async function GET() {
         openedAt: orderSessions.openedAt,
         closedAt: orderSessions.closedAt,
         openedByName: staff.name,
+        tabLabel: orderSessions.tabLabel,
       })
       .from(orderSessions)
       .leftJoin(staff, eq(staff.id, orderSessions.openedByStaffId))
@@ -220,6 +244,8 @@ export async function GET() {
         openedByName: row.openedByName ?? 'Unknown',
         /** Position within TODAY's counter sales. Fixed at creation; never moves. */
         sequence: row.sequence,
+        /** The bar tab's nickname, if it was given one. Staff-only. */
+        tabLabel: row.tabLabel,
       })),
     })
   } catch (error) {

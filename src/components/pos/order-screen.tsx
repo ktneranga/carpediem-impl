@@ -58,6 +58,8 @@ export type OrderScreenProps = {
    */
   zoneName: string | null
   tableLabel: string | null
+  /** A bar tab's nickname — "white shirt". Null for a table, or an unnamed tab. */
+  tabLabel?: string | null
   /** Seats at the table(s), summed across a merged group. Null for a counter sale. */
   capacity: number | null
   /** Guests the party was opened with. Shown in the header line. */
@@ -325,6 +327,7 @@ export function OrderScreen({
   initialBills,
   initialHasUnbilled,
   tableLabel,
+  tabLabel = null,
   capacity,
   coverCount,
   openedAt,
@@ -335,7 +338,8 @@ export function OrderScreen({
   // A counter sale has no table, so it is named for what it is. Everything else
   // on this screen — rounds, items, closing — is identical either way, which is
   // the point of keying the screen on the session rather than on a table.
-  const displayLabel = tableLabel ?? 'Counter'
+  // A bar tab is named by its nickname (2026-10-30); "Counter" was the old word.
+  const displayLabel = tableLabel ?? (tabLabel ? `Tab · ${tabLabel}` : 'Bar tab')
   /**
    * Optimistic, because the switch must feel instant on a tablet: the seat
    * chips appear on tap and the request confirms behind them. A failure rolls
@@ -1140,7 +1144,7 @@ export function OrderScreen({
       ? `${coverCount} of ${capacity} covers`
       : `${coverCount} cover${coverCount === 1 ? '' : 's'}`
   const contextLine = [
-    zoneName ?? 'Counter sale',
+    zoneName ?? 'Bar',
     coverText,
     elapsedMinutes !== undefined ? `open ${elapsed(elapsedMinutes)}` : null,
   ]

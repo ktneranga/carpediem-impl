@@ -1,6 +1,6 @@
 'use client'
 
-import type { LucideIcon } from 'lucide-react'
+import { Martini, type LucideIcon } from 'lucide-react'
 import { ALL_ZONES_ICON, zoneIcon } from '@/lib/design'
 import { cn } from '@/lib/utils'
 
@@ -28,6 +28,11 @@ export type ZoneChipBarProps = {
    * inside one or under "All zones" — mixing them in would make that tab a lie.
    */
   counterActive: boolean
+  /**
+   * The Bar tab (Teran, 2026-10-30): open bar tabs, after the zones. Absent
+   * for a role that cannot open them.
+   */
+  bar?: { openCount: number; onSelect: () => void }
 }
 
 /**
@@ -63,6 +68,7 @@ export function ZoneChipBar({
   totalTableCount,
   onZoneChange,
   counterActive,
+  bar,
 }: ZoneChipBarProps) {
   const tabBase = cn(
     'flex h-touch-waiter shrink-0 items-center gap-sp-3 rounded-control px-sp-5',
@@ -178,6 +184,27 @@ export function ZoneChipBar({
           `${zone.occupiedCount} of ${zone.tableCount} occupied`,
         ),
       )}
+
+      {/* ── Bar, beside Rooftop (Teran, 2026-10-30) ──────────────────────
+          Counter sales became BAR TABS and came back into this row, the
+          reverse of the 2026-10-19 move to the header. A tab has no table,
+          but the bar IS a place staff look at like a zone, and it belongs
+          where they look.
+
+          Its count is "N open", not a ratio: a bar has no number of tables to
+          be out of. Worded in full so it cannot be read as one of the
+          occupied/total figures beside it. */}
+      {bar
+        ? tab(
+            'bar',
+            Martini,
+            'Bar',
+            `${bar.openCount} open`,
+            counterActive,
+            bar.onSelect,
+            `${bar.openCount} open bar ${bar.openCount === 1 ? 'tab' : 'tabs'}`,
+          )
+        : null}
     </div>
   )
 }
