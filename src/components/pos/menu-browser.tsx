@@ -1,6 +1,6 @@
 'use client'
 
-import { Search } from 'lucide-react'
+import { Martini, Search, UtensilsCrossed } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { MenuCategoryRow, MenuItemRow } from '@/app/api/menu/route'
@@ -106,20 +106,53 @@ export function MenuBrowser({
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null)
+  /**
+   * Food or Drinks (Teran, 2026-10-30). With the bar's six categories added, a
+   * table's menu had ten chips — too many to scan for a waiter taking a food
+   * order. The menu splits the way Toast's and Lightspeed's do, into a food
+   * menu and a bar menu, and the chips show one at a time.
+   *
+   * Not on a bar tab: that menu is drinks only (`station`), so there is
+   * nothing to switch to.
+   */
+  const [side, setSide] = useState<'food' | 'drinks'>('food')
 
   const { data: allCategories, isPending, isError, error } = useQuery(menuQueryOptions)
 
-  // Narrowed to the station, empty categories dropped — on a bar tab a
-  // "Mains" chip with nothing under it would be noise.
-  const categories = useMemo(() => {
-    if (!allCategories || !station) return allCategories
-    return allCategories
-      .map((category) => ({
-        ...category,
-        items: category.items.filter((item) => item.productionDestination === station),
-      }))
+  /** Categories narrowed to the items that pass `keep`, empty ones dropped. */
+  function narrowed(
+    rows: MenuCategoryRow[] | undefined,
+    keep: (item: MenuItemRow) => boolean,
+  ): MenuCategoryRow[] | undefined {
+    return rows
+      ?.map((category) => ({ ...category, items: category.items.filter(keep) }))
       .filter((category) => category.items.length > 0)
-  }, [allCategories, station])
+  }
+
+  // Everything this screen may order from: one station on a bar tab, the
+  // whole menu elsewhere. SEARCH looks through all of it.
+  const searchable = useMemo(
+    () =>
+      station
+        ? narrowed(allCategories, (item) => item.productionDestination === station)
+        : allCategories,
+    [allCategories, station],
+  )
+
+  // What the CHIPS show: on a table, the food or the drinks side. "Drinks"
+  // means made at the bar — the same rule a bar tab's menu uses, so the two
+  // cannot disagree about what a drink is.
+  const categories = useMemo(
+    () =>
+      station
+        ? searchable
+        : narrowed(searchable, (item) =>
+            side === 'drinks'
+              ? item.productionDestination === 'bar'
+              : item.productionDestination !== 'bar',
+          ),
+    [searchable, station, side],
+  )
 
   /**
    * An item was 86'd, restocked or toggled by a manager.
@@ -187,9 +220,12 @@ export function MenuBrowser({
   const visible = useMemo(() => {
     if (!categories) return []
     const needle = search.trim().toLowerCase()
+    // Searching ignores the Food / Drinks side: "mojito" typed while Food is
+    // showing must still be found. A chip the waiter pressed still applies.
+    const base = needle && effectiveCategoryId === null ? (searchable ?? []) : categories
 
     return (
-      categories
+      base
         .filter((category) => effectiveCategoryId === null || category.id === effectiveCategoryId)
         .map((category) => ({
           ...category,
@@ -203,7 +239,7 @@ export function MenuBrowser({
         // them in the default view: the one place the comment said they survive.
         .filter((category) => category.items.length > 0 || !needle)
     )
-  }, [categories, search, effectiveCategoryId])
+  }, [categories, searchable, search, effectiveCategoryId])
 
   const matchCount = visible.reduce((total, category) => total + category.items.length, 0)
   const trimmedSearch = search.trim()
@@ -243,7 +279,8 @@ export function MenuBrowser({
           to hit is hard to hit. The placeholder lost its instruction along
           with the height: "two letters is enough" is a thing to learn once,
           not to re-read before every order. */}
-      <div className="relative shrink-0">
+      <div className="flex shrink-0 gap-sp-3">
+      <div className="relative min-w-0 flex-1">
         <Search
           aria-hidden="true"
           strokeWidth={2.2}
@@ -262,6 +299,43 @@ export function MenuBrowser({
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
           )}
         />
+      </div>
+
+        {station ? null : (
+          // The same segmented control as the order column's bill switch: one
+          // trough, the chosen half white. Beside the search field rather than
+          // a row of its own, so it costs no height above the menu.
+          <div
+            role="group"
+            aria-label="Food or drinks"
+            className="flex shrink-0 gap-1 rounded-control bg-slate-100 p-1"
+          >
+            {([
+              { key: 'food' as const, label: 'Food', icon: UtensilsCrossed },
+              { key: 'drinks' as const, label: 'Drinks', icon: Martini },
+            ]).map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={side === key}
+                onClick={() => {
+                  setSide(key)
+                  // A food chip means nothing on the drinks side.
+                  setActiveCategoryId(null)
+                }}
+                className={cn(
+                  'flex items-center gap-sp-2 rounded-control px-sp-4 text-fs-16 font-bold',
+                  'transition-colors duration-120 ease-standard',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                  side === key ? 'bg-white text-brand-700 shadow-el-1' : 'text-slate-600',
+                )}
+              >
+                <Icon aria-hidden="true" className="size-5 shrink-0" />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <MenuCategoryChips
