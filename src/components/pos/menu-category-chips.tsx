@@ -1,6 +1,10 @@
 'use client'
 
+import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+/** A chip that changes which set of chips is showing, rather than filtering. */
+type NavChip = { label: string; icon?: LucideIcon; onClick: () => void }
 
 /**
  * Category filter chips for the menu (Story 4.2 Task 5, restyled 2026-09-16).
@@ -26,6 +30,9 @@ export function MenuCategoryChips({
   categories,
   activeCategoryId,
   onSelect,
+  allLabel = 'All',
+  leading,
+  trailing,
 }: {
   /**
    * Each category and how many items it currently offers. Supplied by the
@@ -36,10 +43,37 @@ export function MenuCategoryChips({
   /** Null is the "All items" chip. */
   activeCategoryId: string | null
   onSelect: (categoryId: string | null) => void
+  /** "All drinks" on the drinks side. */
+  allLabel?: string
+  /** Before "All" — "‹ Food", back from the drinks. */
+  leading?: NavChip
+  /** After the categories — "Drinks", into them. */
+  trailing?: NavChip
 }) {
   // "All", not "All items": the row is all categories, so the longer label was
-  // only ever disambiguating itself.
-  const chips = [{ id: null, name: 'All' }, ...categories]
+  // only ever disambiguating itself. "All drinks" on the drinks side.
+  const chips = [{ id: null, name: allLabel }, ...categories]
+
+  // Navigation chips are outlined in brand rather than filled, so they never
+  // read as a selected category — they change the ROW, not the filter.
+  const navChip = (chip: NavChip) => {
+    const Icon = chip.icon
+    return (
+      <button
+        type="button"
+        onClick={chip.onClick}
+        className={cn(
+          'flex h-touch-kitchen shrink-0 items-center gap-sp-2 rounded-pill border px-sp-5',
+          'border-brand-300 bg-brand-050 text-fs-16 font-bold whitespace-nowrap text-brand-700',
+          'transition-transform duration-120 ease-standard active:scale-[0.97]',
+          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+        )}
+      >
+        {Icon ? <Icon aria-hidden="true" className="size-5 shrink-0" /> : null}
+        {chip.label}
+      </button>
+    )
+  }
 
   return (
     <div
@@ -47,6 +81,7 @@ export function MenuCategoryChips({
       aria-label="Filter the menu by category"
       className="no-scrollbar flex shrink-0 gap-sp-2 overflow-x-auto py-sp-1"
     >
+      {leading ? navChip(leading) : null}
       {chips.map((chip) => {
         const isActive = chip.id === activeCategoryId
 
@@ -78,6 +113,7 @@ export function MenuCategoryChips({
           </button>
         )
       })}
+      {trailing ? navChip(trailing) : null}
     </div>
   )
 }
