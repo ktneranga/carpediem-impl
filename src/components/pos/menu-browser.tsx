@@ -72,6 +72,7 @@ export function MenuBrowser({
   onAdd,
   onOpenModifiers,
   stagedCountByItem,
+  station,
 }: {
   /**
    * Stages the tapped item as-is on the active seat (Story 4.4, AC-1).
@@ -91,12 +92,34 @@ export function MenuBrowser({
    * Owned by the order screen, which owns the staged round.
    */
   stagedCountByItem?: Map<string, number>
+  /**
+   * Only items made at this station, and only the categories that have any
+   * (Teran, 2026-10-30). A bar tab passes 'bar': its menu is the drinks —
+   * cocktails, mocktails, coffee, tea, beer, whisky — and nothing else.
+   *
+   * Keyed off `production_destination`, which every item already has, rather
+   * than a new "bar category" flag: a drink IS an item the bar makes, so the
+   * menu cannot drift out of step with where a ticket prints.
+   */
+  station?: 'kitchen' | 'pizza_kitchen' | 'bar'
 } = {}) {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null)
 
-  const { data: categories, isPending, isError, error } = useQuery(menuQueryOptions)
+  const { data: allCategories, isPending, isError, error } = useQuery(menuQueryOptions)
+
+  // Narrowed to the station, empty categories dropped — on a bar tab a
+  // "Mains" chip with nothing under it would be noise.
+  const categories = useMemo(() => {
+    if (!allCategories || !station) return allCategories
+    return allCategories
+      .map((category) => ({
+        ...category,
+        items: category.items.filter((item) => item.productionDestination === station),
+      }))
+      .filter((category) => category.items.length > 0)
+  }, [allCategories, station])
 
   /**
    * An item was 86'd, restocked or toggled by a manager.

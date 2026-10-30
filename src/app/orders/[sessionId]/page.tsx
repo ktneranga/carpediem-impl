@@ -184,6 +184,8 @@ export default async function OrderPage({
       zoneName={primary?.zoneName ?? null}
       tableLabel={tableLabel}
       tabLabel={session.tabLabel}
+      // Began at the bar and not seated since: a bar tab.
+      barTab={session.kind === 'counter' && attached.length === 0}
       capacity={capacity}
       coverCount={session.coverCount}
       openedAt={session.openedAt.toISOString()}

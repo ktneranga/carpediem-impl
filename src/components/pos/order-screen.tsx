@@ -60,6 +60,15 @@ export type OrderScreenProps = {
   tableLabel: string | null
   /** A bar tab's nickname — "white shirt". Null for a table, or an unnamed tab. */
   tabLabel?: string | null
+  /**
+   * A bar tab: an order with no table that began at the bar (2026-10-30).
+   *
+   * Drinks only, and always ONE bill — no One bill / Separate bills switch and
+   * no seats. Friends who want to split do it on the bill screen at the end.
+   * A tab whose guest sits down at a table is a table order again, so the page
+   * sets this only while no table is attached.
+   */
+  barTab?: boolean
   /** Seats at the table(s), summed across a merged group. Null for a counter sale. */
   capacity: number | null
   /** Guests the party was opened with. Shown in the header line. */
@@ -328,6 +337,7 @@ export function OrderScreen({
   initialHasUnbilled,
   tableLabel,
   tabLabel = null,
+  barTab = false,
   capacity,
   coverCount,
   openedAt,
@@ -360,7 +370,8 @@ export function OrderScreen({
    * no seat column in the history, no seat in the modifier sheet, and no seat
    * line on the ticket. See `billMode` in the schema.
    */
-  const usesSeats = billMode === 'separate'
+  // A bar tab never tracks people, whatever the stored mode says.
+  const usesSeats = !barTab && billMode === 'separate'
 
 
   const router = useRouter()
@@ -1226,6 +1237,7 @@ export function OrderScreen({
             onAdd={(item) => stageItem(item, activeSeat)}
             onOpenModifiers={openModifiers}
             stagedCountByItem={stagedCountByItem}
+            station={barTab ? 'bar' : undefined}
           />
         </main>
 
@@ -1246,61 +1258,64 @@ export function OrderScreen({
               says what the choice MEANS, because "One bill" and "Separate
               bills" both sound reasonable to someone who has not thought
               about it yet. */}
+          {/* No switch on a bar tab: it is always one bill (2026-10-30). */}
+          {barTab ? null : (
           <section className="shrink-0 border-b border-slate-200 p-sp-4">
-            {/* A segmented control, as drawn: one slate-100 trough with a
-                white pill sliding between two halves. It was two separately
-                bordered buttons, which read as two things to pick from rather
-                than as one choice already made — the trough is what says
-                "these are the only two, and you are on this one".
-
-                Sampled off the design: trough #F1F5F9, chosen half pure white
-                with a soft shadow under it, unchosen half transparent. */}
-            <div
-              role="group"
-              aria-label="How this order is billed"
-              className="flex gap-1 rounded-control bg-slate-100 p-1"
-            >
-              {([
-                { mode: 'one' as const, icon: Receipt, label: 'One bill' },
-                { mode: 'separate' as const, icon: Users, label: 'Separate bills' },
-              ]).map(({ mode, icon: Icon, label }) => {
-                const active = billMode === mode
-                return (
-                  <button
-                    key={mode}
-                    type="button"
-                    aria-pressed={active}
-                    disabled={billModeMutation.isPending}
-                    onClick={() => requestBillMode(mode)}
-                    className={cn(
-                      // 48px, measured. Above the 44px standard touch floor,
-                      // and this is a once-per-table decision rather than a
-                      // control tapped at speed mid-service.
-                      'flex h-12 flex-1 items-center justify-center gap-sp-2 rounded-control',
-                      'text-fs-16 font-bold transition-colors duration-120 ease-standard',
-                      'disabled:opacity-60',
-                      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                      active ? 'bg-white text-brand-700 shadow-el-1' : 'text-slate-600',
-                    )}
-                  >
-                    <Icon aria-hidden="true" strokeWidth={2.2} className="size-5 shrink-0" />
-                    {label}
-                  </button>
-                )
-              })}
-            </div>
-            {/* No explanatory line under it (Teran, 2026-10-21). It said what
-                each choice MEANS, which is worth two lines the first time and
-                is then two lines of the order column forever. Dropped for the
-                room; the consequence of the choice is visible immediately in
-                the column below — seat chips appear or they do not. */}
-          </section>
+              {/* A segmented control, as drawn: one slate-100 trough with a
+                  white pill sliding between two halves. It was two separately
+                  bordered buttons, which read as two things to pick from rather
+                  than as one choice already made — the trough is what says
+                  "these are the only two, and you are on this one".
+  
+                  Sampled off the design: trough #F1F5F9, chosen half pure white
+                  with a soft shadow under it, unchosen half transparent. */}
+              <div
+                role="group"
+                aria-label="How this order is billed"
+                className="flex gap-1 rounded-control bg-slate-100 p-1"
+              >
+                {([
+                  { mode: 'one' as const, icon: Receipt, label: 'One bill' },
+                  { mode: 'separate' as const, icon: Users, label: 'Separate bills' },
+                ]).map(({ mode, icon: Icon, label }) => {
+                  const active = billMode === mode
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      aria-pressed={active}
+                      disabled={billModeMutation.isPending}
+                      onClick={() => requestBillMode(mode)}
+                      className={cn(
+                        // 48px, measured. Above the 44px standard touch floor,
+                        // and this is a once-per-table decision rather than a
+                        // control tapped at speed mid-service.
+                        'flex h-12 flex-1 items-center justify-center gap-sp-2 rounded-control',
+                        'text-fs-16 font-bold transition-colors duration-120 ease-standard',
+                        'disabled:opacity-60',
+                        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                        active ? 'bg-white text-brand-700 shadow-el-1' : 'text-slate-600',
+                      )}
+                    >
+                      <Icon aria-hidden="true" strokeWidth={2.2} className="size-5 shrink-0" />
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+              {/* No explanatory line under it (Teran, 2026-10-21). It said what
+                  each choice MEANS, which is worth two lines the first time and
+                  is then two lines of the order column forever. Dropped for the
+                  room; the consequence of the choice is visible immediately in
+                  the column below — seat chips appear or they do not. */}
+            </section>
+          )}
 
           {/* Shown only while the order is TRACKING PEOPLE — or when it somehow
               has no seat at all, which only a session from before migration
               0013 could have. Without that second case nothing could be staged
               and there would be no way to add the seat that fixes it. */}
-          {usesSeats || seats.length === 0 ? (
+          {!barTab && (usesSeats || seats.length === 0) ? (
           <>
           {/* Only the seat GRID lives in the height-capped, scrollable section.
               The note editor used to live in it too: opening the editor made
