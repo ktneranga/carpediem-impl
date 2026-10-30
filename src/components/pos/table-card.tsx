@@ -169,13 +169,18 @@ export function TableCard({
       // implying a togglable state; the action strip carries the consequence.
       aria-current={selected || undefined}
       className={cn(
-        // h-33/132px and 12px padding, both measured off the design. It was
-        // h-26/104px: the same three rows in 28px less, so `justify-between`
-        // had almost nothing to distribute and the tile, the label and the
-        // seat count sat in one dense clump. The height is what the padding
-        // needs to be visible — the 12px was already right and did not look
-        // it.
-        'relative flex h-33 flex-col justify-between overflow-hidden rounded-card border p-sp-3 text-left',
+        // 132px is a MINIMUM, not a height (Teran, 2026-10-30). A fixed h-33
+        // fitted three rows; a merged table that needs checking has FOUR —
+        // tile, name, "Still open? Check", the group line — and those need
+        // ~140px. With the height fixed, `justify-between` had nothing to give,
+        // the bottom row was pushed into the padding and sat on the border,
+        // and `overflow-hidden` clipped what did not fit. The card now grows
+        // to its content; the grid stretches its row-mates to match, so a row
+        // stays even.
+        //
+        // 16px padding (was 12px) and a guaranteed 8px gap under the top row,
+        // so the tile never touches the name even when the card is tight.
+        'relative flex min-h-33 flex-col justify-between gap-sp-2 overflow-hidden rounded-card border p-sp-4 text-left',
         // Only from `sm` up. At two columns a spanning card would be the entire
         // row, which on a phone-width viewport is just a card with no neighbours.
         wide && 'sm:col-span-2',
