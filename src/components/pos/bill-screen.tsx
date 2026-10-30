@@ -789,7 +789,11 @@ export function BillScreen({
                 paidPaisa={wholePayables[0]!.kind === 'bill' ? wholePayables[0]!.bill.paidPaisa : 0}
                 onSettle={() => setPaying(wholePayables[0]!)}
               />
-              {wholePayables[0]!.kind === 'draft' && draftLines.length >= 2 ? (
+              {/* Offered from two DRINKS, not two lines: "2× Lion Lager" is one
+                  line, and since migration 0025 the split gives one to each
+                  person. Counting lines hid the card on exactly the bar tab
+                  that needed it (Teran, 2026-10-30). */}
+              {wholePayables[0]!.kind === 'draft' && itemCount(draftLines) >= 2 ? (
                 <SplitCard onSplit={startSplit} />
               ) : null}
             </div>
@@ -804,7 +808,7 @@ export function BillScreen({
                   paidPaisa={payable.kind === 'bill' ? payable.bill.paidPaisa : 0}
                   onSettle={() => setPaying(payable)}
                 />
-                {payable.kind === 'draft' && draftLines.length >= 2 ? (
+                {payable.kind === 'draft' && itemCount(draftLines) >= 2 ? (
                   <SplitCard onSplit={startSplit} />
                 ) : null}
               </div>
