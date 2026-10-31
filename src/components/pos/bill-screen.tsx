@@ -61,8 +61,18 @@ type Person = { id: string; label: string }
 /** Something the waiter can settle. */
 type Payable =
   | { kind: 'bill'; key: string; title: string; bill: BillScreenBill }
-  | { kind: 'draft'; key: 'draft'; title: string; draft: BillScreenDraft }
-  | { kind: 'person'; key: string; title: string; lines: BillScreenLine[]; totals: Totals }
+  // `billId` once Settle has written the bill but the payment has not gone
+  // through (code review UI-P1): a retry pays THAT bill instead of trying to
+  // write it again, which the server refuses because its units are billed.
+  | { kind: 'draft'; key: 'draft'; title: string; draft: BillScreenDraft; billId?: string }
+  | {
+      kind: 'person'
+      key: string
+      title: string
+      lines: BillScreenLine[]
+      totals: Totals
+      billId?: string
+    }
 
 function outstandingOf(payable: Payable): number {
   if (payable.kind === 'bill') return payable.bill.totalPaisa - payable.bill.paidPaisa
@@ -124,11 +134,19 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+  const payload = await response.json().catch(() => null)
   if (response.status === 401) {
+    // A tenant with `financial_action_reauth` on answers a bill with a PIN
+    // CHALLENGE. That is not an expired session, and sending the waiter to the
+    // sign-in screen for it threw the whole bill away. The PIN prompt is Story
+    // 2.4; until it exists, say so.
+    const code = payload?.error?.code
+    if (code === 'REAUTH_REQUIRED' || code === 'REAUTH_FAILED') {
+      throw new RefusedError(code, 'This needs a manager PIN, which this screen cannot ask for yet.')
+    }
     window.location.assign('/login')
     throw new RefusedError('UNAUTHENTICATED', 'Sign in again.')
   }
-  const payload = await response.json().catch(() => null)
   if (response.ok && payload?.success) return payload.data as T
   throw new RefusedError(
     payload?.error?.code ?? 'UNKNOWN',
@@ -214,12 +232,18 @@ function newPersonId(): string {
  * column already there, whatever it is called, so a note like "thattaya" in
  * Seat 1's place still yields "Seat 2", never a duplicate.
  */
-function nextPersonLabel(persons: Person[]): string {
-  const used = persons
-    .map((person) => /^Seat (\d+)$/.exec(person.label)?.[1])
+function nextPersonLabel(persons: Person[], taken: string[] = []): string {
+  // `taken` is the names already on recorded bills (code review UI-P11): once
+  // "Seat 2" has paid and its column is gone, the next column must not be
+  // "Seat 2" again, or two bills carry one person's name.
+  const labels = [...persons.map((person) => person.label), ...taken]
+  const used = labels
+    .map((label) => /^Seat (\d+)$/.exec(label)?.[1])
     .filter((n): n is string => n !== undefined)
     .map(Number)
-  return `Seat ${Math.max(persons.length, ...used, 0) + 1}`
+  let n = Math.max(persons.length, ...used, 0) + 1
+  while (labels.includes(`Seat ${n}`)) n += 1
+  return `Seat ${n}`
 }
 
 /**
@@ -239,8 +263,14 @@ function splitFromSeats(
   assignBySeat: boolean,
 ): SplitState {
   const lines = draft?.lines ?? []
-  const persons: Person[] = seats.map((seat) => ({ id: newPersonId(), label: seat.name }))
-  while (persons.length < 2) persons.push({ id: newPersonId(), label: nextPersonLabel(persons) })
+  // Ids DERIVED from the seat, never `newPersonId()` (code review UI-P2). This
+  // runs during the first render on the server and again in the browser; a
+  // time-based id differed between the two, and `data-drop` kept the server's,
+  // so a drop onto a seat column landed on an owner that did not exist.
+  const persons: Person[] = seats.map((seat) => ({ id: `seat-${seat.id}`, label: seat.name }))
+  while (persons.length < 2) {
+    persons.push({ id: `extra-${persons.length + 1}`, label: nextPersonLabel(persons) })
+  }
   const allocation: Record<string, Piece[]> = {}
   if (assignBySeat) {
     for (const line of lines) {
@@ -272,9 +302,9 @@ function splitFromSeats(
  * item can also be TAPPED to pick it up, and every other column then offers
  * "Move here" — which is the design's own hint text. Mouse users can drag.
  *
- * Whole items only (6.1): a line of two Lion Lagers goes to one person. Splitting
- * a single line between people would need a quantity split on an append-only
- * event, which is not in scope.
+ * Split by units (6.1 as amended, migration 0025): a "2× Lion Lager" can go one
+ * to each person — pick the card and step "Move 1 of 2". A single unit cannot
+ * be divided between people; sharing one dish is deferred.
  *
  * ── The split survives a reload, on this tablet ──────────────────────────────
  * Kept in localStorage per session, so a waiter who steps back to the order and
@@ -315,6 +345,10 @@ export function BillScreen({
   const [restored, setRestored] = useState(false)
   /** The card picked up by a tap, and how many of its units "Move here" moves. */
   const [selected, setSelected] = useState<{ key: string; count: number } | null>(null)
+  /** A LKR 0 bill being recorded — guards a double tap. */
+  const [recording, setRecording] = useState(false)
+  /** The last pick-up or move, for the screen-reader live region (Story 6.1). */
+  const [announcement, setAnnouncement] = useState('')
   const [paying, setPaying] = useState<Payable | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -332,7 +366,10 @@ export function BillScreen({
         saved &&
         saved.billMode === billMode &&
         (saved.view === 'split' || saved.view === 'whole') &&
-        saved.allocation
+        // An older or hand-edited shape crashed the render (code review UI-P8).
+        Array.isArray(saved.persons) &&
+        saved.allocation &&
+        typeof saved.allocation === 'object'
       ) {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring browser-only state after hydration is exactly this
         setSplit(saved)
@@ -353,19 +390,27 @@ export function BillScreen({
     }
   }, [billMode, restored, split, storageKey])
 
+  /** Names already on recorded bills — a new column must not reuse one. */
+  const billLabels = bills.map((bill) => bill.label)
+
   // Only allocations that still make sense: the line is still unbilled, its
   // pieces add up to what is left of it, and every owner still exists. A bill
   // settled on another tablet changes what is left, and that line falls back
   // to unassigned rather than showing units nobody can bill.
   const personIds = new Set(split.persons.map((person) => person.id))
-  const piecesOf = (line: BillScreenLine): Piece[] => {
-    const saved = split.allocation[line.orderEventId]
+  // Takes the state to read from, so a `setSplit` updater can pass the
+  // CURRENT state rather than this render's (code review UI-P5): two moves
+  // before a re-render each started from the same old allocation, and the
+  // second undid the first.
+  const piecesOf = (line: BillScreenLine, state: SplitState = split): Piece[] => {
+    const ids = state === split ? personIds : new Set(state.persons.map((person) => person.id))
+    const saved = state.allocation[line.orderEventId]
     if (!saved || saved.reduce((total, piece) => total + piece.qty, 0) !== line.quantity) {
       return [{ owner: null, qty: line.quantity }]
     }
     return normalize(
       saved.map((piece) => ({
-        owner: piece.owner && personIds.has(piece.owner) ? piece.owner : null,
+        owner: piece.owner && ids.has(piece.owner) ? piece.owner : null,
         qty: piece.qty,
       })),
     )
@@ -413,7 +458,7 @@ export function BillScreen({
       let persons = current.persons
       let to: string | null = target === 'new' ? null : target
       if (target === 'new') {
-        const person = { id: newPersonId(), label: nextPersonLabel(current.persons) }
+        const person = { id: newPersonId(), label: nextPersonLabel(current.persons, billLabels) }
         persons = [...current.persons, person]
         to = person.id
       }
@@ -425,7 +470,7 @@ export function BillScreen({
         if (left <= 0) break
         const line = draftLines.find((candidate) => candidate.orderEventId === part.eventId)
         if (!line) continue
-        const pieces = piecesOf(line).map((piece) => ({ ...piece }))
+        const pieces = piecesOf(line, current).map((piece) => ({ ...piece }))
         const source = pieces.find((piece) => piece.owner === from)
         if (!source) continue
         const moving = Math.min(left, source.qty)
@@ -436,6 +481,18 @@ export function BillScreen({
       }
       return { ...current, persons, allocation }
     })
+    // Said out loud as well as shown (code review UI-P14, Story 6.1).
+    const line = draftLines.find((candidate) => candidate.orderEventId === parts[0]?.eventId)
+    const destination =
+      target === null
+        ? 'Not assigned'
+        : target === 'new'
+          ? 'a new person'
+          : (split.persons.find((person) => person.id === target)?.label ?? 'a person')
+    if (line) {
+      const moved = count ?? parts.reduce((total, part) => total + part.qty, 0)
+      setAnnouncement(`Moved ${moved}× ${line.name} to ${destination}.`)
+    }
   }
 
   // ── Dragging, on POINTER events (design 32) ─────────────────────────────
@@ -510,7 +567,18 @@ export function BillScreen({
   function pick(key: string, qty: number) {
     // The click at the end of a drag is not a tap.
     if (dragged.current) return
+    const picking = selected?.key !== key
     setSelected((current) => (current?.key === key ? null : { key, count: qty }))
+    const line = draftLines.find(
+      (candidate) => candidate.orderEventId === members.get(key)?.[0]?.eventId,
+    )
+    if (line) {
+      setAnnouncement(
+        picking
+          ? `Picked up ${qty}× ${line.name}. Choose Move here on a column.`
+          : `Put down ${line.name}.`,
+      )
+    }
   }
 
   /** What every draggable list needs from here. */
@@ -520,6 +588,28 @@ export function BillScreen({
     onPress: press,
     draggingKey: drag?.key ?? null,
     onCount: (count: number) => setSelected((current) => (current ? { ...current, count } : null)),
+  }
+
+  /**
+   * A person whose bill has been written: their column goes, and so do THEIR
+   * units — they are on a bill now (code review UI-P3). Handing them back to
+   * the pool, as `removePerson` does, broke every line they shared: a "2×"
+   * split one each still summed to 2 in the allocation while the refreshed
+   * draft had 1 left, so the whole line fell back to Not assigned and the
+   * other person lost their half.
+   */
+  function retirePerson(personId: string) {
+    setSelected(null)
+    setSplit((current) => ({
+      ...current,
+      persons: current.persons.filter((person) => person.id !== personId),
+      allocation: Object.fromEntries(
+        Object.entries(current.allocation).map(([eventId, pieces]) => [
+          eventId,
+          normalize(pieces.filter((piece) => piece.owner !== personId)),
+        ]),
+      ),
+    }))
   }
 
   function removePerson(personId: string) {
@@ -600,15 +690,19 @@ export function BillScreen({
       setPaying(payable)
       return
     }
-    if (payable.kind === 'bill') return
+    // A double tap on "Record LKR 0 bill" wrote two bills (code review UI-P6).
+    if (payable.kind === 'bill' || recording) return
+    setRecording(true)
     try {
       const billId = await createBillFor(payable)
       if (!billId) return
-      if (payable.kind === 'person') removePerson(payable.key)
+      if (payable.kind === 'person') retirePerson(payable.key)
       setNotice(null)
       router.refresh()
     } catch (caught) {
       setNotice(caught instanceof Error ? caught.message : 'Could not record the bill.')
+    } finally {
+      setRecording(false)
     }
   }
 
@@ -664,6 +758,9 @@ export function BillScreen({
 
   return (
     <div className="h-app flex flex-col bg-slate-100">
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="flex shrink-0 items-center justify-between gap-sp-3 border-b border-slate-200 bg-white px-sp-4 py-sp-3">
         <div className="flex min-w-0 items-center gap-sp-3">
@@ -728,11 +825,19 @@ export function BillScreen({
           <span
             className={cn(
               'flex items-center gap-sp-2 rounded-pill px-sp-4 py-sp-2 text-fs-14 font-bold',
-              outstanding > 0 ? 'bg-occupied-chip text-occupied-ink' : 'bg-open-chip text-open-ink',
+              outstanding > 0 || draftError
+                ? 'bg-occupied-chip text-occupied-ink'
+                : 'bg-open-chip text-open-ink',
             )}
           >
             <span aria-hidden="true" className="size-2 rounded-pill bg-current" />
-            {outstanding > 0 ? `Unpaid ${lkrFromPaisa(outstanding)}` : 'Paid'}
+            {/* Not "Paid" while part of the order could not be priced — the
+                notice says something is owed (code review UI-P7). */}
+            {outstanding > 0
+              ? `Unpaid ${lkrFromPaisa(outstanding)}`
+              : draftError
+                ? 'Check the order'
+                : 'Paid'}
           </span>
         </div>
       </header>
@@ -786,11 +891,27 @@ export function BillScreen({
             {split.persons.map((person) => {
               const lines = cardsFor(person.id)
               const totals = priceShare(lines, draft)
+              // While a card from another column is held over this one, its
+              // total shows what it WOULD be (Story 6.1).
+              const preview =
+                drag && drag.over === person.id && ownerOfCard(drag.key) !== person.id
+                  ? priceShare(
+                      [
+                        ...lines,
+                        {
+                          ...drag.line,
+                          quantity: drag.count,
+                          amountPaisa: drag.count * drag.line.unitPricePaisa,
+                        },
+                      ],
+                      draft,
+                    )
+                  : null
               return (
                 <Column
                   key={person.id}
                   title={person.label}
-                  total={totals.totalPaisa}
+                  total={(preview ?? totals).totalPaisa}
                   // Items waiting on this person to pay, as drawn.
                   badge={lines.length > 0 ? 'Awaiting' : undefined}
                   onRemove={() => removePerson(person.id)}
@@ -838,7 +959,7 @@ export function BillScreen({
               type="button"
               onClick={() => (selected ? move(selected.key, 'new', selected.count) : setSplit((current) => ({
                 ...current,
-                persons: [...current.persons, { id: newPersonId(), label: nextPersonLabel(current.persons) }],
+                persons: [...current.persons, { id: newPersonId(), label: nextPersonLabel(current.persons, billLabels) }],
               })))}
               data-drop="new"
               className={cn(
@@ -862,7 +983,9 @@ export function BillScreen({
           <div className="flex flex-1 items-center justify-center rounded-panel border border-dashed border-slate-200 bg-white p-sp-5 text-center text-fs-16 text-slate-600">
             {allLines.length === 0
               ? 'Nothing has been sent to the kitchen yet, so there is nothing to bill.'
-              : 'Everything on this table is paid.'}
+              : draftError
+                ? 'Part of this order could not be priced — see the notice above.'
+                : 'Everything on this table is paid.'}
           </div>
         ) : wholePayables.length === 1 ? (
           // ── WHOLE: the design's one-bill layout, 2 : 1 ───────────────────
@@ -990,10 +1113,27 @@ export function BillScreen({
         <PaymentDialog
           title={`${paying.title} · ${tableLabel}`}
           duePaisa={outstandingOf(paying)}
-          onCancel={() => setPaying(null)}
+          onCancel={() => {
+            // A bill was written but not paid: refresh, so it appears as a
+            // recorded bill to settle rather than staying hidden (UI-P1).
+            const wrote = paying.kind !== 'bill' && Boolean(paying.billId)
+            setPaying(null)
+            if (wrote) router.refresh()
+          }}
           onPay={async (tenders) => {
-            const billId =
-              paying.kind === 'bill' ? paying.bill.billId : await createBillFor(paying)
+            // A bill this dialog already wrote, on a retry after a failed
+            // payment (code review UI-P1), is paid — never written again.
+            let billId = paying.kind === 'bill' ? paying.bill.billId : (paying.billId ?? null)
+            if (!billId && paying.kind !== 'bill') {
+              billId = await createBillFor(paying)
+              if (!billId) return
+              const written = billId
+              setPaying((current) =>
+                current && current.kind !== 'bill' ? { ...current, billId: written } : current,
+              )
+              // Their units are billed now, whatever happens to the payment.
+              if (paying.kind === 'person') retirePerson(paying.key)
+            }
             if (!billId) return
 
             await postJson<{ allPaid: boolean }>(`/api/bills/${billId}/payments`, { tenders })
@@ -1002,7 +1142,6 @@ export function BillScreen({
             // is paid the refreshed screen offers Close table in the bar.
             // That person is paid: their column goes, and their items are on a
             // bill now, so the draft the server sends back no longer has them.
-            if (paying.kind === 'person') removePerson(paying.key)
             setNotice(null)
             router.refresh()
           }}

@@ -513,16 +513,22 @@ export function FloorActionStrip({
 
                 Straight to the bill screen (2026-10-31). It used to open the
                 order screen, from when the bill screen did not exist; it has
-                since Story 6.5. */}
-            <button
-              type="button"
-              disabled={busy || !table.sessionId}
-              onClick={() => table.sessionId && onOpenBill(table.sessionId)}
-              className={billButton}
-            >
-              <Receipt aria-hidden="true" strokeWidth={2.2} className="size-5 shrink-0" />
-              Bill &amp; split
-            </button>
+                since Story 6.5.
+
+                Only once something has been sent (code review UI-P10, the 6.5
+                amendment) — a freshly seated table has nothing to bill, and the
+                order screen and the bar tab already gate it the same way. */}
+            {table.itemCount > 0 ? (
+              <button
+                type="button"
+                disabled={busy || !table.sessionId}
+                onClick={() => table.sessionId && onOpenBill(table.sessionId)}
+                className={billButton}
+              >
+                <Receipt aria-hidden="true" strokeWidth={2.2} className="size-5 shrink-0" />
+                Bill &amp; split
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={busy}

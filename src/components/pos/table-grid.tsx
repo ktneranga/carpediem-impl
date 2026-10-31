@@ -1442,7 +1442,12 @@ export function TableGrid({
                 <button
                   type="button"
                   aria-pressed={showingLate}
-                  onClick={() => setLateTabsOnly((current) => !current)}
+                  onClick={() => {
+                    setLateTabsOnly((current) => !current)
+                    // A tab the filter is about to hide must not stay selected
+                    // with its actions in the bar (code review UI-P19).
+                    setSelectedCounterId(null)
+                  }}
                   className={cn(
                     'sticky bottom-0 flex min-h-touch-waiter items-center justify-between gap-sp-4',
                     'rounded-control border-2 px-sp-4 py-sp-2 text-left shadow-el-2',

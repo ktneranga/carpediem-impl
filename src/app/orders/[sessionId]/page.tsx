@@ -17,6 +17,7 @@ import {
   zones,
 } from '@/server/db/schema'
 import { OrderScreen } from '@/components/pos/order-screen'
+import { tabName, tabSequence } from '@/server/orders/tab-sequence'
 
 /**
  * Order entry screen, addressed by SESSION.
@@ -184,6 +185,11 @@ export default async function OrderPage({
       zoneName={primary?.zoneName ?? null}
       tableLabel={tableLabel}
       tabLabel={session.tabLabel}
+      tabName={
+        session.kind === 'counter' && attached.length === 0
+          ? tabName(await tabSequence(session.sessionId), session.tabLabel)
+          : null
+      }
       // Began at the bar and not seated since: a bar tab.
       barTab={session.kind === 'counter' && attached.length === 0}
       capacity={capacity}

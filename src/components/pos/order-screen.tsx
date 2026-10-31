@@ -60,6 +60,8 @@ export type OrderScreenProps = {
   tableLabel: string | null
   /** A bar tab's nickname — "white shirt". Null for a table, or an unnamed tab. */
   tabLabel?: string | null
+  /** A bar tab's full name, "Tab 7 · white shirt", numbered by the server. */
+  tabName?: string | null
   /**
    * A bar tab: an order with no table that began at the bar (2026-10-30).
    *
@@ -337,6 +339,7 @@ export function OrderScreen({
   initialHasUnbilled,
   tableLabel,
   tabLabel = null,
+  tabName = null,
   barTab = false,
   capacity,
   coverCount,
@@ -349,7 +352,9 @@ export function OrderScreen({
   // on this screen — rounds, items, closing — is identical either way, which is
   // the point of keying the screen on the session rather than on a table.
   // A bar tab is named by its nickname (2026-10-30); "Counter" was the old word.
-  const displayLabel = tableLabel ?? (tabLabel ? `Tab · ${tabLabel}` : 'Bar tab')
+  // The tab's NUMBER as well as its nickname, as the floor shows it (code
+  // review UI-P12) — two white shirts is an ordinary evening.
+  const displayLabel = tableLabel ?? tabName ?? (tabLabel ? `Tab · ${tabLabel}` : 'Bar tab')
   /**
    * Optimistic, because the switch must feel instant on a tablet: the seat
    * chips appear on tap and the request confirms behind them. A failure rolls

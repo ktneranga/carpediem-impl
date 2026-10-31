@@ -17,6 +17,7 @@ import {
   UnpricedItemError,
 } from '@/server/services/bill.service'
 import { loadSessionPayments } from '@/server/services/payment.service'
+import { tabName, tabSequence } from '@/server/orders/tab-sequence'
 import { BillScreen, type BillScreenBill, type BillScreenDraft } from '@/components/pos/bill-screen'
 import type { ProductionDestination } from '@/types/orders'
 
@@ -48,6 +49,7 @@ export default async function BillPage({
     .select({
       billMode: orderSessions.billMode,
       tabLabel: orderSessions.tabLabel,
+      kind: orderSessions.kind,
       tableLabel: tables.label,
     })
     .from(orderSessions)
@@ -69,14 +71,13 @@ export default async function BillPage({
     .map((row) => row.tableLabel)
     .filter((label): label is string => label !== null)
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-  // A bar tab by its nickname — this screen is staff-facing, so the nickname
-  // is fine here; it is the PRINTED bill it must never reach.
+  // A bar tab by its number and nickname — this screen is staff-facing, so the
+  // nickname is fine here; it is the PRINTED bill it must never reach.
+  const isBarTab = rows[0]!.kind === 'counter' && labels.length === 0
   const tableLabel =
     labels.length > 0
       ? labels.join(' + ')
-      : rows[0]!.tabLabel
-        ? `Tab · ${rows[0]!.tabLabel}`
-        : 'Bar tab'
+      : tabName(await tabSequence(sessionId), rows[0]!.tabLabel)
 
   const [recorded, payments, pricing, seatRows] = await Promise.all([
     loadSessionBills(db, sessionId),
@@ -173,7 +174,9 @@ export default async function BillPage({
       key={sessionId}
       sessionId={sessionId}
       tableLabel={tableLabel}
-      billMode={rows[0]!.billMode}
+      // A bar tab is always one bill, whatever its stored mode (code review
+      // UI-P9) — the order screen already ignores it; this screen must agree.
+      billMode={isBarTab ? 'one' : rows[0]!.billMode}
       bills={bills}
       draft={draft}
       draftError={draftError}
