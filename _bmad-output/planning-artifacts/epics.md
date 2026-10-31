@@ -1784,6 +1784,11 @@ So that I can present the full total to a party settling together without any sp
 >   unit is already billed. This replaces the single `/bills/split` call below.
 > - The arrangement is kept per session in localStorage, restored only under
 >   the same bill mode.
+> - **Shares are rounded per bill (code review D2, Teran, 2026-10-31).** Each
+>   person's service charge and tax are rounded on their own bill, so the
+>   shares may differ from the whole-table total by up to 1 paisa per person.
+>   This replaces "the total of all person totals always equals the session
+>   grand total" below: every bill must be correct on its own.
 
 
 As a waiter,
