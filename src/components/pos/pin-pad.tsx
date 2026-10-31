@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { Delete } from 'lucide-react'
+import { Delete, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -126,8 +126,10 @@ export function PINPad({ onSubmit, error, disabled = false, label, hint }: PINPa
     <div className="flex select-none flex-col items-center gap-sp-5">
       {label ? (
         <div className="flex flex-col items-center gap-sp-1">
-          <p className="text-fs-18 font-bold tracking-title text-slate-900">{label}</p>
-          {hint ? <p className="text-fs-12 text-slate-400">{hint}</p> : null}
+          {/* 24px title and a slate-600 hint, measured off the login design;
+              the hint was slate-400, below AA on the grey. */}
+          <p className="text-fs-24 font-extrabold tracking-title text-slate-900">{label}</p>
+          {hint ? <p className="text-fs-14 text-slate-600">{hint}</p> : null}
         </div>
       ) : null}
 
@@ -144,15 +146,16 @@ export function PINPad({ onSubmit, error, disabled = false, label, hint }: PINPa
             the pad submits when the last one fills, so the dots show exactly how
             far along they are with no ambiguity about when it ends. */}
         <div aria-live="polite" className="flex flex-col items-center gap-sp-2">
-          <div aria-hidden="true" className="flex gap-sp-3">
+          <div aria-hidden="true" className="flex gap-sp-4">
             {Array.from({ length: PIN_LENGTH }, (_, index) => (
               <span
                 key={index}
                 className={cn(
-                  'size-3.5 rounded-pill border-2 transition-colors duration-80 ease-standard',
+                  // 16px hollow rings, 16px apart, as drawn.
+                  'size-4 rounded-pill border-2 transition-colors duration-80 ease-standard',
                   index < pin.length
                     ? 'border-brand-500 bg-brand-500'
-                    : 'border-slate-200 bg-transparent',
+                    : 'border-slate-300 bg-transparent',
                 )}
               />
             ))}
@@ -236,7 +239,8 @@ export function PINPad({ onSubmit, error, disabled = false, label, hint }: PINPa
         became fixed. That day is today.
       */}
 
-      <p className="text-fs-12 text-slate-400">
+      <p className="flex items-center gap-sp-1 text-fs-12 font-semibold text-slate-600">
+        <Lock aria-hidden="true" className="size-3.5" strokeWidth={2.2} />
         {PIN_LENGTH} digits · signs in automatically · no keyboard, ever
       </p>
     </div>

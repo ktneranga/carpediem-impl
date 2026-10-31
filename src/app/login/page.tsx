@@ -56,7 +56,9 @@ export default function LoginPage() {
         viewport the panel would push the keypad off screen. The pad is the only
         thing on this route that must survive a narrow viewport.
       */}
-      <aside className="hidden w-[430px] shrink-0 flex-col justify-between bg-brand-700 px-sp-7 py-sp-7 md:flex">
+      {/* 39% of the width, measured off the login design (2026-10-31): a fixed
+          430px was a narrower slice on a wide screen than the design draws. */}
+      <aside className="hidden w-[39%] max-w-140 min-w-90 shrink-0 flex-col justify-between bg-brand-700 px-sp-7 py-sp-7 md:flex">
         <div className="flex flex-col gap-sp-1">
           <span className="text-fs-32 font-extrabold tracking-[-0.03em] text-white">
             Carpe Diem
@@ -82,16 +84,17 @@ export default function LoginPage() {
         </div>
       </aside>
 
+      {/* The pad sits straight on the grey, as the design draws it — no white
+          card around it (2026-10-31). The keys are the surfaces; a card behind
+          them was a third layer saying nothing. */}
       <main className="flex flex-1 items-center justify-center p-sp-5">
-        <div className="w-full max-w-105 rounded-panel bg-white px-sp-7 py-sp-7 shadow-el-4">
-          <PINPad
-            onSubmit={handleSubmit}
-            error={error}
-            disabled={isSubmitting}
-            label="Enter your PIN"
-            hint="Session ends after 5 minutes idle"
-          />
-        </div>
+        <PINPad
+          onSubmit={handleSubmit}
+          error={error}
+          disabled={isSubmitting}
+          label="Enter your PIN"
+          hint="Session ends after 5 minutes idle"
+        />
       </main>
     </div>
   )
