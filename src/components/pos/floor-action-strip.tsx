@@ -85,6 +85,12 @@ export type FloorActionStripProps = {
   counter: { sessionId: string; label: string; elapsedMinutes?: number; itemCount: number } | null
   onOpenCounter: (sessionId: string) => void
   /**
+   * Straight to the bill screen for a session (Story 6.5) — where an order is
+   * settled and its table closed. Used by Bill & split on a table and on a bar
+   * tab, so neither has to go through the order screen first.
+   */
+  onOpenBill: (sessionId: string) => void
+  /**
    * The counter sale being seated, with the tables staged so far (AC-5).
    *
    * A guest buys at the bar and then sits down. The order does not move — the
@@ -116,6 +122,7 @@ export function FloorActionStrip({
   onUnmerge,
   counter,
   onOpenCounter,
+  onOpenBill,
   seating,
   onBeginSeating,
   onCancelSeating,
@@ -140,6 +147,15 @@ export function FloorActionStrip({
 
   // Moved to action-strip-chrome.tsx in Story 4.1, unchanged, so the second
   // strip cannot copy them a third time and drift.
+  // Bill & split — brand text and border on the brand tint, on a table and
+  // on a bar tab alike.
+  const billButton = cn(
+    'flex h-touch-waiter items-center gap-sp-2 rounded-waiter px-sp-5',
+    'border border-brand-500 bg-brand-050 text-fs-16 font-bold text-brand-700',
+    'transition-[transform,box-shadow] duration-80 ease-standard',
+    'active:scale-[0.97] active:shadow-pressed disabled:opacity-40',
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+  )
   const primary = primaryButtonClass
   const secondary = secondaryButtonClass
 
@@ -377,13 +393,29 @@ export function FloorActionStrip({
             >
               Seat at table
             </button>
+            {/* Settling is the commonest reason to open a waiting tab — the
+                guest is back at the bar to pay (Teran, 2026-10-31). It used to
+                offer only "Add items", so paying meant opening the order and
+                finding Bill & split there. Only once something has been
+                ordered: an empty tab has nothing to bill. */}
+            {counter.itemCount > 0 ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onOpenBill(counter.sessionId)}
+                className={billButton}
+              >
+                <Receipt aria-hidden="true" strokeWidth={2.2} className="size-5 shrink-0" />
+                Bill &amp; split
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={busy}
               onClick={() => onOpenCounter(counter.sessionId)}
               className={primary}
             >
-              Add items
+              Open tab
             </button>
           </>
         ) : (
@@ -479,22 +511,14 @@ export function FloorActionStrip({
                 the brand tint, so it reads as an action of consequence
                 without competing with Open order for the solid fill.
 
-                It opens the order screen, which is where billing lives today.
-                The SPLIT half of the name is Stories 6.1/6.3 and the screen
-                it should reach does not exist yet; the button is in the
-                design's position and does the nearest real thing rather than
-                being a dead control. */}
+                Straight to the bill screen (2026-10-31). It used to open the
+                order screen, from when the bill screen did not exist; it has
+                since Story 6.5. */}
             <button
               type="button"
-              disabled={busy}
-              onClick={() => onOpenOrder(table.id)}
-              className={cn(
-                'flex h-touch-waiter items-center gap-sp-2 rounded-waiter px-sp-5',
-                'border border-brand-500 bg-brand-050 text-fs-16 font-bold text-brand-700',
-                'transition-[transform,box-shadow] duration-80 ease-standard',
-                'active:scale-[0.97] active:shadow-pressed disabled:opacity-40',
-                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-              )}
+              disabled={busy || !table.sessionId}
+              onClick={() => table.sessionId && onOpenBill(table.sessionId)}
+              className={billButton}
             >
               <Receipt aria-hidden="true" strokeWidth={2.2} className="size-5 shrink-0" />
               Bill &amp; split

@@ -1858,6 +1858,11 @@ export function TableGrid({
           setIsNavigating(true)
           router.push(`/orders/${sessionId}`)
         }}
+        onOpenBill={(sessionId) => {
+          if (isNavigating) return
+          setIsNavigating(true)
+          router.push(`/orders/${sessionId}/bill`)
+        }}
         seating={seating}
         onBeginSeating={(sessionId) => {
           setSeatingSessionId(sessionId)
