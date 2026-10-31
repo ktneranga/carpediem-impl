@@ -8,7 +8,6 @@ import {
   recordPayments,
 } from '@/server/services/payment.service'
 import { SessionAlreadyClosedError } from '@/server/services/table-session.service'
-import { emitCounterSalesChanged, emitTableStatusChanged } from '@/server/socket/events'
 
 const billIdSchema = z.string().uuid()
 
@@ -40,8 +39,8 @@ function fail(code: string, message: string, status: number, extra?: object) {
 }
 
 /**
- * Records a payment against a bill (Story 6.5), closing the table when it was
- * the last money owed.
+ * Records a payment against a bill (Story 6.5). It never closes the table —
+ * the waiter does, from the bill screen, once `allPaid` is true.
  *
  * RBAC is inherited from the `/api/bills` prefix (owner + waiter) in
  * `permissions.ts`, enforced by `proxy.ts`. Any waiter may take payment
@@ -81,24 +80,6 @@ export async function POST(
         tenders: parsedBody.data.tenders,
       }),
     )
-
-    // The table is free again on every tablet — the same events the close
-    // route emits, one per released table (none for a counter sale).
-    if (result.sessionClosed) {
-      for (const tableId of result.releasedTableIds) {
-        emitTableStatusChanged({
-          tableId,
-          status: 'open',
-          sessionId: null,
-          openedAt: null,
-          itemCount: 0,
-          totalPaisa: 0,
-          unavailableReason: null,
-          groupTableLabels: [],
-        })
-      }
-      emitCounterSalesChanged()
-    }
 
     return NextResponse.json({ success: true, data: result }, { status: 201 })
   } catch (error) {

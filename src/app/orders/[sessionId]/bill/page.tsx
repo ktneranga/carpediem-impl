@@ -10,7 +10,12 @@ import {
   seatSlots,
   tables,
 } from '@/server/db/schema'
-import { loadSessionBills, priceBillable } from '@/server/services/bill.service'
+import {
+  CompsExceedOrderError,
+  loadSessionBills,
+  priceBillable,
+  UnpricedItemError,
+} from '@/server/services/bill.service'
 import { loadSessionPayments } from '@/server/services/payment.service'
 import { BillScreen, type BillScreenBill, type BillScreenDraft } from '@/components/pos/bill-screen'
 import type { ProductionDestination } from '@/types/orders'
@@ -73,10 +78,17 @@ export default async function BillPage({
         ? `Tab · ${rows[0]!.tabLabel}`
         : 'Bar tab'
 
-  const [recorded, payments, priced, seatRows] = await Promise.all([
+  const [recorded, payments, pricing, seatRows] = await Promise.all([
     loadSessionBills(db, sessionId),
     loadSessionPayments(db, sessionId),
-    db.transaction((tx) => priceBillable(tx, { sessionId })),
+    // The draft can fail to price — an item with no price recorded, comps
+    // larger than what is left, no tenant config. That must not take the
+    // recorded bills down with it (code review P2): they can still be settled,
+    // and the screen says what is wrong with the rest.
+    db
+      .transaction((tx) => priceBillable(tx, { sessionId }))
+      .then((value) => ({ ok: true as const, value }))
+      .catch((error: unknown) => ({ ok: false as const, error })),
     db
       .select({ id: seatSlots.id, seatLabel: seatSlots.seatLabel, seatNote: seatSlots.seatNote })
       .from(seatSlots)
@@ -127,8 +139,18 @@ export default async function BillPage({
     })),
   }))
 
+  const priced = pricing.ok ? pricing.value : null
+  const draftError = pricing.ok
+    ? null
+    : pricing.error instanceof UnpricedItemError
+      ? 'An item on this order has no price recorded, so the rest of the table cannot be billed yet.'
+      : pricing.error instanceof CompsExceedOrderError
+        ? 'The discounts on this order are larger than what is left to bill.'
+        : 'The rest of this order could not be priced. Bills already recorded can still be settled.'
+  if (!pricing.ok) console.error('[orders/:id/bill] draft could not be priced:', pricing.error)
+
   const draft: BillScreenDraft | null =
-    priced.events.length === 0
+    !priced || priced.events.length === 0
       ? null
       : {
           ...priced.totals,
@@ -154,6 +176,7 @@ export default async function BillPage({
       billMode={rows[0]!.billMode}
       bills={bills}
       draft={draft}
+      draftError={draftError}
       seats={seats}
     />
   )

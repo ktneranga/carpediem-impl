@@ -3,7 +3,7 @@ import { asc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '@/server/db'
 import { bills, paymentRecords } from '@/server/db/schema'
 import { hasUnbilledItems } from '@/server/services/bill.service'
-import { closeSession, lockOpenSession } from '@/server/services/table-session.service'
+import { lockOpenSession } from '@/server/services/table-session.service'
 
 /** Drizzle transaction handle. */
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -63,8 +63,7 @@ export async function loadSessionPayments(
 }
 
 /**
- * Records money received against one bill, and closes the table when that was
- * the last of it (Story 6.5, FR28-FR31).
+ * Records money received against one bill (Story 6.5, FR28-FR31).
  *
  * ── Split payment is just two tenders ────────────────────────────────────────
  * `[{ cash, 2000 }, { card, 2510 }]` writes two rows on the same bill in one
@@ -84,14 +83,8 @@ export async function loadSessionPayments(
  * paid-sum read is a read-then-write check, and the lock is what makes it
  * safe — the same arrangement `generateConsolidatedBill` relies on.
  *
- * ── When the table closes ────────────────────────────────────────────────────
- * Not when "the last open bill is settled", which is how the epic words it and
- * which Story 6.4 made wrong: seats 1 and 2 can be billed and paid while seats
- * 3 and 4 are still eating. The predicate is EVERY bill settled AND nothing
- * left unbilled — `hasUnbilledItems` exists for exactly this question. Then
- * the shared `closeSession` runs with reason `settled`, which releases every
- * attached table (none, for a counter sale) and writes the audit event; it is
- * not reimplemented here.
+ * ── It never closes the table ───────────────────────────────────────────────
+ * See the note in the body. It reports `allPaid`; the waiter closes the table.
  */
 export async function recordPayments(
   tx: Tx,
@@ -101,8 +94,8 @@ export async function recordPayments(
   paidPaisa: number
   outstandingPaisa: number
   settled: boolean
-  sessionClosed: boolean
-  releasedTableIds: string[]
+  /** Every bill on the session paid, and nothing left unbilled. */
+  allPaid: boolean
 }> {
   const [bill] = await tx
     .select({ sessionId: bills.sessionId, totalPaisa: bills.totalPaisa })
@@ -137,54 +130,77 @@ export async function recordPayments(
   )
 
   const settled = tendered === outstanding
-  let sessionClosed = false
-  let releasedTableIds: string[] = []
 
-  if (settled && !(await hasUnbilledItems(tx, bill.sessionId))) {
-    // Every OTHER bill on the session must be paid as well — a seat bill
-    // generated an hour ago and never settled keeps the table open.
-    const sessionBills = await tx
-      .select({ id: bills.id, totalPaisa: bills.totalPaisa })
-      .from(bills)
-      .where(eq(bills.sessionId, bill.sessionId))
-    const paidByBill = new Map(
-      (
-        await tx
-          .select({
-            billId: paymentRecords.billId,
-            paid: sql<number>`sum(${paymentRecords.amountPaisa})::int`,
-          })
-          .from(paymentRecords)
-          .where(
-            inArray(
-              paymentRecords.billId,
-              sessionBills.map((row) => row.id),
-            ),
-          )
-          .groupBy(paymentRecords.billId)
-      ).map((row) => [row.billId, row.paid]),
-    )
-    const everyBillSettled = sessionBills.every(
-      (row) => (paidByBill.get(row.id) ?? 0) >= row.totalPaisa,
-    )
-
-    if (everyBillSettled) {
-      const closed = await closeSession(tx, {
-        sessionId: bill.sessionId,
-        staffId,
-        reason: 'settled',
-      })
-      sessionClosed = true
-      releasedTableIds = closed.releasedTableIds
-    }
-  }
+  // ── It does NOT close the table (code review D1, Teran, 2026-10-31) ──────
+  // It used to, the moment every bill was settled and nothing was unbilled.
+  // That emptied a table while guests were still at it — a four-top where only
+  // seat 1 had ordered, closed by seat 1 paying — and closed a bar tab mid-
+  // visit, losing its nickname with the next drink. The waiter now closes it:
+  // `allPaid` tells the bill screen to offer "All paid · Close table", and the
+  // close route re-checks it with `assertCloseMatchesPayment`.
+  const allPaid = settled && (await isFullyPaid(tx, bill.sessionId))
 
   return {
     billId,
     paidPaisa: paid + tendered,
     outstandingPaisa: outstanding - tendered,
     settled,
-    sessionClosed,
-    releasedTableIds,
+    allPaid,
   }
+}
+
+/**
+ * Is this order fully paid? At least one bill, every bill's payments summing
+ * to its total, and no unit of any item left off a bill.
+ *
+ * A bill of LKR 0 — free items, or comps covering everything — is paid by this
+ * rule with no payment at all (code review P1): nothing is owed on it.
+ */
+export async function isFullyPaid(tx: Tx, sessionId: string): Promise<boolean> {
+  if (await hasUnbilledItems(tx, sessionId)) return false
+
+  const sessionBills = await tx
+    .select({ id: bills.id, totalPaisa: bills.totalPaisa })
+    .from(bills)
+    .where(eq(bills.sessionId, sessionId))
+  if (sessionBills.length === 0) return false
+
+  const paidByBill = new Map(
+    (
+      await tx
+        .select({
+          billId: paymentRecords.billId,
+          paid: sql<number>`sum(${paymentRecords.amountPaisa})::int`,
+        })
+        .from(paymentRecords)
+        .where(inArray(paymentRecords.billId, sessionBills.map((row) => row.id)))
+        .groupBy(paymentRecords.billId)
+    ).map((row) => [row.billId, row.paid]),
+  )
+  return sessionBills.every((row) => (paidByBill.get(row.id) ?? 0) >= row.totalPaisa)
+}
+
+/** A `settled` close on an order that is not fully paid. */
+export class OrderNotSettledError extends Error {}
+/** A walkout or abandoned close on an order that IS fully paid. */
+export class OrderAlreadyPaidError extends Error {}
+
+/**
+ * The close reason must agree with the money (code review D1/P6).
+ *
+ * `settled` only when the order is fully paid — the server's word, not the
+ * screen's. And never `walkout` or `abandoned` once it is: More → Close table
+ * on a paid table would otherwise record a paid party as having run off.
+ *
+ * Call inside the close transaction, under `lockOpenSession`, so a payment
+ * cannot land between this check and the close.
+ */
+export async function assertCloseMatchesPayment(
+  tx: Tx,
+  { sessionId, reason }: { sessionId: string; reason: 'abandoned' | 'walkout' | 'settled' },
+): Promise<void> {
+  await lockOpenSession(tx, sessionId)
+  const paid = await isFullyPaid(tx, sessionId)
+  if (reason === 'settled' && !paid) throw new OrderNotSettledError()
+  if (reason !== 'settled' && paid) throw new OrderAlreadyPaidError()
 }

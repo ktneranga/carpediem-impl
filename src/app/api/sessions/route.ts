@@ -57,6 +57,8 @@ export async function POST(request: Request) {
   let body: unknown
   try {
     body = raw.trim() === '' ? undefined : JSON.parse(raw)
+    // `null` means "nothing", like an empty body (code review P5).
+    if (body === null) body = undefined
   } catch {
     return fail('INVALID_BODY', 'Request body must be JSON', 400)
   }

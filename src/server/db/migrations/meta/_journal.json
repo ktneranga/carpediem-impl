@@ -190,6 +190,13 @@
       "when": 1793356528328,
       "tag": "0026_glorious_steel_serpent",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1793428150749,
+      "tag": "0027_lock_event_in_quantity_trigger",
+      "breakpoints": true
     }
   ]
 }

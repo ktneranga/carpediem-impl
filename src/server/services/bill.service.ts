@@ -642,6 +642,11 @@ export async function generateSplitBill(
 ): Promise<BillDetail> {
   await lockOpenSession(tx, sessionId)
 
+  // A whole-table bill already took everything (code review P4). Say so, with
+  // its id — "refresh and try again" sent a stale tablet round in circles.
+  const consolidated = await findConsolidatedBill(tx, sessionId)
+  if (consolidated) throw new BillAlreadyOpenError(consolidated.id)
+
   // One entry per event; the screen never sends two, and two would be ambiguous.
   if (new Set(items.map((item) => item.eventId)).size !== items.length) {
     throw new ItemsNotBillableError()

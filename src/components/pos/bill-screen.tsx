@@ -287,6 +287,7 @@ export function BillScreen({
   billMode,
   bills,
   draft,
+  draftError = null,
   seats,
 }: {
   sessionId: string
@@ -294,6 +295,8 @@ export function BillScreen({
   billMode: 'one' | 'separate'
   bills: BillScreenBill[]
   draft: BillScreenDraft | null
+  /** Why the unbilled part could not be priced, when it could not (P2). */
+  draftError?: string | null
   seats: { id: string; name: string }[]
 }) {
   const router = useRouter()
@@ -546,6 +549,87 @@ export function BillScreen({
     setSplit({ view: 'whole', persons: [], allocation: {} })
   }
 
+  /**
+   * Writes the bill for a draft or a person's share, at Settle.
+   *
+   * If the total the server writes differs from the one shown — a round
+   * landed, or another tablet billed one of these items — it stops rather than
+   * charge the guest a figure they were not quoted, and returns null.
+   */
+  async function createBillFor(
+    payable: Extract<Payable, { kind: 'draft' | 'person' }>,
+  ): Promise<string | null> {
+    const expected = outstandingOf(payable)
+    const bill = await postJson<{ billId: string; totalPaisa: number }>(
+      `/api/sessions/${sessionId}/bills`,
+      payable.kind === 'draft'
+        ? { type: 'consolidated' }
+        : {
+            type: 'split',
+            personLabel: payable.title,
+            // A card may hold several events; the bill takes each event for
+            // exactly this person's units of it.
+            items: payable.lines.flatMap((line) =>
+              (members.get(line.orderEventId) ?? []).map((part) => ({
+                eventId: part.eventId,
+                quantity: part.qty,
+              })),
+            ),
+          },
+    )
+    if (bill.totalPaisa !== expected) {
+      setPaying(null)
+      setNotice(
+        `${payable.title}'s bill came to ${lkrFromPaisa(bill.totalPaisa)}, not ${lkrFromPaisa(
+          expected,
+        )}. It has been recorded — check it below and settle it.`,
+      )
+      router.refresh()
+      return null
+    }
+    return bill.billId
+  }
+
+  /**
+   * Settle a payable. With nothing due — free items, or comps covering it —
+   * there is no money to take (code review P1): the bill is recorded and is
+   * paid by definition, so the payment dialog is skipped.
+   */
+  async function settle(payable: Payable) {
+    if (outstandingOf(payable) > 0) {
+      setPaying(payable)
+      return
+    }
+    if (payable.kind === 'bill') return
+    try {
+      const billId = await createBillFor(payable)
+      if (!billId) return
+      if (payable.kind === 'person') removePerson(payable.key)
+      setNotice(null)
+      router.refresh()
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : 'Could not record the bill.')
+    }
+  }
+
+  const [closing, setClosing] = useState(false)
+  /** Close the table once everything is paid (code review D1). */
+  async function closeTable() {
+    setClosing(true)
+    try {
+      await postJson(`/api/sessions/${sessionId}/close`, { reason: 'settled' })
+      try {
+        window.localStorage.removeItem(storageKey)
+      } catch {
+        // Nothing to clean up, then.
+      }
+      router.push('/')
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : 'Could not close the table.')
+      setClosing(false)
+    }
+  }
+
   const unpaidBills = bills.filter((bill) => bill.paidPaisa < bill.totalPaisa)
   const paidBills = bills.filter((bill) => bill.paidPaisa >= bill.totalPaisa)
 
@@ -572,6 +656,9 @@ export function BillScreen({
     bills.reduce((total, bill) => total + bill.totalPaisa, 0) + (draft?.totalPaisa ?? 0)
   const settled = bills.reduce((total, bill) => total + Math.min(bill.paidPaisa, bill.totalPaisa), 0)
   const outstanding = billTotal - settled
+  // Every bill paid and nothing unbilled. A draft that could not be priced
+  // counts as not paid — something is still owed that the screen cannot show.
+  const allPaid = bills.length > 0 && outstanding === 0 && draft === null && !draftError
   const allLines = [...bills.flatMap((bill) => bill.lines), ...draftLines]
   const inSplit = split.view === 'split' && draft !== null
 
@@ -652,12 +739,12 @@ export function BillScreen({
 
       {/* ── Body ───────────────────────────────────────────────────────────── */}
       <main className="flex min-h-0 flex-1 flex-col gap-sp-4 overflow-y-auto p-sp-4">
-        {notice ? (
+        {notice || draftError ? (
           <p
             role="status"
             className="rounded-control bg-occupied-chip px-sp-4 py-sp-3 text-fs-14 font-semibold text-occupied-ink"
           >
-            {notice}
+            {notice ?? draftError}
           </p>
         ) : null}
 
@@ -669,7 +756,7 @@ export function BillScreen({
                 <ItemList lines={bill.lines} />
                 <ColumnFooter
                   totals={bill}
-                  onSettle={() => setPaying({ kind: 'bill', key: bill.billId, title: bill.label, bill })}
+                  onSettle={() => settle({ kind: 'bill', key: bill.billId, title: bill.label, bill })}
                   due={bill.totalPaisa - bill.paidPaisa}
                 />
               </Column>
@@ -727,7 +814,7 @@ export function BillScreen({
                       totals={totals}
                       due={totals.totalPaisa}
                       onSettle={() =>
-                        setPaying({ kind: 'person', key: person.id, title: person.label, lines, totals })
+                        settle({ kind: 'person', key: person.id, title: person.label, lines, totals })
                       }
                     />
                   ) : (
@@ -787,7 +874,7 @@ export function BillScreen({
               <TotalsCard
                 totals={totalsOf(wholePayables[0]!)}
                 paidPaisa={wholePayables[0]!.kind === 'bill' ? wholePayables[0]!.bill.paidPaisa : 0}
-                onSettle={() => setPaying(wholePayables[0]!)}
+                onSettle={() => settle(wholePayables[0]!)}
               />
               {/* Offered from two DRINKS, not two lines: "2× Lion Lager" is one
                   line, and since migration 0025 the split gives one to each
@@ -806,7 +893,7 @@ export function BillScreen({
                 <TotalsCard
                   totals={totalsOf(payable)}
                   paidPaisa={payable.kind === 'bill' ? payable.bill.paidPaisa : 0}
-                  onSettle={() => setPaying(payable)}
+                  onSettle={() => settle(payable)}
                 />
                 {payable.kind === 'draft' && itemCount(draftLines) >= 2 ? (
                   <SplitCard onSplit={startSplit} />
@@ -880,7 +967,24 @@ export function BillScreen({
             </div>
           </div>
         }
-      />
+      >
+        {/* As design 27 draws it: always present, disabled until the order is
+            fully paid. The server re-checks before it closes (NOT_SETTLED),
+            and records the close as `settled`. */}
+        <button
+          type="button"
+          disabled={!allPaid || closing}
+          onClick={closeTable}
+          className={cn(
+            'h-touch-waiter min-w-40 rounded-waiter px-sp-5 text-fs-16 font-bold',
+            'transition-transform duration-80 ease-standard active:scale-[0.97]',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+            allPaid ? 'bg-brand-800 text-white shadow-el-2' : 'bg-slate-100 text-slate-400',
+          )}
+        >
+          {closing ? 'Closing…' : allPaid ? 'All paid · Close table' : 'Close table'}
+        </button>
+      </ActionStripShell>
 
       {paying ? (
         <PaymentDialog
@@ -888,59 +992,14 @@ export function BillScreen({
           duePaisa={outstandingOf(paying)}
           onCancel={() => setPaying(null)}
           onPay={async (tenders) => {
-            // A draft or a person's share becomes a bill only now, at Settle.
-            // If the total the server writes differs from the one shown — a
-            // round landed, or another tablet billed one of these items — stop
-            // rather than charge the guest a figure they were not quoted.
-            let billId: string
-            if (paying.kind === 'bill') {
-              billId = paying.bill.billId
-            } else {
-              const expected = outstandingOf(paying)
-              const bill = await postJson<{ billId: string; totalPaisa: number }>(
-                `/api/sessions/${sessionId}/bills`,
-                paying.kind === 'draft'
-                  ? { type: 'consolidated' }
-                  : {
-                      type: 'split',
-                      personLabel: paying.title,
-                      // A card may hold several events; the bill takes each
-                      // event for exactly this person's units of it.
-                      items: paying.lines.flatMap((line) =>
-                        (members.get(line.orderEventId) ?? []).map((part) => ({
-                          eventId: part.eventId,
-                          quantity: part.qty,
-                        })),
-                      ),
-                    },
-              )
-              if (bill.totalPaisa !== expected) {
-                setPaying(null)
-                setNotice(
-                  `${paying.title}'s bill came to ${lkrFromPaisa(bill.totalPaisa)}, not ${lkrFromPaisa(
-                    expected,
-                  )}. It has been recorded — check it below and settle it.`,
-                )
-                router.refresh()
-                return
-              }
-              billId = bill.billId
-            }
+            const billId =
+              paying.kind === 'bill' ? paying.bill.billId : await createBillFor(paying)
+            if (!billId) return
 
-            const result = await postJson<{ sessionClosed: boolean }>(
-              `/api/bills/${billId}/payments`,
-              { tenders },
-            )
+            await postJson<{ allPaid: boolean }>(`/api/bills/${billId}/payments`, { tenders })
             setPaying(null)
-            if (result.sessionClosed) {
-              try {
-                window.localStorage.removeItem(storageKey)
-              } catch {
-                // Nothing to clean up, then.
-              }
-              router.push('/')
-              return
-            }
+            // Paying never closes the table (code review D1). When everything
+            // is paid the refreshed screen offers Close table in the bar.
             // That person is paid: their column goes, and their items are on a
             // bill now, so the draft the server sends back no longer has them.
             if (paying.kind === 'person') removePerson(paying.key)
@@ -1203,7 +1262,7 @@ function ColumnFooter({
           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
         )}
       >
-        Settle {lkrFromPaisa(due)}
+        {due > 0 ? `Settle ${lkrFromPaisa(due)}` : 'Record LKR 0 bill'}
       </button>
     </div>
   )
@@ -1333,7 +1392,7 @@ function TotalsCard({
           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
         )}
       >
-        Settle {lkrFromPaisa(due)}
+        {due > 0 ? `Settle ${lkrFromPaisa(due)}` : 'Record LKR 0 bill'}
       </button>
     </section>
   )

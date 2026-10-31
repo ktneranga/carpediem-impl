@@ -10,6 +10,11 @@ import {
   CLIENT_CLOSE_REASONS,
 } from '@/server/services/table-session.service'
 import { emitTableStatusChanged } from '@/server/socket/events'
+import {
+  assertCloseMatchesPayment,
+  OrderAlreadyPaidError,
+  OrderNotSettledError,
+} from '@/server/services/payment.service'
 
 const tableIdSchema = z.string().uuid()
 
@@ -22,7 +27,10 @@ const tableIdSchema = z.string().uuid()
  * through the audit trail this product is built on.
  */
 const closeBodySchema = z.object({
-  reason: z.enum(CLIENT_CLOSE_REASONS),
+  // `settled` is accepted since code review D1 (2026-10-31): paying no longer
+  // closes the table, so the waiter does — and the server checks the order is
+  // really fully paid before recording it so (`assertCloseMatchesPayment`).
+  reason: z.enum([...CLIENT_CLOSE_REASONS, 'settled']),
 })
 
 function fail(code: string, message: string, status: number) {
@@ -75,7 +83,7 @@ export async function POST(
 
   const parsedBody = closeBodySchema.safeParse(body)
   if (!parsedBody.success) {
-    return fail('INVALID_BODY', 'reason must be "abandoned" or "walkout"', 400)
+    return fail('INVALID_BODY', 'reason must be "abandoned", "walkout" or "settled"', 400)
   }
   const { reason } = parsedBody.data
 
@@ -138,11 +146,23 @@ export async function POST(
     let releasedTableIds: string[]
     try {
       const result = await db.transaction((tx) =>
-        closeSession(tx, { sessionId: session.id, staffId, reason }),
+        assertCloseMatchesPayment(tx, { sessionId: session.id, reason }).then(() =>
+          closeSession(tx, { sessionId: session.id, staffId, reason }),
+        ),
       )
       closedAt = result.closedAt
       releasedTableIds = result.releasedTableIds
     } catch (error) {
+      if (error instanceof OrderNotSettledError) {
+        return fail('NOT_SETTLED', 'This order is not fully paid yet', 409)
+      }
+      if (error instanceof OrderAlreadyPaidError) {
+        return fail(
+          'ALREADY_PAID',
+          'This order is paid — close it as settled from the bill screen',
+          409,
+        )
+      }
       if (error instanceof SessionAlreadyClosedError) {
         // Another device won the race between our read and the UPDATE.
         return fail('SESSION_ALREADY_CLOSED', 'This table has no open session', 409)
