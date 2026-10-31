@@ -91,7 +91,7 @@ development_status:
   # Added 2026-10-31 by sprint-change-proposal-2026-10-31.md
   4-6-implement-bar-tabs: done  # code-reviewed 2026-10-31 (server + UI), fixes applied
   4-7-implement-bar-menu-and-drinks-pill: done  # code-reviewed 2026-10-31 (server + UI), fixes applied
-  4-8-implement-priced-options: backlog
+  4-8-implement-priced-options: ready-for-dev
   4-9-implement-custom-charge: backlog
   epic-4-retrospective: done
 
