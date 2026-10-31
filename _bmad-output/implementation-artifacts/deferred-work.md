@@ -253,3 +253,9 @@
   attributed with a financial document. A deactivated or another tenant's staff id is accepted; an unknown
   one produces an FK 500 rather than a 400. Consistent across every route in the app, so this is a
   project-wide decision rather than a 6.4 defect, but billing is where it first costs something.
+
+## Deferred from: code review of sprint-change-proposal-2026-10-31 — server chunk (2026-10-31)
+
+- **A comp on an event split by quantity lands wholly on the bill that takes the last unit** [`src/server/services/bill.service.ts` priceBillable `finishing`] — Story 6.3 wants each person's comps on their own bill. Guest A paying 1 of a comped "2×" gets no comp; guest B gets all of it, and B's bill can exceed its line and hit `CompsExceedOrderError`, after which that unit can never be billed. Latent: nothing writes `comp_records` until Epic 7. Fix with Epic 7: pro-rate a comp per unit (remainder on the last unit) when an event is billed in parts.
+- **No idempotency key on payments** [`src/app/api/bills/[billId]/payments/route.ts`] — a retried PARTIAL payment (network retry, double tap) records twice; the overpayment guard only catches it once the total is reached, and `payment_records` is append-only. The bill screen always pays the full outstanding in one request, so a retry is refused as settled/closed today; only a direct API client can hit it. Fix: a client `paymentId` with a unique index, as orders use `submissionId`.
+- **A trigger violation reports the wrong conflict when the session lock is bypassed** [`bill.service.ts` buildBill catch; seat-bill route] — a `bill_lines_within_event_quantity` violation on a consolidated bill re-reads only consolidated bills (empty or unrelated `billId`), and on the seat path becomes a 500. Unreachable while every writer holds `lockOpenSession`.
