@@ -151,6 +151,27 @@ async function main() {
   }
   check('a null field in a stored payload does not poison the job', threw === '', threw)
 
+  // ── Priced options (Story 4.8) ────────────────────────────────────────────
+  const longOption = 'Extra shot of the house single-origin espresso, pulled short'
+  const optioned = text(buildTicket(ticket({
+    lines: [
+      { eventId: 'o', name: 'Mojito', quantity: 1, options: ['Double shot', 'No ice'], modifierText: 'less sugar', seatLabel: 'Seat 1', seatNote: null },
+      { eventId: 'p', name: 'Cappuccino', quantity: 1, options: [longOption, '🍮'], modifierText: null, seatLabel: 'Seat 1', seatNote: null },
+      // A job queued before 4.8: no `options` field at all.
+      { eventId: 'q', name: 'Crab Curry', quantity: 1, modifierText: null, seatLabel: 'Seat 2', seatNote: null },
+    ],
+  })))
+  const printed = optioned.split('\n').map((line) => line.replace(/[\x00-\x1f]/g, ''))
+  const at = (needle: string) => printed.findIndex((line) => line.includes(needle))
+  check('each option prints on its own line under the dish',
+    at('1 x Mojito') >= 0 && at('- Double shot') === at('1 x Mojito') + 1 && at('- No ice') === at('1 x Mojito') + 2,
+    JSON.stringify(printed))
+  check('options print BEFORE the waiter’s note', at('- No ice') < at('- less sugar'))
+  check('a long option wraps and every line fits the paper',
+    optioned.includes('pulled short') && printed.every((line) => line.length <= PAPER_COLUMNS))
+  check('an option that folds to nothing still prints a marker', printed.some((line) => line.trim() === '- (option)'))
+  check('a legacy line with no options still prints', at('1 x Crab Curry') >= 0)
+
   // ── The socket (AC-3) ─────────────────────────────────────────────────────
   const printer = await startFakePrinter('accept')
   await escposTcpTransport('127.0.0.1', printer.port).deliver(ticket())

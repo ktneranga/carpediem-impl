@@ -1,6 +1,6 @@
 # Story 4.8: Implement Priced Options
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -108,134 +108,134 @@ alcohol shot is LKR 1,000.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Schema and migration (AC: 1, 9, 11)**
-  - [ ] `pgEnum('modifier_selection', ['single', 'multi'])`.
-  - [ ] `modifier_groups`: id, tenantId (→ tenants, indexed), menuItemId (→ menu_items,
+- [x] **Task 1 — Schema and migration (AC: 1, 9, 11)**
+  - [x] `pgEnum('modifier_selection', ['single', 'multi'])`.
+  - [x] `modifier_groups`: id, tenantId (→ tenants, indexed), menuItemId (→ menu_items,
         indexed), name, selection, isRequired (default false), displayOrder (default 0),
         isActive (default true). MUTABLE config table — no append-only trigger.
-  - [ ] `modifier_options`: id, tenantId (indexed), groupId (→ modifier_groups,
+  - [x] `modifier_options`: id, tenantId (indexed), groupId (→ modifier_groups,
         indexed), name, priceDeltaPaisa `integer notNull default 0`, isDefault (default
         false), isAvailable (default true), displayOrder (default 0).
-  - [ ] `order_events.options jsonb` nullable (`$type<OrderEventOption[]>`) — NO FKs in
+  - [x] `order_events.options jsonb` nullable (`$type<OrderEventOption[]>`) — NO FKs in
         it; NULL means none. `bill_lines.option_text text` nullable.
-  - [ ] `pnpm db:generate` → migration 0028 (generated name is fine). `ADD COLUMN` on
+  - [x] `pnpm db:generate` → migration 0028 (generated name is fine). `ADD COLUMN` on
         the append-only tables is DDL and is NOT blocked; do NOT backfill (NULL = none).
-  - [ ] Update the doc block on `orderEvents.modifierText` (schema.ts ~459-468) — it
+  - [x] Update the doc block on `orderEvents.modifierText` (schema.ts ~459-468) — it
         says no modifier model exists; it does now.
-  - [ ] `pnpm db:migrate`.
+  - [x] `pnpm db:migrate`.
 
-- [ ] **Task 2 — The shared price helper (AC: 2, 8)**
-  - [ ] New `src/lib/options.ts`, NO server imports (imported by client and server):
+- [x] **Task 2 — The shared price helper (AC: 2, 8)**
+  - [x] New `src/lib/options.ts`, NO server imports (imported by client and server):
         `unitPriceFor(basePaisa, chosen: {priceDeltaPaisa}[])` →
         `Math.max(0, base + Σ)`; `optionText(chosen: {name}[])` → `"Double shot, No ice"`;
         `defaultOptionIds(groups)`; `validateSelection(groups, optionIds)` returning the
         first problem `{ reason, groupId?, optionId? }` or null (unknown/foreign option,
         unavailable, duplicate, >1 in single, missing required).
-  - [ ] Types `ModifierGroupRow` / `ModifierOptionRow` / `OrderEventOption` in
+  - [x] Types `ModifierGroupRow` / `ModifierOptionRow` / `OrderEventOption` in
         `src/types/orders.ts` (keep that file import-free).
-  - [ ] Signed formatter in `src/lib/format.ts`: `signedLkrFromPaisa(delta)` →
+  - [x] Signed formatter in `src/lib/format.ts`: `signedLkrFromPaisa(delta)` →
         `"+LKR 1,000"`, `"−LKR 1,000"` (U+2212), `""` for 0. Do not reuse `deduction()`
         (takes rupees, drops "LKR").
 
-- [ ] **Task 3 — Menu API (AC: 3)**
-  - [ ] `MenuItemRow.modifierGroups: ModifierGroupRow[]` (required, `[]` when none).
-  - [ ] Load groups (`isActive`) + options for the tenant in a second query, ordered by
+- [x] **Task 3 — Menu API (AC: 3)**
+  - [x] `MenuItemRow.modifierGroups: ModifierGroupRow[]` (required, `[]` when none).
+  - [x] Load groups (`isActive`) + options for the tenant in a second query, ordered by
         displayOrder, name; attach in the existing Map assembly. Unavailable options
         returned with `available: false`.
-  - [ ] Preserve: unavailable items returned; single fetch; the socket patch spreads
+  - [x] Preserve: unavailable items returned; single fetch; the socket patch spreads
         `...item` so the new field survives.
 
-- [ ] **Task 4 — Staged round (AC: 7)**
-  - [ ] `StagedLine` gains `optionIds: string[]` (sorted) and
+- [x] **Task 4 — Staged round (AC: 7)**
+  - [x] `StagedLine` gains `optionIds: string[]` (sorted) and
         `options: { id, name, priceDeltaPaisa }[]` (display snapshot); `pricePaisa` is now
         the computed UNIT price.
-  - [ ] `addLine(item, { seatSlotId, seatLabel, quantity?, modifierText?, optionIds? })`:
+  - [x] `addLine(item, { seatSlotId, seatLabel, quantity?, modifierText?, optionIds? })`:
         default to `defaultOptionIds(item.modifierGroups)` when `optionIds` is undefined;
         compute price with `unitPriceFor`; merge only when `optionIds.join()` also matches.
-  - [ ] `readStorage`: a missing `optionIds`/`options` reads as `[]` (precedent:
+  - [x] `readStorage`: a missing `optionIds`/`options` reads as `[]` (precedent:
         `seatLabel`, ~:128); present values validated (array of strings / objects). NO
         storage-prefix bump — a bump would drop unsent rounds mid-service at deploy.
-  - [ ] `acceptPrice(lineId, unitPricePaisa)` — per LINE, not per menuItemId.
-  - [ ] Preserve: `newId()` non-secure fallback, `write()` resetting the send id,
+  - [x] `acceptPrice(lineId, unitPricePaisa)` — per LINE, not per menuItemId.
+  - [x] Preserve: `newId()` non-secure fallback, `write()` resetting the send id,
         `clearSentLines`, the `MAX_LINE_QUANTITY` cap, functional updates.
 
-- [ ] **Task 5 — Card and sheet (AC: 4, 5, 6)**
-  - [ ] `menu-item-card.tsx`: tap adds with defaults; if `validateSelection(groups,
+- [x] **Task 5 — Card and sheet (AC: 4, 5, 6)**
+  - [x] `menu-item-card.tsx`: tap adds with defaults; if `validateSelection(groups,
         defaultOptionIds(groups))` reports a missing required group, the tap calls
         `onOpenModifiers` instead. Options dot when `modifierGroups.length > 0`. Update
         the options button aria-label ("with options, a note or a quantity").
-  - [ ] `modifier-sheet.tsx`: chip rows per group (required first, marked "Required"),
+  - [x] `modifier-sheet.tsx`: chip rows per group (required first, marked "Required"),
         signed deltas, disabled unavailable chips, live unit price + line total,
         Add disabled until valid; `onAdd({ quantity, modifierText, optionIds })`.
         Chips ≥ 56px tall (the system's waiter touch floor). Import
         `MAX_MODIFIER_TEXT` from `@/types/orders` (remove the local copy).
-  - [ ] Preserve: native `<dialog>` + `showModal`, Escape → cancel, the two-ended
+  - [x] Preserve: native `<dialog>` + `showModal`, Escape → cancel, the two-ended
         backdrop press, `h-app`/`w-app` centring, the quantity stepper, the note.
 
-- [ ] **Task 6 — Order screen and staged list (AC: 12)**
-  - [ ] `stagedProblems`: per line, recompute from the live item + live options:
+- [x] **Task 6 — Order screen and staged list (AC: 12)**
+  - [x] `stagedProblems`: per line, recompute from the live item + live options:
         missing/unavailable option → `{ kind: 'option-unavailable', optionName }`;
         computed unit ≠ `line.pricePaisa` → `price-changed` with the new UNIT price.
         Still nothing flagged while the menu is undefined; seat checks still first.
-  - [ ] Send body adds `optionIds`; `quotedPricePaisa` stays the line's unit price.
-  - [ ] `PRICE_CHANGED` / `OPTION_INVALID` handling locates the line by `lineIndex`
+  - [x] Send body adds `optionIds`; `quotedPricePaisa` stays the line's unit price.
+  - [x] `PRICE_CHANGED` / `OPTION_INVALID` handling locates the line by `lineIndex`
         (the server echoes it), not `lines.find(menuItemId)`.
-  - [ ] `staged-round-list.tsx`: show the options (before the note) on each row; the
+  - [x] `staged-round-list.tsx`: show the options (before the note) on each row; the
         `option-unavailable` message; Accept per line (`onAcceptPrice(lineId, price)`).
-  - [ ] Pass `optionIds` from the sheet's `onAdd` through `stageItem`.
+  - [x] Pass `optionIds` from the sheet's `onAdd` through `stageItem`.
 
-- [ ] **Task 7 — Server submission (AC: 8, 9)**
-  - [ ] `orders/route.ts` schema: `optionIds: z.array(z.string().uuid()).max(20).default([])`;
+- [x] **Task 7 — Server submission (AC: 8, 9)**
+  - [x] `orders/route.ts` schema: `optionIds: z.array(z.string().uuid()).max(20).default([])`;
         map `OptionInvalidError` → 422 `OPTION_INVALID`; add `lineIndex` to the
         `PRICE_CHANGED` body. Keep the unique-violation ordering comment intact.
-  - [ ] `order.service.ts submitRound`: after the menu items' `FOR SHARE` read, read
+  - [x] `order.service.ts submitRound`: after the menu items' `FOR SHARE` read, read
         their groups and options `FOR SHARE` in the same transaction; per line, in line
         order: `validateSelection` → `OptionInvalidError(itemId, lineIndex, …)`;
         `unitPriceFor` → compare with `quotedPricePaisa` → `PriceChangedError(itemId,
         unit, lineIndex)`. Write `unitPricePaisa: unit` and `options: [snapshot]`.
-  - [ ] Keep: replay-before-lock, line-order reporting, the Epic 8 placeholder position,
+  - [x] Keep: replay-before-lock, line-order reporting, the Epic 8 placeholder position,
         `print_jobs` in the same transaction, emit only after commit.
-  - [ ] `types/orders.ts`: `SubmitRoundLine.optionIds?`, error code `OPTION_INVALID`,
+  - [x] `types/orders.ts`: `SubmitRoundLine.optionIds?`, error code `OPTION_INVALID`,
         `TicketLine.options?: string[]` (OPTIONAL — queued jobs predate it),
         `SubmittedItemRow.optionText`.
 
-- [ ] **Task 8 — Tickets (AC: 10)**
-  - [ ] `order.service.ts byDestination`: `TicketLine.options = snapshot names`.
-  - [ ] `print/ticket.ts sanitizeLine`: sanitise every option string.
-  - [ ] `print/escpos.ts buildTicket.item()`: after `"{qty} x {name}"`, one
+- [x] **Task 8 — Tickets (AC: 10)**
+  - [x] `order.service.ts byDestination`: `TicketLine.options = snapshot names`.
+  - [x] `print/ticket.ts sanitizeLine`: sanitise every option string.
+  - [x] `print/escpos.ts buildTicket.item()`: after `"{qty} x {name}"`, one
         `"- {option}"` line per option (fold to ASCII FIRST, then `wrapLine` at
         indent+3), then the note. Guard with `Array.isArray(line.options)`. A name that
         folds to empty prints `"- (option)"`.
-  - [ ] `print/transport.ts renderTicketText`: the same, in step.
-  - [ ] `verify-escpos.ts`: add a case with options (incl. a long one that wraps and a
+  - [x] `print/transport.ts renderTicketText`: the same, in step.
+  - [x] `verify-escpos.ts`: add a case with options (incl. a long one that wraps and a
         legacy line with no `options` field).
 
-- [ ] **Task 9 — History and bill (AC: 11)**
-  - [ ] `submitted-rounds.ts` + `round-history.tsx`: select `options`, render the names.
-  - [ ] `bill.service.ts`: select `orderEvents.options` in `collectBillable`; snapshot
+- [x] **Task 9 — History and bill (AC: 11)**
+  - [x] `submitted-rounds.ts` + `round-history.tsx`: select `options`, render the names.
+  - [x] `bill.service.ts`: select `orderEvents.options` in `collectBillable`; snapshot
         `optionText(options)` into `bill_lines.option_text` in `buildBill`; return it from
         `buildBill` and `getBill`. Money unchanged (unit price already includes deltas).
-  - [ ] `types/bills.ts BillLineDetail.optionText`; `bill/page.tsx` maps it for recorded
+  - [x] `types/bills.ts BillLineDetail.optionText`; `bill/page.tsx` maps it for recorded
         and draft lines; `bill-screen.tsx` `BillScreenLine.optionText`, `dishKey` includes
         it, and it renders on lines and split cards (before the note).
 
-- [ ] **Task 10 — Seeds (AC: 13)**
-  - [ ] `bar-menu.ts`: `SeedItem.modifierGroups?`; the options in AC 13; update the
+- [x] **Task 10 — Seeds (AC: 13)**
+  - [x] `bar-menu.ts`: `SeedItem.modifierGroups?`; the options in AC 13; update the
         "Stage B" comment.
-  - [ ] `seed.ts`: `.returning({ id })` on the item insert, then insert groups/options.
-  - [ ] `seed-bar-menu.ts`: for every bar item (found OR created), ensure each group by
+  - [x] `seed.ts`: `.returning({ id })` on the item insert, then insert groups/options.
+  - [x] `seed-bar-menu.ts`: for every bar item (found OR created), ensure each group by
         (item, name) and each option by (group, name) — idempotent; second run changes
         nothing.
-  - [ ] Run it on the dev database.
+  - [x] Run it on the dev database.
 
-- [ ] **Task 11 — Verification (AC: 14)**
-  - [ ] New `src/server/services/verify-options.ts` (matrix below), on the
+- [x] **Task 11 — Verification (AC: 14)**
+  - [x] New `src/server/services/verify-options.ts` (matrix below), on the
         `verify-bills.ts` pattern; its own item in an INACTIVE category so live tablets
         never see it; cleanup deletes its order_events with triggers disabled in
         try/finally, then options, groups, item, category.
-  - [ ] Re-run `verify-bills.ts`; pin its `firstItem` / `addItem` queries to items with
+  - [x] Re-run `verify-bills.ts`; pin its `firstItem` / `addItem` queries to items with
         NO required groups if they now pick one.
-  - [ ] `pnpm exec tsc --noEmit`, `pnpm lint`, the three verify scripts.
+  - [x] `pnpm exec tsc --noEmit`, `pnpm lint`, the three verify scripts.
 
 ## Dev Notes
 
@@ -363,10 +363,66 @@ commit per concern, long explanatory commit messages, verification recorded in t
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
+
+- `verify-options.ts`: 21/21 passed (all 13 matrix cases).
+- `verify-escpos.ts`: 46/46 passed (5 new option checks).
+- `verify-bills.ts`: 119/119 passed after pinning its sent dish to one with no required group.
+- `seed-bar-menu.ts` on the dev DB: 11 groups, 22 options created; second run created nothing.
+- `pnpm exec tsc --noEmit` clean; `pnpm lint` 0 errors, 1 pre-existing warning (`src/server/socket/index.ts`).
 
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created.
+- One pricing rule for client and server: `src/lib/options.ts` (`unitPriceFor` clamps at 0, `validateSelection`, `defaultOptionIds`, `chosenOptions`, `optionText`, `sortIds`).
+- Schema (migration 0028): `modifier_groups`, `modifier_options`, `order_events.options` jsonb snapshot, `bill_lines.option_text`.
+- Menu API returns `modifierGroups` per item via the shared `loadModifierGroups` (the send reads the same rows `FOR SHARE`).
+- Card: one tap adds with the defaults (Single); opens the sheet only when a required group has no available default. Brand dot marks dishes with options.
+- Sheet: chip groups (radio/checkbox), required first with a badge, live unit price and line total, Add disabled with "Choose {group} to add this." until valid.
+- Staged round: lines carry sorted `optionIds` and an `options` snapshot; same dish with different options is a separate line; Accept price is now per LINE. Old staged rounds read as "no options" (no storage-key bump).
+- Order screen: stale check recomputes against live options (option-unavailable / options-changed / price-changed with the unit price); refusals located by `lineIndex`; new `OPTION_INVALID` handling.
+- Server: `OptionInvalidError` → 422 `OPTION_INVALID {itemId, lineIndex, reason, optionId?, groupId?}`; `PRICE_CHANGED` now carries the unit price and `lineIndex`; event written at the server's unit price with the options snapshot (NULL when none).
+- Tickets: one "- option" line per option before the note, folded then wrapped; legacy jobs without `options` still print.
+- History and bill: option text shown in round history, snapshotted onto `bill_lines.option_text`, returned by POST and GET bill; bill screen's `dishKey` includes options.
+- Seeds: AC 13 options via shared `ensureModifierGroups` (idempotent by name) used by both `seed.ts` and `seed-bar-menu.ts`.
+- Deviation: matrix case 3 expected `reason: 'foreign'`; another dish's option reports `reason: 'unknown'` (it is not an option of this dish — the same refusal as a retired or made-up id). The verify script asserts `unknown`.
 
 ### File List
+
+- src/lib/options.ts (new)
+- src/lib/format.ts
+- src/types/orders.ts
+- src/types/bills.ts
+- src/server/db/schema.ts
+- src/server/db/migrations/0028_new_longshot.sql (new)
+- src/server/db/migrations/meta/0028_snapshot.json (new)
+- src/server/db/migrations/meta/_journal.json
+- src/server/db/bar-menu.ts
+- src/server/db/seed.ts
+- src/server/db/seed-bar-menu.ts
+- src/server/orders/modifier-groups.ts (new)
+- src/server/orders/submitted-rounds.ts
+- src/server/services/order.service.ts
+- src/server/services/bill.service.ts
+- src/server/services/verify-options.ts (new)
+- src/server/services/verify-bills.ts
+- src/server/print/ticket.ts
+- src/server/print/escpos.ts
+- src/server/print/transport.ts
+- src/server/print/verify-escpos.ts
+- src/app/api/menu/route.ts
+- src/app/api/sessions/[sessionId]/orders/route.ts
+- src/app/orders/[sessionId]/bill/page.tsx
+- src/components/pos/menu-item-card.tsx
+- src/components/pos/modifier-sheet.tsx
+- src/components/pos/use-staged-round.ts
+- src/components/pos/order-screen.tsx
+- src/components/pos/staged-round-list.tsx
+- src/components/pos/round-history.tsx
+- src/components/pos/bill-screen.tsx
+
+## Change Log
+
+- 2026-10-31: Story 4.8 implemented — priced options end to end (menu, sheet, staged round, server validation and pricing, tickets, history, bill, seeds, verification). Status → review.

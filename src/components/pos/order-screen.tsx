@@ -41,6 +41,7 @@ import { elapsedMinutesFrom, useMinuteTick } from '@/hooks/use-minute-tick'
 import { useSocketEvent, useSocketRoom } from '@/hooks/use-socket'
 import { signOut } from '@/lib/auth-client'
 import { clockTime, elapsed } from '@/lib/format'
+import { chosenOptions, unitPriceFor, validateSelection } from '@/lib/options'
 import { cn } from '@/lib/utils'
 
 export type OrderScreenProps = {
@@ -711,14 +712,33 @@ export function OrderScreen({
     const known = menuItemsById.get(line.menuItemId)
     if (!known) stagedProblems.set(line.lineId, { kind: 'item-gone' })
     else if (!known.available) stagedProblems.set(line.lineId, { kind: 'item-unavailable' })
-    // The server refuses a send whose quoted price differs from the menu's
-    // (Story 4.5, AC-9). Showing it here, before the tap, turns a refusal into
-    // a one-tap confirmation.
-    else if (known.pricePaisa !== line.pricePaisa) {
-      stagedProblems.set(line.lineId, {
-        kind: 'price-changed',
-        currentPricePaisa: known.pricePaisa,
-      })
+    else {
+      // ── The options, against the LIVE menu (Story 4.8) ──────────────────
+      // The same checks and the same price rule the server applies, so a
+      // refusal becomes a flag here before the tap.
+      const groups = known.modifierGroups ?? []
+      const liveOption = new Map(
+        groups.flatMap((group) => group.options).map((option) => [option.id, option]),
+      )
+      const goneId = line.optionIds.find((id) => !liveOption.get(id)?.available)
+      if (goneId) {
+        stagedProblems.set(line.lineId, {
+          kind: 'option-unavailable',
+          optionName:
+            line.options.find((option) => option.id === goneId)?.name ?? 'An option',
+        })
+      } else if (validateSelection(groups, line.optionIds)) {
+        stagedProblems.set(line.lineId, { kind: 'options-changed' })
+      } else {
+        // The server refuses a send whose quoted price differs from what it
+        // computes (Story 4.5, AC-9). The UNIT price — dish plus options —
+        // since 4.8: comparing the dish's base price alone flagged every
+        // optioned line "price changed" for ever and blocked Send.
+        const unit = unitPriceFor(known.pricePaisa, chosenOptions(groups, line.optionIds))
+        if (unit !== line.pricePaisa) {
+          stagedProblems.set(line.lineId, { kind: 'price-changed', currentPricePaisa: unit })
+        }
+      }
     }
   }
 
@@ -729,7 +749,7 @@ export function OrderScreen({
   function stageItem(
     item: MenuItemRow,
     seat: SeatSlot | null,
-    options?: { quantity?: number; modifierText?: string },
+    options?: { quantity?: number; modifierText?: string; optionIds?: string[] },
   ) {
     // Staging against no seat would produce a line Story 4.5 could not write.
     if (!seat) {
@@ -769,6 +789,12 @@ export function OrderScreen({
 
   /** The dish a refusal points at, by name, when the round still holds it. */
   function refusedDishName(detail: Record<string, unknown>): string | null {
+    // By LINE first (Story 4.8): with options, one dish can be on two lines —
+    // a Single and a Double Mojito — and the item id alone names either.
+    if (Number.isInteger(detail.lineIndex)) {
+      const line = lines[detail.lineIndex as number]
+      if (line) return line.name
+    }
     const itemId = typeof detail.itemId === 'string' ? detail.itemId : null
     if (!itemId) return null
     return lines.find((line) => line.menuItemId === itemId)?.name ?? null
@@ -790,6 +816,8 @@ export function OrderScreen({
           seatSlotId: line.seatSlotId,
           quantity: line.quantity,
           modifierText: line.modifierText,
+          optionIds: line.optionIds,
+          // The UNIT price, options included — the server computes the same.
           quotedPricePaisa: line.pricePaisa,
         })),
       })
@@ -855,6 +883,17 @@ export function OrderScreen({
               text: dish
                 ? `Not sent — ${dish} is no longer available. Take it off and send again.`
                 : 'Not sent — a dish is no longer available. Take it off and send again.',
+              forLines: lines,
+            })
+            return
+          case 'OPTION_INVALID':
+            // The menu's options moved under the round (Story 4.8). Refetch: the
+            // line then flags itself and says which option.
+            void queryClient.invalidateQueries({ queryKey: menuQueryOptions.queryKey })
+            setSendNote({
+              text: dish
+                ? `Not sent — the options for ${dish} have changed. Fix it and send again.`
+                : 'Not sent — a dish\'s options have changed. Fix it and send again.',
               forLines: lines,
             })
             return
@@ -1603,8 +1642,8 @@ export function OrderScreen({
           // Where the waiter never chose a seat, naming one is noise.
           seatLabel={usesSeats ? seatName(sheetSeat) : null}
           onCancel={() => setSheet(null)}
-          onAdd={({ quantity: lineQuantity, modifierText }) => {
-            stageItem(sheet.item, sheetSeat, { quantity: lineQuantity, modifierText })
+          onAdd={({ quantity: lineQuantity, modifierText, optionIds }) => {
+            stageItem(sheet.item, sheetSeat, { quantity: lineQuantity, modifierText, optionIds })
             setSheet(null)
           }}
         />

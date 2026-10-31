@@ -16,6 +16,7 @@ import {
 // ticket column so a malformed payload is a compile error rather than a
 // surprise at the printer.
 import type { TicketPayload } from '@/types/tickets'
+import type { OrderEventOption } from '@/types/orders'
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
 
@@ -279,6 +280,54 @@ export const menuItems = pgTable('menu_items', {
   index('idx_menu_items_category_id').on(t.categoryId),
 ])
 
+// ── Priced options (Story 4.8, FR65) ──────────────────────────────────────────
+//
+// "Alcohol: No alcohol −1,000 / Single / Double shot +1,000" on a Mojito. Groups
+// belong to ONE item — a shared "Ice" group across drinks needs a join table and
+// the back office (Story 10.4), so it waits for it.
+//
+// MUTABLE config, like `menu_items`: no append-only trigger. What was ORDERED is
+// frozen separately, on the event (`order_events.options`), so editing an option
+// here never rewrites a sent line, a ticket or a bill.
+
+/** `single`: at most one option in the group. `multi`: any number. */
+export const modifierSelectionEnum = pgEnum('modifier_selection', ['single', 'multi'])
+
+export const modifierGroups = pgTable('modifier_groups', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  tenantId:     uuid('tenant_id').notNull().references(() => tenants.id),
+  menuItemId:   uuid('menu_item_id').notNull().references(() => menuItems.id),
+  name:         text('name').notNull(),
+  selection:    modifierSelectionEnum('selection').notNull().default('single'),
+  /** A required group must have a choice before the dish can be sent. */
+  isRequired:   boolean('is_required').notNull().default(false),
+  displayOrder: integer('display_order').notNull().default(0),
+  isActive:     boolean('is_active').notNull().default(true),
+}, (t) => [
+  index('idx_modifier_groups_tenant_id').on(t.tenantId),
+  index('idx_modifier_groups_menu_item_id').on(t.menuItemId),
+])
+
+export const modifierOptions = pgTable('modifier_options', {
+  id:              uuid('id').primaryKey().defaultRandom(),
+  tenantId:        uuid('tenant_id').notNull().references(() => tenants.id),
+  groupId:         uuid('group_id').notNull().references(() => modifierGroups.id),
+  name:            text('name').notNull(),
+  /**
+   * What choosing it adds to the dish, in paisa. May be NEGATIVE ("No alcohol",
+   * −100000) or 0 ("No ice"). The line price is clamped at zero — see
+   * `unitPriceFor` in src/lib/options.ts, the one place that rule lives.
+   */
+  priceDeltaPaisa: integer('price_delta_paisa').notNull().default(0),
+  /** Preselected on a one-tap add, so a required group need not open the sheet. */
+  isDefault:       boolean('is_default').notNull().default(false),
+  isAvailable:     boolean('is_available').notNull().default(true),
+  displayOrder:    integer('display_order').notNull().default(0),
+}, (t) => [
+  index('idx_modifier_options_tenant_id').on(t.tenantId),
+  index('idx_modifier_options_group_id').on(t.groupId),
+])
+
 // ── Orders ────────────────────────────────────────────────────────────────────
 
 /** Whether an order tracks people. See `orderSessions.billMode`. */
@@ -457,16 +506,27 @@ export const orderEvents = pgTable('order_events', {
    */
   notes:          text('notes'),
   /**
-   * The waiter's free-text modifier — "no ice", "extra spicy" (FR8).
+   * The waiter's free-text note — "extra spicy", "for the child" (FR8).
    *
-   * Free TEXT, deliberately. `ux:427` describes structured modifier groups
-   * ("Spice: Mild / Medium / Hot") and `ux:59` per-waiter pinned shortcuts, but
-   * FR8 asks only for "modifiers or special instructions", the epic's own
-   * examples are free text, and no modifier model exists anywhere in this
-   * schema. The structured version is logged against Epic 10 (menu management)
-   * in deferred-work.md rather than invented here.
+   * Free text, the waiter's own words. Structured, PRICED options ("Double
+   * shot") are not folded in here: they are owner-defined, they change the
+   * price, and an audit (Epic 7) needs their ids and deltas — see `options`
+   * below (Story 4.8). `ux:59` per-waiter pinned shortcuts are still Epic 10.
    */
   modifierText:   text('modifier_text'),
+  /**
+   * The priced options this item was ordered with, FROZEN at send (Story 4.8):
+   * `[{ optionId, group, name, priceDeltaPaisa }]`. NULL when none.
+   *
+   * A snapshot, never re-read from `modifier_options`: renaming, re-pricing or
+   * retiring an option must not rewrite a sent line, a ticket or a bill. No
+   * foreign keys inside it, so history never blocks retiring an option.
+   * `unit_price_paisa` above already includes the deltas.
+   *
+   * Added by migration 0028 as a nullable column. Rows from before it are NULL
+   * (no options), and none were backfilled — this table is append-only.
+   */
+  options:        jsonb('options').$type<OrderEventOption[]>(),
   /**
    * Which round of this session's ordering an ITEM belongs to.
    *
@@ -669,6 +729,11 @@ export const billLines = pgTable('bill_lines', {
   seatLabel:    text('seat_label'),
   /** The modifier text as billed — "no ice", "extra spicy". */
   modifierText: text('modifier_text'),
+  /**
+   * The options' names AS BILLED — "Double shot, No ice" (Story 4.8).
+   * Snapshotted from the event like the name and the note; never joined.
+   */
+  optionText:   text('option_text'),
 }, (t) => [
   // ── No longer UNIQUE on the event (migration 0025) ─────────────────────────
   // `UNIQUE (order_event_id)` was the no-double-billing invariant while a line

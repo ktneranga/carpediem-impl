@@ -50,6 +50,11 @@ function sanitizeLine(line: TicketLine): TicketLine {
     seatLabel: sanitizeTicketText(line.seatLabel) ?? line.seatLabel,
     modifierText: sanitizeTicketText(line.modifierText),
     seatNote: sanitizeTicketText(line.seatNote),
+    // Option names are owner-typed too (Story 4.8). Optional on the type: a
+    // job queued before 4.8 has none, and stays without.
+    ...(Array.isArray(line.options)
+      ? { options: line.options.map((option) => sanitizeTicketText(option) ?? '') }
+      : {}),
   }
 }
 

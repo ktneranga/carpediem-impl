@@ -28,6 +28,8 @@ export type BillScreenLine = {
   unitPricePaisa: number
   amountPaisa: number
   modifierText: string | null
+  /** "Double shot, No ice" — the options it was sent with (Story 4.8). */
+  optionText: string | null
   destination: ProductionDestination | null
   /** The seat it was ordered on — only on draft lines, for the seat pre-split. */
   seatSlotId?: string | null
@@ -198,12 +200,24 @@ function dropIdAt(x: number, y: number): string | undefined {
 }
 
 /**
- * What makes two lines "the same dish" on a bill: name, unit price, note and
- * station. Used by the whole-table list and by the split's cards alike, so the
+ * What makes two lines "the same dish" on a bill: name, unit price, options,
+ * note and station. Options are in it so a Single and a Double Mojito never
+ * fold into one line, even where a delta of 0 gives them the same price. Used by the whole-table list and by the split's cards alike, so the
  * two views never disagree about what counts as one line.
  */
+/** The options, then the waiter's note: "Double shot, No ice · less sugar". */
+function lineDetail(line: BillScreenLine): string {
+  return [line.optionText, line.modifierText].filter(Boolean).join(' · ')
+}
+
 function dishKey(line: BillScreenLine): string {
-  return [line.name, line.unitPricePaisa, line.modifierText ?? '', line.destination ?? ''].join('|')
+  return [
+    line.name,
+    line.unitPricePaisa,
+    line.optionText ?? '',
+    line.modifierText ?? '',
+    line.destination ?? '',
+  ].join('|')
 }
 
 /**
@@ -1294,8 +1308,8 @@ function ItemList({
               {/* Everything on a bill has gone to the kitchen — that is what
                   makes it billable — and the design says so on the card. */}
               <span className="text-fs-12 font-bold tracking-micro text-open-ink uppercase">Sent</span>
-              {line.modifierText ? (
-                <span className="truncate text-fs-12 text-slate-600">{line.modifierText}</span>
+              {lineDetail(line) ? (
+                <span className="truncate text-fs-12 text-slate-600">{lineDetail(line)}</span>
               ) : null}
               {onPress ? (
                 <GripVertical aria-hidden="true" className="ml-auto size-4 shrink-0 text-slate-400" />
@@ -1472,8 +1486,8 @@ function LinesCard({ title, lines: ungrouped }: { title: string; lines: BillScre
               <span className="block truncate text-fs-18 font-bold text-slate-900">
                 {line.name}
               </span>
-              {line.modifierText ? (
-                <span className="block truncate text-fs-14 text-slate-600">{line.modifierText}</span>
+              {lineDetail(line) ? (
+                <span className="block truncate text-fs-14 text-slate-600">{lineDetail(line)}</span>
               ) : null}
             </span>
             <StationChip destination={line.destination} />

@@ -318,6 +318,13 @@ export function buildTicket(ticket: TicketPayload): Buffer {
     // wraps under the name, not under the quantity.
     const name = printableName(line.name)
     for (const wrapped of wrapLine(`${line.quantity} x ${name}`, indent)) emit(wrapped)
+    // The chosen options, one per line, before the waiter's note (Story 4.8).
+    // Folded FIRST, then wrapped: wrapping measures the bytes that print. A
+    // queued job from before 4.8 has no `options` at all.
+    for (const option of Array.isArray(line.options) ? line.options : []) {
+      const text = foldToAscii(option) || '(option)'
+      for (const wrapped of wrapLine(`- ${text}`, indent + 3)) emit(wrapped)
+    }
     const modifier = foldToAscii(line.modifierText)
     if (modifier !== '') {
       for (const wrapped of wrapLine(`- ${modifier}`, indent + 3)) emit(wrapped)

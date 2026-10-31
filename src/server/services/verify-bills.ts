@@ -77,6 +77,18 @@ async function api(cookie: string, path: string, init?: RequestInit): Promise<Js
 }
 
 // ── Fixtures, written straight to the database ───────────────────────────────
+/**
+ * A dish the real send route accepts with NO options: available, and without a
+ * required option group (Story 4.8). Unpinned, this could pick a Mojito, whose
+ * send without an Alcohol choice is refused as OPTION_INVALID.
+ */
+const SENDABLE_ITEM = `SELECT id, price_paisa FROM menu_items m
+  WHERE m.is_available
+    AND NOT EXISTS (
+      SELECT 1 FROM modifier_groups g
+       WHERE g.menu_item_id = m.id AND g.is_active AND g.is_required)
+  LIMIT 1`
+
 async function tenantId(): Promise<string> {
   const [row] = await sql(`SELECT id FROM tenants LIMIT 1`)
   return row.id
@@ -162,7 +174,7 @@ async function sendRound(
   sessionId: string,
   lines: { seatId: string; quantity?: number }[],
 ): Promise<Json> {
-  const [item] = await sql(`SELECT id, price_paisa FROM menu_items WHERE is_available LIMIT 1`)
+  const [item] = await sql(SENDABLE_ITEM)
   const submissionId = crypto.randomUUID()
   const response = await api(cookie, `/api/sessions/${sessionId}/orders`, {
     method: 'POST',
@@ -636,7 +648,7 @@ async function run() {
     }))
     check('R1 setup billed', billed.status === 201, String(billed.status))
 
-    const [item] = await sql(`SELECT id, price_paisa FROM menu_items WHERE is_available LIMIT 1`)
+    const [item] = await sql(SENDABLE_ITEM)
     const [seat] = await sql(`SELECT id FROM seat_slots WHERE session_id = $1`, [sessionId])
     const before = (await sql(
       `SELECT count(*)::int AS n FROM order_events WHERE session_id = $1`, [sessionId]))[0].n

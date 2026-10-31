@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from 'react'
 import type { MenuItemRow } from '@/app/api/menu/route'
+import { chosenOptions, defaultOptionIds, sortIds, unitPriceFor } from '@/lib/options'
 import { MAX_LINE_QUANTITY } from '@/types/orders'
 
 /**
@@ -25,12 +26,27 @@ export type StagedLine = {
   lineId: string
   menuItemId: string
   name: string
-  /** Integer paisa, as quoted when the dish was tapped. */
+  /**
+   * The UNIT price in integer paisa, as quoted when the dish was tapped: the
+   * dish plus its options, never below zero (`unitPriceFor`, Story 4.8).
+   */
   pricePaisa: number
   /** A positive integer. */
   quantity: number
   /** "" when the waiter never opened the sheet, which is the common case. */
   modifierText: string
+  /**
+   * The chosen priced options' ids, SORTED — the canonical form two lines are
+   * compared by (Story 4.8). `[]` for a dish with none, and for rounds mirrored
+   * before options existed.
+   */
+  optionIds: string[]
+  /**
+   * What they were when tapped, for display: "Double shot", +100000. A
+   * snapshot, so the line stays readable if the menu changes under it — the
+   * stale check compares against the LIVE options before send.
+   */
+  options: { id: string; name: string; priceDeltaPaisa: number }[]
   /** Whichever seat was selected at the moment of the tap. */
   seatSlotId: string
   /** That seat's name at the moment of the tap — its note, else its label. */
@@ -85,6 +101,11 @@ function newId(): string {
  *
  * `seatLabel` is optional on read: rounds mirrored before it existed get "",
  * and the list falls back to the live seat's name.
+ *
+ * `optionIds` and `options` are optional the same way (Story 4.8): a round
+ * mirrored before options existed reads as "no options". NOT a storage-key
+ * bump — that would drop every unsent round on every tablet at deploy, mid-
+ * service. Present values are validated; a malformed one drops the line.
  */
 function readStorage(sessionId: string): StagedLine[] {
   let raw: string | null
@@ -117,6 +138,28 @@ function readStorage(sessionId: string): StagedLine[] {
         DESTINATIONS.includes(c.productionDestination)
       if (!valid) continue
 
+      const optionIds =
+        c.optionIds === undefined
+          ? []
+          : Array.isArray(c.optionIds) && c.optionIds.every((id) => typeof id === 'string')
+            ? (c.optionIds as string[])
+            : null
+      const options =
+        c.options === undefined
+          ? []
+          : Array.isArray(c.options) &&
+              c.options.every(
+                (option) =>
+                  typeof option === 'object' &&
+                  option !== null &&
+                  typeof (option as Record<string, unknown>).id === 'string' &&
+                  typeof (option as Record<string, unknown>).name === 'string' &&
+                  Number.isInteger((option as Record<string, unknown>).priceDeltaPaisa),
+              )
+            ? (c.options as StagedLine['options'])
+            : null
+      if (optionIds === null || options === null) continue
+
       lines.push({
         lineId: c.lineId as string,
         menuItemId: c.menuItemId as string,
@@ -124,6 +167,8 @@ function readStorage(sessionId: string): StagedLine[] {
         pricePaisa: c.pricePaisa as number,
         quantity: c.quantity as number,
         modifierText: c.modifierText as string,
+        optionIds,
+        options,
         seatSlotId: c.seatSlotId as string,
         seatLabel: typeof c.seatLabel === 'string' ? c.seatLabel : '',
         productionDestination: c.productionDestination as StagedLine['productionDestination'],
@@ -323,6 +368,14 @@ export function useStagedRound(sessionId: string) {
    * kitchen, so a different note — including note versus no note — stays a
    * separate line. A different SEAT always does: a different person, and
    * possibly a different bill.
+   *
+   * ── So are the OPTIONS (Story 4.8) ───────────────────────────────────────
+   * A Single and a Double Mojito are different drinks at different prices.
+   * Without this, tapping Double after Single raised the Single line's
+   * quantity — at the Single price.
+   *
+   * `optionIds` undefined means "the dish's defaults" — the one-tap add. An
+   * explicit `[]` means none at all.
    */
   function addLine(
     item: MenuItemRow,
@@ -331,21 +384,27 @@ export function useStagedRound(sessionId: string) {
       seatLabel,
       quantity = 1,
       modifierText = '',
+      optionIds,
     }: {
       seatSlotId: string
       seatLabel: string
       quantity?: number
       modifierText?: string
+      optionIds?: string[]
     },
   ): void {
     const current = snapshot(sessionId)
     const note = modifierText.trim()
     const amount = Math.max(1, Math.trunc(quantity))
+    const groups = item.modifierGroups ?? []
+    const ids = sortIds(optionIds ?? defaultOptionIds(groups))
+    const key = ids.join(',')
     const existing = current.find(
       (line) =>
         line.menuItemId === item.id &&
         line.seatSlotId === seatSlotId &&
-        line.modifierText === note,
+        line.modifierText === note &&
+        line.optionIds.join(',') === key,
     )
 
     if (existing) {
@@ -363,15 +422,18 @@ export function useStagedRound(sessionId: string) {
       return
     }
 
+    const chosen = chosenOptions(groups, ids)
     write(sessionId, [
       ...current,
       {
         lineId: newId(),
         menuItemId: item.id,
         name: item.name,
-        pricePaisa: item.pricePaisa,
+        pricePaisa: unitPriceFor(item.pricePaisa, chosen),
         quantity: amount,
         modifierText: note,
+        optionIds: ids,
+        options: chosen.map(({ id, name, priceDeltaPaisa }) => ({ id, name, priceDeltaPaisa })),
         seatSlotId,
         seatLabel,
         productionDestination: item.productionDestination,
@@ -403,17 +465,18 @@ export function useStagedRound(sessionId: string) {
   }
 
   /**
-   * Takes the menu's new price onto every line of that dish (Story 4.5, AC-9).
+   * Takes the menu's new UNIT price onto ONE line (Story 4.5 AC-9; per line
+   * since Story 4.8).
    *
-   * The waiter confirms it; the send is refused until they do. It is a change
-   * to the round, so the next send goes under a new id.
+   * It was per dish, which stamped one price on a Single and a Double Mojito
+   * alike once options made them cost different amounts. The waiter confirms
+   * it; the send is refused until they do. It is a change to the round, so the
+   * next send goes under a new id.
    */
-  function acceptPrice(menuItemId: string, pricePaisa: number): void {
+  function acceptPrice(lineId: string, pricePaisa: number): void {
     write(
       sessionId,
-      snapshot(sessionId).map((line) =>
-        line.menuItemId === menuItemId ? { ...line, pricePaisa } : line,
-      ),
+      snapshot(sessionId).map((line) => (line.lineId === lineId ? { ...line, pricePaisa } : line)),
     )
   }
 

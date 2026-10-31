@@ -25,8 +25,19 @@ export type StagedLineProblem =
   | { kind: 'seat-billed'; seatLabel: string }
   | { kind: 'item-unavailable' }
   | { kind: 'item-gone' }
-  /** The menu price moved after the dish was staged (Story 4.5, AC-9). */
+  /**
+   * The UNIT price moved after the dish was staged (Story 4.5, AC-9) — the
+   * dish's price or one of its options' (Story 4.8). `currentPricePaisa` is the
+   * recomputed unit price, options included.
+   */
   | { kind: 'price-changed'; currentPricePaisa: number }
+  /** A chosen option was switched off or removed after staging (Story 4.8). */
+  | { kind: 'option-unavailable'; optionName: string }
+  /**
+   * The dish's options changed shape after staging — a group became required,
+   * or a single group now holds two choices — so the server would refuse it.
+   */
+  | { kind: 'options-changed' }
 
 /**
  * The round the waiter is building, before anybody sends it (FR11).
@@ -76,8 +87,11 @@ export function StagedRoundList({
   onRemove: (lineId: string) => void
   onSetQuantity: (lineId: string, quantity: number) => void
   onReassign: (lineId: string, seat: SeatSlot) => void
-  /** Takes the new menu price onto every line of that dish. */
-  onAcceptPrice: (menuItemId: string, pricePaisa: number) => void
+  /**
+   * Takes the new UNIT price onto THIS line. Per line since Story 4.8: per dish
+   * stamped one price on a Single and a Double Mojito alike.
+   */
+  onAcceptPrice: (lineId: string, pricePaisa: number) => void
 }) {
   if (lines.length === 0) {
     return (
@@ -121,6 +135,8 @@ export function StagedRoundList({
 
           const details = [
             showSeats ? seatName : null,
+            // The chosen options, before the waiter's own note (Story 4.8).
+            line.options.length > 0 ? line.options.map((option) => option.name).join(', ') : null,
             line.modifierText || null,
             lkrFromPaisa(line.pricePaisa * line.quantity),
           ].filter(Boolean)
@@ -214,7 +230,11 @@ export function StagedRoundList({
                         ? `${line.name} is no longer on the menu. Take it off to send the round.`
                         : problem.kind === 'price-changed'
                           ? `${line.name} now costs ${lkrFromPaisa(problem.currentPricePaisa)} each (was ${lkrFromPaisa(line.pricePaisa)}). Confirm with the guest before sending.`
-                          : `${line.name} is no longer available. Take it off to send the round.`}
+                          : problem.kind === 'option-unavailable'
+                            ? `${problem.optionName} is no longer available for ${line.name}. Take it off and add it again with other options.`
+                            : problem.kind === 'options-changed'
+                              ? `The options for ${line.name} have changed. Take it off and add it again.`
+                              : `${line.name} is no longer available. Take it off to send the round.`}
                   </p>
 
                   {/* The repair, in place — a blocked round with no way to fix
@@ -225,7 +245,7 @@ export function StagedRoundList({
                   {problem.kind === 'price-changed' ? (
                     <button
                       type="button"
-                      onClick={() => onAcceptPrice(line.menuItemId, problem.currentPricePaisa)}
+                      onClick={() => onAcceptPrice(line.lineId, problem.currentPricePaisa)}
                       className={cn(
                         'h-touch-kitchen self-start rounded-control bg-brand-800 px-sp-4',
                         'text-fs-14 font-bold whitespace-nowrap text-white',

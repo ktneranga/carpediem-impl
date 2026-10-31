@@ -10,6 +10,7 @@ import { wakePrintQueue } from '@/server/print/wake'
 import { loadSubmittedRounds } from '@/server/orders/submitted-rounds'
 import {
   ItemUnavailableError,
+  OptionInvalidError,
   PriceChangedError,
   SeatNotOnSessionError,
   SeatAlreadyBilledError,
@@ -27,6 +28,7 @@ import {
 import {
   MAX_LINE_QUANTITY,
   MAX_MODIFIER_TEXT,
+  MAX_OPTIONS_PER_LINE,
   MAX_ROUND_LINES,
   type SubmitRoundResponse,
 } from '@/types/orders'
@@ -68,6 +70,11 @@ const submitSchema = z.object({
           .string()
           .transform((text) => text.trim())
           .refine((text) => text.length <= MAX_MODIFIER_TEXT),
+        // The chosen priced options (Story 4.8). Optional: a tablet still
+        // running the old bundle sends none, and a dish with a required group
+        // then refuses as OPTION_INVALID rather than going out unpriced.
+        optionIds: z.array(z.string().uuid()).max(MAX_OPTIONS_PER_LINE).default([]),
+        // The UNIT price the waiter saw, options included — a check only.
         quotedPricePaisa: z.number().int().min(0),
       }),
     )
@@ -138,7 +145,7 @@ export async function GET(
  * ── Status codes ─────────────────────────────────────────────────────────────
  * 201 new round · 200 replay of an already-sent round (AC-8) · 400 body ·
  * 401 · 409 SESSION_ALREADY_CLOSED / PRICE_CHANGED / SUBMISSION_ID_REUSED /
- * ROUND_CONFLICT · 422 ITEM_UNAVAILABLE / SEAT_NOT_FOUND · 500.
+ * ROUND_CONFLICT · 422 ITEM_UNAVAILABLE / OPTION_INVALID / SEAT_NOT_FOUND · 500.
  *
  * ── Announcements: after the commit, before the response, never on a replay ─
  * Emitting inside the transaction would announce a round that could still roll
@@ -229,6 +236,20 @@ export async function POST(
         { itemId: error.itemId },
       )
     }
+    if (error instanceof OptionInvalidError) {
+      return fail(
+        'OPTION_INVALID',
+        'An option on a dish in this round is no longer available. Change it and send again.',
+        422,
+        {
+          itemId: error.itemId,
+          lineIndex: error.lineIndex,
+          reason: error.problem.reason,
+          ...(error.problem.optionId ? { optionId: error.problem.optionId } : {}),
+          ...(error.problem.groupId ? { groupId: error.problem.groupId } : {}),
+        },
+      )
+    }
     if (error instanceof SeatNotOnSessionError) {
       return fail(
         'SEAT_NOT_FOUND',
@@ -240,7 +261,9 @@ export async function POST(
     if (error instanceof PriceChangedError) {
       return fail('PRICE_CHANGED', 'A price has changed since this round was started.', 409, {
         itemId: error.itemId,
+        // The UNIT price, options included, for the line at `lineIndex`.
         currentPricePaisa: error.currentPricePaisa,
+        lineIndex: error.lineIndex,
       })
     }
     if (error instanceof SubmissionIdReusedError) {

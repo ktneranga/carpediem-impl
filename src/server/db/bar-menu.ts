@@ -8,23 +8,85 @@
  * Shared by `seed.ts` (a fresh install) and `seed-bar-menu.ts` (a database
  * seeded before the bar existed), so the two cannot drift.
  *
- * Priced options — double shot, no alcohol — are Stage B, not here.
+ * Priced options — no alcohol, double shot, oat milk — ride on the items they
+ * belong to (Story 4.8), as SAMPLE groups until the back office manages them.
+ * `ensureModifierGroups` writes them, for both seeds.
  */
+import { and, eq } from 'drizzle-orm'
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
+import { modifierGroups, modifierOptions } from './schema'
+
+export type SeedOption = { name: string; priceDeltaPaisa: number; isDefault?: boolean }
+
+export type SeedModifierGroup = {
+  name: string
+  selection: 'single' | 'multi'
+  required: boolean
+  options: SeedOption[]
+}
+
 export type SeedItem = {
   name: string
   pricePaisa: number
   destination: 'kitchen' | 'pizza_kitchen' | 'bar'
   available?: boolean
   portionCount?: number
+  modifierGroups?: SeedModifierGroup[]
+}
+
+// ── The sample options (Story 4.8, AC 13) ───────────────────────────────────
+/** A cocktail's spirit: none for LKR 1,000 less, or a double for LKR 1,000 more. */
+const ALCOHOL: SeedModifierGroup = {
+  name: 'Alcohol',
+  selection: 'single',
+  required: true,
+  options: [
+    { name: 'No alcohol', priceDeltaPaisa: -100000 },
+    { name: 'Single', priceDeltaPaisa: 0, isDefault: true },
+    { name: 'Double shot', priceDeltaPaisa: 100000 },
+  ],
+}
+
+const ICE: SeedModifierGroup = {
+  name: 'Ice',
+  selection: 'multi',
+  required: false,
+  options: [{ name: 'No ice', priceDeltaPaisa: 0 }],
+}
+
+/** A double is two shots, so it costs the shot's own price again. */
+const measure = (shotPaisa: number): SeedModifierGroup => ({
+  name: 'Measure',
+  selection: 'single',
+  required: true,
+  options: [
+    { name: 'Single', priceDeltaPaisa: 0, isDefault: true },
+    { name: 'Double', priceDeltaPaisa: shotPaisa },
+  ],
+})
+
+const COFFEE_EXTRAS: SeedModifierGroup = {
+  name: 'Extras',
+  selection: 'multi',
+  required: false,
+  options: [
+    { name: 'Extra shot', priceDeltaPaisa: 20000 },
+    { name: 'Oat milk', priceDeltaPaisa: 25000 },
+  ],
 }
 
 export const BAR_MENU: { category: string; items: SeedItem[] }[] = [
   {
     category: 'Cocktails',
     items: [
-      { name: 'Mojito', pricePaisa: 250000, destination: 'bar' },
-      { name: 'Piña Colada', pricePaisa: 280000, destination: 'bar' },
-      { name: 'Long Island Iced Tea', pricePaisa: 320000, destination: 'bar' },
+      { name: 'Mojito', pricePaisa: 250000, destination: 'bar', modifierGroups: [ALCOHOL, ICE] },
+      { name: 'Piña Colada', pricePaisa: 280000, destination: 'bar', modifierGroups: [ALCOHOL, ICE] },
+      {
+        name: 'Long Island Iced Tea',
+        pricePaisa: 320000,
+        destination: 'bar',
+        modifierGroups: [ALCOHOL, ICE],
+      },
       { name: 'Arrack & Soda', pricePaisa: 70000, destination: 'bar' },
     ],
   },
@@ -41,8 +103,8 @@ export const BAR_MENU: { category: string; items: SeedItem[] }[] = [
     category: 'Coffee',
     items: [
       { name: 'Espresso', pricePaisa: 60000, destination: 'bar' },
-      { name: 'Cappuccino', pricePaisa: 90000, destination: 'bar' },
-      { name: 'Iced Coffee', pricePaisa: 100000, destination: 'bar' },
+      { name: 'Cappuccino', pricePaisa: 90000, destination: 'bar', modifierGroups: [COFFEE_EXTRAS] },
+      { name: 'Iced Coffee', pricePaisa: 100000, destination: 'bar', modifierGroups: [COFFEE_EXTRAS] },
     ],
   },
   {
@@ -64,9 +126,84 @@ export const BAR_MENU: { category: string; items: SeedItem[] }[] = [
   {
     category: 'Whisky',
     items: [
-      { name: 'Johnnie Walker Red (shot)', pricePaisa: 100000, destination: 'bar' },
-      { name: 'Jameson (shot)', pricePaisa: 120000, destination: 'bar' },
-      { name: 'Johnnie Walker Black (shot)', pricePaisa: 150000, destination: 'bar' },
+      {
+        name: 'Johnnie Walker Red (shot)',
+        pricePaisa: 100000,
+        destination: 'bar',
+        modifierGroups: [measure(100000)],
+      },
+      {
+        name: 'Jameson (shot)',
+        pricePaisa: 120000,
+        destination: 'bar',
+        modifierGroups: [measure(120000)],
+      },
+      {
+        name: 'Johnnie Walker Black (shot)',
+        pricePaisa: 150000,
+        destination: 'bar',
+        modifierGroups: [measure(150000)],
+      },
     ],
   },
 ]
+
+/** A seed's transaction handle — both seeds open their own `node-postgres` pool. */
+type SeedTx = Parameters<Parameters<NodePgDatabase['transaction']>[0]>[0]
+
+/**
+ * Gives a menu item its sample option groups. IDEMPOTENT: a group is matched by
+ * (item, name) and an option by (group, name), and only what is missing is
+ * inserted — an existing one is never changed, so a price the owner edited
+ * survives a re-run. Returns how many groups and options it created.
+ */
+export async function ensureModifierGroups(
+  tx: SeedTx,
+  tenantId: string,
+  menuItemId: string,
+  groups: SeedModifierGroup[] = [],
+): Promise<{ groups: number; options: number }> {
+  const created = { groups: 0, options: 0 }
+  for (const [groupIndex, group] of groups.entries()) {
+    const [found] = await tx
+      .select({ id: modifierGroups.id })
+      .from(modifierGroups)
+      .where(and(eq(modifierGroups.menuItemId, menuItemId), eq(modifierGroups.name, group.name)))
+      .limit(1)
+    let groupId = found?.id
+    if (!groupId) {
+      const [inserted] = await tx
+        .insert(modifierGroups)
+        .values({
+          tenantId,
+          menuItemId,
+          name: group.name,
+          selection: group.selection,
+          isRequired: group.required,
+          displayOrder: groupIndex,
+        })
+        .returning({ id: modifierGroups.id })
+      groupId = inserted.id
+      created.groups += 1
+    }
+
+    for (const [optionIndex, option] of group.options.entries()) {
+      const [existing] = await tx
+        .select({ id: modifierOptions.id })
+        .from(modifierOptions)
+        .where(and(eq(modifierOptions.groupId, groupId), eq(modifierOptions.name, option.name)))
+        .limit(1)
+      if (existing) continue
+      await tx.insert(modifierOptions).values({
+        tenantId,
+        groupId,
+        name: option.name,
+        priceDeltaPaisa: option.priceDeltaPaisa,
+        isDefault: option.isDefault ?? false,
+        displayOrder: optionIndex,
+      })
+      created.options += 1
+    }
+  }
+  return created
+}

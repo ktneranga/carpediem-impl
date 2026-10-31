@@ -83,6 +83,8 @@ export function RoundHistory({
                     {item.quantity > 1 ? `${formatQuantity(item.quantity)} ` : ''}
                     {item.name}
                     {showSeats && item.seatLabel ? ` · ${item.seatLabel}` : ''}
+                    {/* The options it went out with (Story 4.8), before the note. */}
+                    {item.optionText ? ` · ${item.optionText}` : ''}
                     {/* `slate-600`, not `slate-400`: the note is what the kitchen
                         acted on, and 400 is 2.34:1 on this panel's slate-100. */}
                     {item.modifierText ? ` · ${item.modifierText}` : ''}

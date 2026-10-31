@@ -4,11 +4,18 @@ import { Minus, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { MenuItemRow } from '@/app/api/menu/route'
 import { commitButtonClass } from '@/components/pos/action-strip-chrome'
-import { lkrFromPaisa } from '@/lib/format'
+import { lkrFromPaisa, signedLkrFromPaisa } from '@/lib/format'
+import {
+  chosenOptions,
+  defaultOptionIds,
+  sortIds,
+  unitPriceFor,
+  validateSelection,
+} from '@/lib/options'
 import { cn } from '@/lib/utils'
-
-/** Matches nothing in the database — `modifier_text` has no CHECK, deliberately. */
-const MAX_MODIFIER_TEXT = 120
+// One limit, shared with the server's schema — the local copy that lived here
+// could drift from it silently.
+import { MAX_MODIFIER_TEXT } from '@/types/orders'
 
 /**
  * Bottom sheet for a modifier and a quantity (FR8, NFR-P6).
@@ -27,12 +34,17 @@ const MAX_MODIFIER_TEXT = 120
  * opener on close.
  *
  * ── Two taps, and the second one is the commit ───────────────────────────────
- * Tap 1 opened this from the card. Tap 2 is **Add to Order**. Nothing in here
- * is required: the note may stay empty and the quantity defaults to 1.
+ * Tap 1 opened this from the card. Tap 2 is **Add to Order**. The defaults are
+ * preselected, so a required group never forces a third tap unless it has no
+ * default; the note may stay empty and the quantity defaults to 1.
  *
- * ── Free text, not chip groups ───────────────────────────────────────────────
- * `ux:427` draws modifier GROUPS ("Spice: Mild / Medium / Hot"), which need a
- * modifier model that has no FR or epic AC. Logged against Epic 10.
+ * ── Priced options as chip groups (Story 4.8, `ux:427`) ─────────────────────
+ * "Alcohol: No alcohol −LKR 1,000 / Single / Double shot +LKR 1,000". Required
+ * groups first and marked; a `single` group behaves as radios, a `multi` group
+ * as toggles. The header and the commit show the LIVE unit price and line
+ * total, computed by `unitPriceFor` — the same function the server prices by.
+ * The free-text note stays beside them: options are the owner's words, the
+ * note is the waiter's.
  */
 export function ModifierSheet({
   item,
@@ -47,7 +59,7 @@ export function ModifierSheet({
    */
   seatLabel: string | null
   onCancel: () => void
-  onAdd: (input: { quantity: number; modifierText: string }) => void
+  onAdd: (input: { quantity: number; modifierText: string; optionIds: string[] }) => void
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const noteRef = useRef<HTMLInputElement>(null)
@@ -57,20 +69,53 @@ export function ModifierSheet({
   const [quantity, setQuantity] = useState(1)
   const [modifierText, setModifierText] = useState('')
 
+  // Required groups first (`ux:427`), each keeping the owner's order within.
+  const groups = [...(item.modifierGroups ?? [])].sort(
+    (a, b) => Number(b.required) - Number(a.required),
+  )
+  const [optionIds, setOptionIds] = useState<string[]>(() => defaultOptionIds(groups))
+  const chosen = chosenOptions(groups, optionIds)
+  const unitPrice = unitPriceFor(item.pricePaisa, chosen)
+  const problem = validateSelection(groups, optionIds)
+  const missingGroup =
+    problem?.reason === 'required' ? groups.find((group) => group.id === problem.groupId) : null
+
+  function toggle(groupId: string, optionId: string) {
+    const group = groups.find((candidate) => candidate.id === groupId)
+    if (!group) return
+    setOptionIds((current) => {
+      const inGroup = new Set(group.options.map((option) => option.id))
+      const has = current.includes(optionId)
+      if (group.selection === 'multi') {
+        return sortIds(has ? current.filter((id) => id !== optionId) : [...current, optionId])
+      }
+      // Single: tapping the chosen chip keeps it in a REQUIRED group (there
+      // must be one) and clears it in an optional one; another chip replaces it.
+      if (has) return group.required ? current : current.filter((id) => id !== optionId)
+      return sortIds([...current.filter((id) => !inGroup.has(id)), optionId])
+    })
+  }
+
+  // Read once, at open: the effect below runs on mount only, and a menu refetch
+  // while the sheet is up must not move the focus.
+  const opensOnNoteRef = useRef(groups.length === 0)
+
   useEffect(() => {
     const dialog = dialogRef.current
     if (!dialog) return
     dialog.showModal()
     // Focus the note AFTER showModal: opening a modal dialog runs the browser's
-    // own focusing steps, which would otherwise land on the Close button. The
-    // waiter opened this sheet for the note, so the keyboard should be up.
-    noteRef.current?.focus()
+    // own focusing steps, which would otherwise land on the Close button. A
+    // dish WITHOUT options was opened for the note, so the keyboard comes up.
+    // One WITH options was opened for them: raising the keyboard would cover
+    // the chips the waiter came to tap.
+    if (opensOnNoteRef.current) noteRef.current?.focus()
     return () => {
       if (dialog.open) dialog.close()
     }
   }, [])
 
-  const lineTotal = lkrFromPaisa(item.pricePaisa * quantity)
+  const lineTotal = lkrFromPaisa(unitPrice * quantity)
 
   return (
     <dialog
@@ -117,7 +162,9 @@ export function ModifierSheet({
           // Enter in the note field adds, like the button. `method="dialog"`
           // would close the element; the parent owns closing, so prevent it.
           event.preventDefault()
-          onAdd({ quantity, modifierText })
+          // Enter in the note must not add a dish with a required group empty.
+          if (problem) return
+          onAdd({ quantity, modifierText, optionIds })
         }}
         // The panel. `max-h-full` against the padded dialog, so a long note
         // field scrolls inside the card rather than running off the screen.
@@ -133,7 +180,7 @@ export function ModifierSheet({
                 backdrop, so without this the waiter would commit blind. */}
             <p className="text-fs-14 font-semibold text-slate-600">
               {seatLabel ? `For ${seatLabel} · ` : ''}
-              {lkrFromPaisa(item.pricePaisa)} each
+              {lkrFromPaisa(unitPrice)} each
             </p>
           </div>
 
@@ -152,6 +199,64 @@ export function ModifierSheet({
             <X aria-hidden="true" strokeWidth={2} className="size-6" />
           </button>
         </div>
+
+        {/* ── The options, one row of chips per group ─────────────────────── */}
+        {groups.map((group) => (
+          <fieldset key={group.id} className="flex flex-col gap-sp-2">
+            <legend className="mb-sp-2 flex items-center gap-sp-2 text-fs-12 font-semibold tracking-micro text-slate-600 uppercase">
+              {group.name}
+              {group.required ? (
+                <span className="rounded-pill bg-occupied-chip px-sp-2 py-0.5 text-fs-12 font-bold text-occupied-ink normal-case tracking-normal">
+                  Required
+                </span>
+              ) : (
+                <span className="font-semibold normal-case tracking-normal text-slate-600">
+                  {group.selection === 'multi' ? 'optional · any' : 'optional'}
+                </span>
+              )}
+            </legend>
+            <div className="flex flex-wrap gap-sp-2">
+              {group.options.map((option) => {
+                const isOn = optionIds.includes(option.id)
+                const delta = signedLkrFromPaisa(option.priceDeltaPaisa)
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role={group.selection === 'single' ? 'radio' : 'checkbox'}
+                    aria-checked={isOn}
+                    disabled={!option.available}
+                    onClick={() => toggle(group.id, option.id)}
+                    className={cn(
+                      // 56px — the waiter touch floor every order control clears.
+                      'flex min-h-touch-kitchen items-center gap-sp-2 rounded-pill border-2 px-sp-4',
+                      'text-fs-16 font-bold',
+                      'transition-[transform,background-color] duration-80 ease-standard active:scale-[0.97]',
+                      'disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100',
+                      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                      isOn
+                        ? 'border-brand-800 bg-brand-800 text-white'
+                        : 'border-slate-200 bg-white text-slate-900',
+                    )}
+                  >
+                    {option.name}
+                    {delta ? (
+                      <span
+                        className={cn(
+                          'text-fs-14 font-semibold tabular-nums',
+                          isOn ? 'text-white' : 'text-slate-600',
+                        )}
+                      >
+                        {delta}
+                      </span>
+                    ) : null}
+                    {option.available ? null : <span className="sr-only">, unavailable</span>}
+                  </button>
+                )
+              })}
+            </div>
+          </fieldset>
+        ))}
 
         {/* `ux:427` — "Quantity stepper (+/−) always visible." */}
         <div className="flex items-center justify-between gap-sp-3">
@@ -220,8 +325,19 @@ export function ModifierSheet({
           />
         </label>
 
-        {/* Full-width commit, the same rule the action strips follow. */}
-        <button type="submit" className={cn(commitButtonClass, 'w-full')}>
+        {/* Full-width commit, the same rule the action strips follow. Disabled
+            until every required group has a choice — the server would refuse
+            the WHOLE round otherwise — and it says which group is missing. */}
+        {missingGroup ? (
+          <p role="status" className="text-fs-14 font-semibold text-occupied-ink">
+            Choose {missingGroup.name.toLowerCase()} to add this.
+          </p>
+        ) : null}
+        <button
+          type="submit"
+          disabled={problem !== null}
+          className={cn(commitButtonClass, 'w-full disabled:opacity-40')}
+        >
           Add to Order · {lineTotal}
         </button>
       </form>

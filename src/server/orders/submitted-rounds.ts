@@ -1,4 +1,5 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
+import { optionText } from '@/lib/options'
 import { db } from '@/server/db'
 import { menuItems, orderEvents, seatSlots } from '@/server/db/schema'
 import type { SubmittedRoundRow } from '@/types/orders'
@@ -39,6 +40,9 @@ export async function loadSubmittedRounds(sessionId: string): Promise<SubmittedR
       quantity: orderEvents.quantity,
       unitPricePaisa: orderEvents.unitPricePaisa,
       modifierText: orderEvents.modifierText,
+      // The options as they were at send (Story 4.8) — a snapshot, so a later
+      // rename on the menu does not rewrite what the guest ordered.
+      options: orderEvents.options,
       createdAt: orderEvents.createdAt,
       itemName: menuItems.name,
       seatLabel: seatSlots.seatLabel,
@@ -74,6 +78,7 @@ export async function loadSubmittedRounds(sessionId: string): Promise<SubmittedR
       quantity: row.quantity,
       unitPricePaisa: row.unitPricePaisa,
       modifierText: row.modifierText,
+      optionText: optionText(row.options),
       seatLabel: row.seatLabel,
       submittedAt: row.createdAt.toISOString(),
     })

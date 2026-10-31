@@ -37,6 +37,12 @@ export type BillLineDetail = {
   /** Null for an event with no seat — a counter sale. */
   seatLabel: string | null
   modifierText: string | null
+  /**
+   * The chosen options as sent, "Double shot, No ice" (Story 4.8); null when
+   * none. Snapshotted onto the bill line — display only, the unit price
+   * already includes them.
+   */
+  optionText: string | null
   roundNumber: number | null
 }
 

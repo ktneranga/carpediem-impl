@@ -136,6 +136,7 @@ export default async function BillPage({
       unitPricePaisa: line.unitPricePaisa,
       amountPaisa: line.amountPaisa,
       modifierText: line.modifierText,
+      optionText: line.optionText,
       destination: stationByEvent.get(line.orderEventId) ?? null,
     })),
   }))
@@ -164,6 +165,7 @@ export default async function BillPage({
             unitPricePaisa: event.unitPricePaisa ?? 0,
             amountPaisa: priced.lineAmounts[index]!,
             modifierText: event.modifierText,
+            optionText: event.optionText,
             destination: event.destination ?? null,
             seatSlotId: event.seatSlotId,
           })),

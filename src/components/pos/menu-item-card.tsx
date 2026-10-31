@@ -5,6 +5,7 @@ import { createElement } from 'react'
 import type { MenuItemRow } from '@/app/api/menu/route'
 import { routeForDestination } from '@/lib/design'
 import { lkrFromPaisa } from '@/lib/format'
+import { defaultOptionIds, validateSelection } from '@/lib/options'
 import { cn } from '@/lib/utils'
 
 /**
@@ -65,6 +66,13 @@ export function MenuItemCard({
   const route = routeForDestination(item.productionDestination)
   const isStaged = stagedCount > 0
   const price = lkrFromPaisa(item.pricePaisa)
+  const groups = item.modifierGroups ?? []
+  const hasOptions = groups.length > 0
+  // One tap adds with each required group's default ("Single"). A required
+  // group with no available default cannot be added blind — the server would
+  // refuse the WHOLE round — so that tap opens the options sheet instead.
+  const needsSheet =
+    hasOptions && validateSelection(groups, defaultOptionIds(groups)) !== null
   const addable = item.available && Boolean(onAdd)
 
   return (
@@ -109,7 +117,7 @@ export function MenuItemCard({
       {addable ? (
         <button
           type="button"
-          onClick={() => onAdd?.(item)}
+          onClick={() => (needsSheet ? onOpenModifiers?.(item) : onAdd?.(item))}
           className={cn(
             'absolute inset-0 z-0 cursor-pointer',
             // `focus-visible`, not `focus`: a browser only matches it when
@@ -122,7 +130,12 @@ export function MenuItemCard({
           {/* The only text this button has. "Add another" because that is what
               a second tap does — it raises the existing line's quantity. */}
           <span className="sr-only">
-            {isStaged ? `Add another ${item.name}, ${price}` : `Add ${item.name}, ${price}`}
+            {needsSheet
+              ? `Choose options for ${item.name}, from ${price}`
+              : isStaged
+                ? `Add another ${item.name}, ${price}`
+                : `Add ${item.name}, ${price}`}
+            {hasOptions && !needsSheet ? ', has options' : ''}
           </span>
         </button>
       ) : null}
@@ -188,13 +201,22 @@ export function MenuItemCard({
           )}
         >
           {price}
+          {/* The "modifier dot" of ux-design-specification.md §Menu Browse:
+              this dish has options (Story 4.8). Decorative — the button's
+              accessible name says so in words. */}
+          {hasOptions ? (
+            <span
+              aria-hidden="true"
+              className="ml-sp-2 inline-block size-2 rounded-pill bg-brand-500 align-middle"
+            />
+          ) : null}
         </p>
 
         {onOpenModifiers && item.available ? (
           <button
             type="button"
             onClick={() => onOpenModifiers(item)}
-            aria-label={`Add ${item.name} with a note or a quantity`}
+            aria-label={`Add ${item.name} with options, a note or a quantity`}
             className={cn(
               // 44px — the standard touch floor. Smaller than the old 56px
               // `Opts` button, and that is the trade the design makes: the

@@ -18,7 +18,10 @@ import { lockOpenSession } from '@/server/services/table-session.service'
 import { billedSeats, findConsolidatedBill } from '@/server/services/bill.service'
 import { buildTicketPayloads } from '@/server/print/ticket'
 import { zoneUsesSeats } from '@/lib/design'
+import { chosenOptions, unitPriceFor, validateSelection, type SelectionProblem } from '@/lib/options'
+import { loadModifierGroups } from '@/server/orders/modifier-groups'
 import type {
+  OrderEventOption,
   ProductionDestination,
   SubmitRoundLine,
   SubmitRoundResponse,
@@ -39,13 +42,33 @@ export class ItemUnavailableError extends Error {
   }
 }
 
-/** A dish's price changed after the waiter saw it (AC-9). */
+/**
+ * A line's UNIT price changed after the waiter saw it (AC-9) — the dish's or,
+ * since Story 4.8, one of its options'. `lineIndex` says WHICH line: with
+ * options one dish can be on two lines at two prices.
+ */
 export class PriceChangedError extends Error {
   constructor(
     readonly itemId: string,
     readonly currentPricePaisa: number,
+    readonly lineIndex?: number,
   ) {
     super('Price changed')
+  }
+}
+
+/**
+ * A line's chosen options are not a valid choice for its dish (Story 4.8): an
+ * unknown or retired option, one switched off, a duplicate, two in a single
+ * group, or a required group left empty. `reason` is `validateSelection`'s.
+ */
+export class OptionInvalidError extends Error {
+  constructor(
+    readonly itemId: string,
+    readonly lineIndex: number,
+    readonly problem: SelectionProblem,
+  ) {
+    super('Option invalid')
   }
 }
 
@@ -269,16 +292,37 @@ export async function submitRound(
     .where(inArray(menuItems.id, itemIds))
     .for('share')
   const itemsById = new Map(itemRows.map((item) => [item.id, item]))
+  // Their priced options (Story 4.8), `FOR SHARE` in the same transaction for
+  // the same reason: an owner re-pricing or retiring an option waits for this
+  // round, so the price checked below is the price written.
+  const groupsByItem = await loadModifierGroups(tx, { itemIds, lock: true })
+
   // In line order, so the error names the first line the waiter would see.
-  for (const line of lines) {
+  const priced = lines.map((line, lineIndex) => {
     const item = itemsById.get(line.menuItemId)
     if (!item || !item.isAvailable) throw new ItemUnavailableError(line.menuItemId)
+    const groups = groupsByItem.get(line.menuItemId) ?? []
+    const optionIds = line.optionIds ?? []
+    const problem = validateSelection(groups, optionIds)
+    if (problem) throw new OptionInvalidError(line.menuItemId, lineIndex, problem)
+    const chosen = chosenOptions(groups, optionIds)
     // The quote is a CHECK, never a value (Decision 2). The row below is
-    // written with the menu's price, so a tablet can never set one.
-    if (item.pricePaisa !== line.quotedPricePaisa) {
-      throw new PriceChangedError(line.menuItemId, item.pricePaisa)
+    // written with the server's own UNIT price — dish plus options, by the
+    // same `unitPriceFor` the tablet used — so a tablet can never set one.
+    const unitPricePaisa = unitPriceFor(item.pricePaisa, chosen)
+    if (unitPricePaisa !== line.quotedPricePaisa) {
+      throw new PriceChangedError(line.menuItemId, unitPricePaisa, lineIndex)
     }
-  }
+    // The snapshot the ticket, the history and the bill read: names and
+    // deltas as they were at send, whatever the owner renames later.
+    const options: OrderEventOption[] = chosen.map((option) => ({
+      optionId: option.id,
+      group: option.group,
+      name: option.name,
+      priceDeltaPaisa: option.priceDeltaPaisa,
+    }))
+    return { unitPricePaisa, options }
+  })
 
   // ── Epic 8 (Story 8.2) goes HERE ──────────────────────────────────────────
   // `inventory.service.decrementBatch(tx, lines)` — the atomic
@@ -322,8 +366,8 @@ export async function submitRound(
 
   // Ids are generated here rather than returned, so each ticket line can be
   // tied to its event without relying on RETURNING preserving insert order.
-  const eventRows = lines.map((line) => {
-    const item = itemsById.get(line.menuItemId)!
+  const eventRows = lines.map((line, index) => {
+    const { unitPricePaisa, options } = priced[index]
     const note = line.modifierText.trim()
     return {
       id: randomUUID(),
@@ -333,8 +377,10 @@ export async function submitRound(
       eventType: 'ITEM_ADDED' as const,
       seatSlotId: line.seatSlotId,
       quantity: line.quantity,
-      unitPricePaisa: item.pricePaisa,
+      unitPricePaisa,
       modifierText: note === '' ? null : note,
+      // NULL, not [], for a dish with none — every row before 4.8 reads so.
+      options: options.length > 0 ? options : null,
       roundNumber,
     }
   })
@@ -351,6 +397,8 @@ export async function submitRound(
       eventId: row.id,
       name: item.name,
       quantity: row.quantity,
+      // Names only, in menu order: the kitchen needs "Double shot", not a price.
+      options: (row.options ?? []).map((option) => option.name),
       modifierText: row.modifierText,
       seatLabel: seat.seatLabel,
       seatNote: seat.seatNote,

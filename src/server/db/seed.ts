@@ -16,7 +16,7 @@ import bcrypt from 'bcryptjs'
 import { Pool } from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { menuCategories, menuItems, staff, tables, tenantConfig, tenants, zones } from './schema'
-import { BAR_MENU } from './bar-menu'
+import { BAR_MENU, ensureModifierGroups, type SeedItem } from './bar-menu'
 
 const BCRYPT_COST = 10 // architecture.md:205 — not 8, not 12
 
@@ -88,16 +88,7 @@ const SEED_ZONES = [
  *
  * Prices are integer PAISA. 185000 is LKR 1,850 — never a float, anywhere.
  */
-const SEED_MENU: {
-  category: string
-  items: {
-    name: string
-    pricePaisa: number
-    destination: 'kitchen' | 'pizza_kitchen' | 'bar'
-    available?: boolean
-    portionCount?: number
-  }[]
-}[] = [
+const SEED_MENU: { category: string; items: SeedItem[] }[] = [
   {
     category: 'Starters',
     items: [
@@ -255,16 +246,21 @@ async function main() {
           .returning({ id: menuCategories.id })
 
         for (const [itemIndex, item] of group.items.entries()) {
-          await tx.insert(menuItems).values({
-            tenantId: tenant.id,
-            categoryId: category.id,
-            name: item.name,
-            pricePaisa: item.pricePaisa,
-            productionDestination: item.destination,
-            isAvailable: item.available ?? true,
-            portionCount: item.portionCount ?? null,
-            displayOrder: itemIndex,
-          })
+          const [created] = await tx
+            .insert(menuItems)
+            .values({
+              tenantId: tenant.id,
+              categoryId: category.id,
+              name: item.name,
+              pricePaisa: item.pricePaisa,
+              productionDestination: item.destination,
+              isAvailable: item.available ?? true,
+              portionCount: item.portionCount ?? null,
+              displayOrder: itemIndex,
+            })
+            .returning({ id: menuItems.id })
+          // Its sample priced options, if it has any (Story 4.8).
+          await ensureModifierGroups(tx, tenant.id, created.id, item.modifierGroups)
           menuItemCount += 1
         }
       }

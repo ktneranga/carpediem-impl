@@ -80,6 +80,19 @@ export function lkrFromPaisa(paisa: number): string {
 }
 
 /**
+ * A price CHANGE, signed — "+LKR 1,000", "−LKR 1,000" (a true minus, U+2212),
+ * and "" for no change (Story 4.8: an option's effect on the dish).
+ *
+ * Not `lkrFromPaisa`, which prints a negative as "LKR -1,000" with a hyphen;
+ * not `deduction`, which takes rupees and drops the currency.
+ */
+export function signedLkrFromPaisa(deltaPaisa: number): string {
+  if (deltaPaisa === 0) return ''
+  const sign = deltaPaisa > 0 ? '+' : '−'
+  return `${sign}${lkrFromPaisa(Math.abs(deltaPaisa))}`
+}
+
+/**
  * Title for a merged group of tables: `B2 + B3`, then `Table 1 +2`.
  *
  * A pair spells both out, because that is the common case and `B2 + B3` is the

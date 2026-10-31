@@ -10,7 +10,9 @@
  *   into its bar category rather than duplicated, keeping its id, so past
  *   orders and bills still point at it;
  * - the old "Drinks" category is DEACTIVATED, never deleted — items and order
- *   history reference it, and a deactivated category simply leaves the menu.
+ *   history reference it, and a deactivated category simply leaves the menu;
+ * - every bar item, found OR created, gets its sample priced options (Story
+ *   4.8): a group or option already there by name is left exactly as it is.
  *
  * Refuses to run in production, like `seed.ts`: this is sample data.
  */
@@ -18,7 +20,7 @@ import { and, eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import { menuCategories, menuItems, tenants } from './schema'
-import { BAR_MENU } from './bar-menu'
+import { BAR_MENU, ensureModifierGroups } from './bar-menu'
 
 async function main() {
   if (process.env.NODE_ENV === 'production') {
@@ -35,7 +37,14 @@ async function main() {
   const [tenant] = await db.select({ id: tenants.id }).from(tenants).limit(1)
   if (!tenant) throw new Error('[seed-bar-menu] No tenant — run the main seed first')
 
-  const summary = { categoriesCreated: 0, itemsCreated: 0, itemsMoved: 0, drinksRetired: false }
+  const summary = {
+    categoriesCreated: 0,
+    itemsCreated: 0,
+    itemsMoved: 0,
+    groupsCreated: 0,
+    optionsCreated: 0,
+    drinksRetired: false,
+  }
 
   await db.transaction(async (tx) => {
     const existing = await tx
@@ -63,6 +72,7 @@ async function main() {
           .where(and(eq(menuItems.tenantId, tenant.id), eq(menuItems.name, item.name)))
           .limit(1)
 
+        let itemId = found?.id
         if (found) {
           if (found.categoryId !== categoryId) {
             await tx
@@ -71,20 +81,27 @@ async function main() {
               .where(eq(menuItems.id, found.id))
             summary.itemsMoved += 1
           }
-          continue
+        } else {
+          const [created] = await tx
+            .insert(menuItems)
+            .values({
+              tenantId: tenant.id,
+              categoryId,
+              name: item.name,
+              pricePaisa: item.pricePaisa,
+              productionDestination: item.destination,
+              isAvailable: item.available ?? true,
+              portionCount: item.portionCount ?? null,
+              displayOrder: index,
+            })
+            .returning({ id: menuItems.id })
+          itemId = created.id
+          summary.itemsCreated += 1
         }
 
-        await tx.insert(menuItems).values({
-          tenantId: tenant.id,
-          categoryId,
-          name: item.name,
-          pricePaisa: item.pricePaisa,
-          productionDestination: item.destination,
-          isAvailable: item.available ?? true,
-          portionCount: item.portionCount ?? null,
-          displayOrder: index,
-        })
-        summary.itemsCreated += 1
+        const added = await ensureModifierGroups(tx, tenant.id, itemId!, item.modifierGroups)
+        summary.groupsCreated += added.groups
+        summary.optionsCreated += added.options
       }
     }
 

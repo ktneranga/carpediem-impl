@@ -53,12 +53,14 @@ export function renderTicketText(ticket: TicketPayload): string {
       lines.push(seat)
       for (const line of seatLines) {
         lines.push(`  ${line.quantity} × ${line.name}`)
+        for (const option of line.options ?? []) lines.push(`     - ${option}`)
         if (line.modifierText) lines.push(`     — ${line.modifierText}`)
       }
     }
   } else {
     for (const line of ticket.lines) {
       lines.push(`${line.quantity} × ${line.name}`)
+      for (const option of line.options ?? []) lines.push(`   - ${option}`)
       if (line.modifierText) lines.push(`   — ${line.modifierText}`)
     }
   }

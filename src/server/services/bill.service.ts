@@ -15,6 +15,7 @@ import {
   tenantConfig,
 } from '@/server/db/schema'
 import { lockOpenSession } from '@/server/services/table-session.service'
+import { optionText } from '@/lib/options'
 import type { BillDetail, BillLineDetail, BillTotals } from '@/types/bills'
 
 /** Drizzle transaction handle. */
@@ -252,13 +253,16 @@ async function collectBillable(
   // billable while this is below its quantity.
   const billedUnits = sql<number>`coalesce((select sum(${billLines.quantity}) from ${billLines} where ${billLines.orderEventId} = ${orderEvents.id}), 0)::int`
 
-  const events = await tx
+  const rows = await tx
     .select({
       eventId: orderEvents.id,
       quantity: orderEvents.quantity,
       billedQuantity: billedUnits,
       unitPricePaisa: orderEvents.unitPricePaisa,
       modifierText: orderEvents.modifierText,
+      // The options as sent (Story 4.8). Display only: the unit price above
+      // already includes their deltas, so no money is computed from these.
+      options: orderEvents.options,
       roundNumber: orderEvents.roundNumber,
       itemName: menuItems.name,
       seatLabel: seatSlots.seatLabel,
@@ -301,6 +305,8 @@ async function collectBillable(
       ),
     )
     .orderBy(asc(orderEvents.createdAt))
+  // "Double shot, No ice" — the form a bill line stores and shows.
+  const events = rows.map(({ options, ...row }) => ({ ...row, optionText: optionText(options) }))
 
   const [attachedTable] = await tx
     .select({ tableId: orderSessionTables.tableId })
@@ -737,6 +743,9 @@ async function buildBill(
         name: event.itemName ?? 'Unknown item',
         seatLabel: event.seatLabel,
         modifierText: event.modifierText,
+        // Snapshotted like the name (Story 4.8): the options a guest was
+        // charged for must read the same after the owner renames one.
+        optionText: event.optionText,
       })),
     )
     if (comps.length > 0) {
@@ -788,6 +797,7 @@ async function buildBill(
       amountPaisa: lineAmounts[index]!,
       seatLabel: event.seatLabel,
       modifierText: event.modifierText,
+      optionText: event.optionText,
       roundNumber: event.roundNumber,
     })),
     comps: comps.map((comp, index) => ({
@@ -850,6 +860,7 @@ export async function getBill(
         name: billLines.name,
         seatLabel: billLines.seatLabel,
         modifierText: billLines.modifierText,
+        optionText: billLines.optionText,
         // The units THIS bill took, not the event's — a split cashew bills 1
         // of 2 (migration 0025).
         quantity: billLines.quantity,
@@ -868,6 +879,7 @@ export async function getBill(
     amountPaisa: line.amountPaisa,
     seatLabel: line.seatLabel,
     modifierText: line.modifierText,
+    optionText: line.optionText,
     roundNumber: line.roundNumber,
   }))
 

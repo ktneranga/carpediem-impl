@@ -11,6 +11,45 @@
  * it `server-only` — into the module written to keep the two apart.
  */
 
+/**
+ * A priced option on a menu item — "Double shot", +LKR 1,000 (Story 4.8, FR65).
+ *
+ * `priceDeltaPaisa` may be negative ("No alcohol", −LKR 1,000) or 0 ("No ice").
+ */
+export type ModifierOptionRow = {
+  id: string
+  name: string
+  priceDeltaPaisa: number
+  /** Preselected when the dish is added with one tap. */
+  isDefault: boolean
+  /** An unavailable option is shown disabled and refused by the server. */
+  available: boolean
+}
+
+/** A group of options on one menu item — "Alcohol", "Ice". */
+export type ModifierGroupRow = {
+  id: string
+  name: string
+  /** `single`: at most one option. `multi`: any number. */
+  selection: 'single' | 'multi'
+  /** A required group must have a choice before the dish can be sent. */
+  required: boolean
+  options: ModifierOptionRow[]
+}
+
+/**
+ * The options a SENT item was ordered with, frozen on its order event
+ * (`order_events.options`). Copied at send and never re-read from the menu, so
+ * renaming, re-pricing or retiring an option never rewrites a sent line, a
+ * ticket or a bill. No foreign keys: history must not block retiring an option.
+ */
+export type OrderEventOption = {
+  optionId: string
+  group: string
+  name: string
+  priceDeltaPaisa: number
+}
+
 /** One submitted item, as the history renders it. */
 export type SubmittedItemRow = {
   id: string
@@ -19,6 +58,8 @@ export type SubmittedItemRow = {
   /** Integer paisa, AS QUOTED — read from the event row, never from the menu. */
   unitPricePaisa: number | null
   modifierText: string | null
+  /** The chosen options' names, "Double shot, No ice" — null when none (Story 4.8). */
+  optionText: string | null
   seatLabel: string | null
   submittedAt: string
 }
@@ -36,6 +77,8 @@ export type ProductionDestination = 'kitchen' | 'pizza_kitchen' | 'bar'
 export const MAX_ROUND_LINES = 100
 export const MAX_LINE_QUANTITY = 99
 export const MAX_MODIFIER_TEXT = 120
+/** Options on one line — far above any real dish, a cap on a malformed body. */
+export const MAX_OPTIONS_PER_LINE = 20
 
 /** One staged line, as sent to `POST /api/sessions/:sessionId/orders`. */
 export type SubmitRoundLine = {
@@ -46,8 +89,14 @@ export type SubmitRoundLine = {
   /** "" for none. Trimmed on the server; "" is stored as null. */
   modifierText: string
   /**
-   * The price the waiter SAW, in paisa. A check, never a value: the server
-   * writes the menu's current price and refuses if this differs (AC-9).
+   * The chosen options (Story 4.8). Optional on the wire — the server defaults
+   * it to [] — so older tablets and rounds mirrored before 4.8 still send.
+   */
+  optionIds?: string[]
+  /**
+   * The UNIT price the waiter SAW, in paisa: the dish plus its options, never
+   * below zero (`unitPriceFor`). A check, never a value: the server computes the
+   * same price from the menu and refuses if this differs (AC-9, Story 4.8).
    */
   quotedPricePaisa: number
 }
@@ -75,6 +124,8 @@ export type SubmitRoundErrorCode =
   | 'SESSION_ALREADY_CLOSED'
   | 'SUBMISSION_ID_REUSED'
   | 'ROUND_CONFLICT'
+  /** An option unknown, foreign, unavailable, repeated, too many, or a required group empty. */
+  | 'OPTION_INVALID'
 
 /** One line of a production ticket, as the `order:submitted` event carries it. */
 export type TicketLine = {
@@ -82,6 +133,11 @@ export type TicketLine = {
   name: string
   quantity: number
   modifierText: string | null
+  /**
+   * The chosen options' names, printed under the dish (Story 4.8). OPTIONAL:
+   * print jobs queued before 4.8 are stored without it and must still print.
+   */
+  options?: string[]
   seatLabel: string
   /**
    * "red shirt" — ON the kitchen ticket by design (Story 4.3 AC-11): it is how

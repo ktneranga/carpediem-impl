@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { and, asc, eq } from 'drizzle-orm'
 import { db } from '@/server/db'
 import { menuCategories, menuItems, tenants } from '@/server/db/schema'
+import { loadModifierGroups } from '@/server/orders/modifier-groups'
+import type { ModifierGroupRow } from '@/types/orders'
 
 /**
  * One item as the client sees it.
@@ -32,6 +34,13 @@ export type MenuItemRow = {
    * still holds for most of the menu.
    */
   imageUrl: string | null
+  /**
+   * The dish's priced options — "Alcohol: No alcohol / Single / Double shot"
+   * (Story 4.8). `[]` when it has none. Required, not optional: the tablet
+   * PRICES from this, and a missing field would price an optioned dish wrong.
+   * Unavailable options are included and flagged, as unavailable items are.
+   */
+  modifierGroups: ModifierGroupRow[]
 }
 
 export type MenuCategoryRow = {
@@ -94,6 +103,9 @@ export async function GET() {
         asc(menuItems.name),
       )
 
+    // Every item's options in one more query (Story 4.8).
+    const groupsByItem = await loadModifierGroups(db, { tenantId: tenant.id })
+
     // Assembled in insertion order, which the ORDER BY above already fixed —
     // a Map preserves it, so no re-sorting is needed on either side.
     const categories = new Map<string, MenuCategoryRow>()
@@ -116,6 +128,7 @@ export async function GET() {
         productionDestination: row.productionDestination ?? 'kitchen',
         portionCount: row.portionCount,
         imageUrl: row.imageUrl,
+        modifierGroups: groupsByItem.get(row.itemId) ?? [],
       })
     }
 
