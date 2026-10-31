@@ -1,5 +1,5 @@
 # generated: 2026-06-03
-# last_updated: 2026-06-03
+# last_updated: 2026-10-31
 # project: carpe-diem-restaurant
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-03
-last_updated: 2026-10-16
+last_updated: 2026-10-31
 project: carpe-diem-restaurant
 project_key: NOKEY
 tracking_system: file-system
@@ -82,12 +82,17 @@ development_status:
   epic-3-retrospective: optional
 
   # ── Epic 4: Order Entry & Multi-Destination Routing ──────────────────────
-  epic-4: done
+  epic-4: in-progress  # reopened 2026-10-31 for 4-6..4-9
   4-1-build-orderactionstrip-component: done
   4-2-implement-menu-browse-and-search: done
   4-3-implement-seat-slot-management: done
   4-4-implement-add-item-to-order-with-modifiers-and-seat-assignment: done
   4-5-implement-order-submission-and-multi-destination-routing: done
+  # Added 2026-10-31 by sprint-change-proposal-2026-10-31.md
+  4-6-implement-bar-tabs: review
+  4-7-implement-bar-menu-and-drinks-pill: review
+  4-8-implement-priced-options: backlog
+  4-9-implement-custom-charge: backlog
   epic-4-retrospective: done
 
   # ── Epic 5: Ticket Output — ESC/POS Printing & KDS Display ───────────────
@@ -100,11 +105,11 @@ development_status:
 
   # ── Epic 6: Bill Settlement & Payment Recording ───────────────────────────
   epic-6: in-progress
-  6-1-build-splitbillcanvas-component: backlog  # DEFERRED post-demo — drag-to-split; 6-4 per-seat covers real splitting
+  6-1-build-splitbillcanvas-component: review  # built 2026-10-21..31 ahead of plan — sprint-change-proposal-2026-10-31
   6-2-implement-consolidated-bill-generation: done
-  6-3-implement-mid-settlement-person-split: backlog  # DEFERRED post-demo — depends on 6-1
+  6-3-implement-mid-settlement-person-split: review  # built ahead of plan — sprint-change-proposal-2026-10-31
   6-4-implement-per-seat-slot-independent-billing: done
-  6-5-implement-payment-recording-and-session-auto-close: backlog
+  6-5-implement-payment-recording-and-session-auto-close: review  # built ahead of plan — sprint-change-proposal-2026-10-31
   epic-6-retrospective: optional
 
   # ── Epic 7: Audit Trail & Dispute Resolution ──────────────────────────────
@@ -137,6 +142,7 @@ development_status:
   10-3-implement-zone-table-and-station-configuration: backlog
   10-4-implement-menu-management: backlog
   10-5-implement-tenant-feature-flags-and-brand-customization: backlog
+  10-6-implement-per-user-permissions: backlog  # added 2026-10-31
   epic-10-retrospective: optional
 
   # ── Epic 11: Vendor Support APIs & Infrastructure ─────────────────────────

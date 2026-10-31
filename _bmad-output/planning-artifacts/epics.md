@@ -1192,6 +1192,10 @@ So that a group that needs more space is still one order, one ticket and one bil
 
 ### Story 3.9: Implement Counter Sale (Orders Without a Table)
 
+> **Amended 2026-10-31** *(sprint-change-proposal-2026-10-31.md)* — superseded on screen by Story 4.6 (bar tabs).
+> The session model (`kind = 'counter'`, no table) is unchanged.
+
+
 **As a** waiter or owner,
 **I want** to take an order that is not tied to any table,
 **So that** a customer buying at the bar can be served and recorded without occupying seating.
@@ -1435,6 +1439,57 @@ So that the kitchen and bar receive their tickets the moment I tap submit — no
 **Then** HTTP 422 is returned with `{ success: false, error: { code: "ITEM_UNAVAILABLE", itemId: "..." } }`; no order events are written; the waiter is prompted to remove the unavailable item and resubmit
 
 ---
+### Story 4.6: Implement Bar Tabs
+
+> **Added 2026-10-31 — built, in review** *(sprint-change-proposal-2026-10-31.md)*
+
+As a bartender,
+I want to open a tab named by how the guest looks,
+So that I can find it when they come back to pay.
+
+**Acceptance Criteria:**
+
+- "Bar · N open" sits in the zone bar after Rooftop and replaces the Counter sale button.
+- New tab asks for a staff-only nickname (trimmed, max 40); Skip opens an unnamed quick sale. Stored in `order_sessions.tab_label` (migration 0026).
+- Tabs read "Tab 7 · white shirt" (day sequence plus nickname); newest first, with Newest/Oldest first and a late-tabs bar for tabs open over two hours (the floor's stale rule).
+- A tab's order screen is drinks only and always one bill: no bill switch, no seat row. A tab whose guest sits down is a table order again.
+- The floor action bar for a selected tab offers Seat at table · Bill & split · Open tab.
+- The nickname is never printed on a guest's bill.
+
+### Story 4.7: Implement Bar Menu & Drinks Pill
+
+> **Added 2026-10-31 — built, in review** *(sprint-change-proposal-2026-10-31.md)*
+
+- Six bar categories — Cocktails, Mocktails, Coffee, Tea, Beer, Whisky. A drink is an item whose `production_destination` is `bar`; that one rule decides a tab's menu and the Drinks pill.
+- A table's menu shows the food chips plus one Drinks pill, which swaps the row to "‹ Food · All drinks · …"; search covers food and drinks.
+- Sample items until Story 10.4 (`bar-menu.ts`); `seed-bar-menu.ts` migrates an existing database idempotently, moving existing drinks by name and retiring "Drinks".
+
+### Story 4.8: Implement Priced Options
+
+> **Added 2026-10-31 — next to build** *(sprint-change-proposal-2026-10-31.md)* · FR65
+
+As a bartender,
+I want to add a Mojito as "double shot" or "no alcohol" and see the price change,
+So that the bill is right without arithmetic.
+
+**Acceptance Criteria:**
+
+- Modifier groups per item (single or multi choice, required or optional), each option carrying a price change in paisa, which may be negative; a line never prices below zero.
+- The options sheet shows the options and a live price.
+- The server recomputes the price from the chosen option ids and refuses a quoted price that does not match.
+- The unit price is fixed on the order event at send, as today; a later menu change never alters it.
+- Chosen options print on the ticket and show on the bill.
+
+### Story 4.9: Implement Custom Charge
+
+> **Added 2026-10-31 — after 10.6** *(sprint-change-proposal-2026-10-31.md)* · FR66
+
+- A line with a typed name and price, on a table or a tab.
+- Allowed only for staff holding the `custom_charge` permission (the owner by default until Story 10.6).
+- Audited: who, when, the amount. Goes on the bill like any line; prints on no kitchen ticket.
+
+---
+
 
 ## Epic 5: Ticket Output — ESC/POS Printing & KDS Display
 
@@ -1622,6 +1677,15 @@ So that I can manage production flow without relying on paper tickets when KDS m
 
 ### Story 6.1: Build SplitBillCanvas Component
 
+> **Amended 2026-10-31 — built ahead of plan, in review** *(sprint-change-proposal-2026-10-31.md)*
+> - A line of quantity > 1 can be split by units ("Move 1 of 2"); a single unit
+>   cannot be divided — sharing one dish is deferred. This replaces the
+>   "whole unit to one person only" criterion below.
+> - Items move by tap-then-"Move here" (touch) or drag on POINTER events, so it
+>   works on a tablet; HTML drag-and-drop does not fire for touch.
+> - Identical dishes in one person's column show as one card.
+
+
 As a developer,
 I want the SplitBillCanvas drag-and-drop component built with real-time per-person totals and full keyboard accessibility,
 So that the mid-settlement person split screen has a tested, accessible canvas ready to wire up.
@@ -1708,6 +1772,20 @@ So that I can present the full total to a party settling together without any sp
 
 ### Story 6.3: Implement Mid-Settlement Person Split
 
+> **Amended 2026-10-31 — built ahead of plan, in review** *(sprint-change-proposal-2026-10-31.md)*
+> - Opened from the bill screen's "Paying separately? → Split bill", offered
+>   once the bill holds two or more UNITS.
+> - Columns are named after the order's seats; a Separate-bills order opens
+>   pre-split by seat, a One-bill order opens with items unassigned. New
+>   columns continue "Seat 3", "Seat 4". "Merge into one bill" goes back.
+> - A person's bill is written at THEIR Settle: `POST /api/sessions/:id/bills
+>   { type: 'split', items: [{ eventId, quantity }], personLabel }`, bill type
+>   `split` with `person_label`. Refused whole (409 ITEMS_NOT_BILLABLE) if any
+>   unit is already billed. This replaces the single `/bills/split` call below.
+> - The arrangement is kept per session in localStorage, restored only under
+>   the same bill mode.
+
+
 As a waiter,
 I want to initiate a mid-settlement split that assigns items to individual persons and generates a separate bill for each,
 So that a party can each pay for exactly what they ordered without pre-assigning seats.
@@ -1742,6 +1820,12 @@ So that a party can each pay for exactly what they ordered without pre-assigning
 
 ### Story 6.4: Implement Per-Seat-Slot Independent Billing
 
+> **Amended 2026-10-31** *(sprint-change-proposal-2026-10-31.md)* — the order screen's "Bill Seat N" button and
+> its preview were removed (2026-10-25). Paying one seat early is now the bill
+> screen's split, pre-filled by seat. The seat-bill endpoint remains, exercised
+> by `verify-bills.ts`.
+
+
 As a waiter,
 I want to generate and settle a bill for a specific seat slot while other seats at the same table remain open,
 So that guests who need to leave early can pay and go without waiting for the whole table.
@@ -1775,6 +1859,21 @@ So that guests who need to leave early can pay and go without waiting for the wh
 ---
 
 ### Story 6.5: Implement Payment Recording & Session Auto-Close
+
+> **Amended 2026-10-31 — built ahead of plan, in review** *(sprint-change-proposal-2026-10-31.md)*
+> - `POST /api/bills/:billId/payments { tenders: [{ method: 'cash'|'card',
+>   amountPaisa }] }` — one or two tenders, one per method. Replaces the
+>   `{ method: "split", cashAmount, cardAmount }` body below.
+> - "Bill & split" OPENS the bill screen and writes nothing; the bill is
+>   recorded at Settle. Offered once a round has been sent, and from the
+>   floor's action bar for a table or a bar tab.
+> - Amounts are what was APPLIED; past the outstanding total is refused
+>   (409 OVERPAYMENT). Change is the screen's arithmetic.
+> - Settle dialog per design 31: Cash (received, quick notes, change, Clear),
+>   Card, Cash + card.
+> - Auto-close when EVERY bill is settled AND nothing is unbilled — not "the
+>   last bill is settled" — through `closeSession(reason 'settled')`.
+
 
 As a waiter,
 I want to record cash, card, or split payments against any open bill,
@@ -2358,6 +2457,11 @@ So that the system accurately reflects the physical layout and production setup 
 
 ### Story 10.4: Implement Menu Management
 
+> **Amended 2026-10-31** *(sprint-change-proposal-2026-10-31.md)* — also manages modifier groups and their
+> priced options (Story 4.8's data), and the bar categories seeded by
+> `seed-bar-menu.ts` until then.
+
+
 As an owner,
 I want to add, edit, and remove menu items with their categories, prices, and production destinations,
 So that the system's menu accurately reflects what the restaurant serves and where each item is produced.
@@ -2430,6 +2534,16 @@ So that I can enable or disable optional capabilities and match the system's app
 **Then** all 9 scale variants (`brand-50` through `brand-900`) are derived from the base colour; the derived `brand-600` interactive colour is separately validated for WCAG AA before saving
 
 ---
+### Story 10.6: Implement Per-User Permissions
+
+> **Added 2026-10-31** *(sprint-change-proposal-2026-10-31.md)* · FR67
+
+- The owner grants or revokes individual permissions for individual staff in the back office, beyond their role.
+- First permission: `custom_charge` (Story 4.9).
+- Checked on the server for every gated action; changes are audited.
+
+---
+
 
 ## Epic 11: Vendor Support APIs & Infrastructure
 

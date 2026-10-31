@@ -1242,3 +1242,14 @@ Screen reader testing (NVDA/JAWS) is not required for waiter and kitchen context
 - No decorative images in waiter/kitchen context — icons via inline SVG sprite (zero HTTP requests)
 - Owner dashboard chart SVGs: `role="img"` + `aria-label` with data summary for screen readers
 - Use `rem` for font sizes, `px` for touch targets (targets must not scale with user font preference)
+
+---
+
+## Billing & bar (2026-10)
+
+*(sprint-change-proposal-2026-10-31.md)* These screens shipped against Teran's screenshots rather than this spec; start from them:
+
+- **Bill screen** — one bill (27), split (28), split assigned (29), drag (32); settle dialog with number pad (31).
+- **Order screen** — the One bill / Separate bills segmented switch (22); bar tabs drop the switch and the seat row.
+- **Floor** — Bar zone after Rooftop with nicknamed tabs; Drinks pill on table menus.
+- **Login** — PIN pad on the grey, no card (37).

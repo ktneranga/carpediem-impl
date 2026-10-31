@@ -1228,3 +1228,16 @@ pnpm create next-app@latest carpe-diem-rms --typescript --tailwind --eslint --ap
 - All monetary values are integers (paisa) at every layer except the display layer
 - Every audit write must carry an explicit `staffId` from `x-staff-id` header — never inferred from session context
 - Refer to this document for all architectural questions before making local decisions
+
+---
+
+## Amendments — Billing & bar, 2026-10-31
+
+*(sprint-change-proposal-2026-10-31.md — recorded after the fact; no redesign.)*
+
+- **Payments** (migration 0023): `payment_records.bill_id` NOT NULL; one row per tender, so cash + card is two rows. A bill is settled when its rows sum to `bills.total_paisa`; there is no status column. Amounts are applied amounts, never past the total. The table closes when every bill is settled AND nothing is unbilled.
+- **Split bills** (0024): `bill_type` gains `split`; `bills.person_label`.
+- **Split by quantity** (0025): `bill_lines.quantity`. The no-double-billing invariant moved from `UNIQUE(order_event_id)` to the `bill_lines_within_event_quantity` trigger — no event billed past its quantity. **Reports must sum `bill_lines.quantity`, not the event's quantity.**
+- **Bar tabs** (0026): `order_sessions.tab_label`, staff-only. `kind` stays `counter`.
+- **Consolidated bills are identified by `bills.type`**, never by a null seat — a split bill has no seat either.
+- **Bill mode:** switching to One bill moves nothing (D2 of 2026-10-16 reversed); `setBillMode` only writes the column.
