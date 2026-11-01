@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { lkrFromPaisa } from '@/lib/format'
+import { loginUrl } from '@/lib/return-to'
 import { routeForDestination } from '@/lib/design'
 import { cn } from '@/lib/utils'
 import { ActionStripShell } from '@/components/pos/action-strip-chrome'
@@ -146,7 +147,7 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
     if (code === 'REAUTH_REQUIRED' || code === 'REAUTH_FAILED') {
       throw new RefusedError(code, 'This needs a manager PIN, which this screen cannot ask for yet.')
     }
-    window.location.assign('/login')
+    window.location.assign(loginUrl())
     throw new RefusedError('UNAUTHENTICATED', 'Sign in again.')
   }
   if (response.ok && payload?.success) return payload.data as T

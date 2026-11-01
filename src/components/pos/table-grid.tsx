@@ -11,6 +11,7 @@ import { ZoneChipBar, type Zone } from '@/components/pos/zone-chip-bar'
 import { FloorActionStrip } from '@/components/pos/floor-action-strip'
 import { useSocketEvent, useSocketStatus } from '@/hooks/use-socket'
 import { signOut } from '@/lib/auth-client'
+import { loginUrl } from '@/lib/return-to'
 import { elapsedMinutesFrom, useMinuteTick } from '@/hooks/use-minute-tick'
 import { clockTime, elapsed } from '@/lib/format'
 import { zoneIcon } from '@/lib/design'
@@ -531,7 +532,7 @@ export function TableGrid({
   const handleTableActionError = useCallback(
     (error: unknown) => {
       if (error instanceof SessionExpiredError) {
-        window.location.assign('/login')
+        window.location.assign(loginUrl())
         return
       }
       if (error instanceof ForbiddenError || error instanceof TableTakenError) {
@@ -640,7 +641,7 @@ export function TableGrid({
   // cannot act on it here. Send them to the PIN pad rather than showing an error
   // they can only respond to by reloading.
   useEffect(() => {
-    if (error instanceof SessionExpiredError) window.location.assign('/login')
+    if (error instanceof SessionExpiredError) window.location.assign(loginUrl())
   }, [error])
 
   // Patch the single affected row rather than invalidating.
@@ -745,7 +746,7 @@ export function TableGrid({
     },
     onError: (error) => {
       if (error instanceof SessionExpiredError) {
-        window.location.assign('/login')
+        window.location.assign(loginUrl())
         return
       }
 
@@ -787,7 +788,7 @@ export function TableGrid({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: TABLES_QUERY_KEY }),
     onError: (error) => {
       if (error instanceof SessionExpiredError) {
-        window.location.assign('/login')
+        window.location.assign(loginUrl())
         return
       }
       // Routed through the shared handler, which surfaces `error.message` on

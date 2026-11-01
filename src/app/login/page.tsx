@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react'
 import { PINPad } from '@/components/pos/pin-pad'
+import { safeReturnPath } from '@/lib/return-to'
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
@@ -25,7 +26,10 @@ export default function LoginPage() {
         if (response.ok) {
           // Full navigation, not router.push — the root layout reads the staff
           // role server-side to set [data-context], so the server must re-render.
-          window.location.assign('/')
+          // Back to where the timeout interrupted them, if anywhere — checked,
+          // because `next` is in a URL anyone can craft.
+          const next = new URLSearchParams(window.location.search).get('next')
+          window.location.assign(safeReturnPath(next))
           return
         }
 

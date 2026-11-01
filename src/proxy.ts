@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE_NAME, touchSession, validateSession } from '@/server/services/session.service'
 import { isRoleAllowed } from '@/server/auth/permissions'
+import { loginUrl } from '@/lib/return-to'
 
 /**
  * Session validation and RBAC for every request.
@@ -35,7 +36,10 @@ function unauthenticated(request: NextRequest): NextResponse {
     )
   }
 
-  return NextResponse.redirect(new URL('/login', request.url))
+  // Back to the page they were on once they sign in again — a timeout in the
+  // middle of an order must not cost the waiter their place.
+  const { pathname, search } = request.nextUrl
+  return NextResponse.redirect(new URL(loginUrl(pathname + search), request.url))
 }
 
 function forbidden(request: NextRequest): NextResponse {

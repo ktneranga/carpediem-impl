@@ -40,6 +40,7 @@ import { COUNTER_QUERY_KEY } from '@/components/pos/table-grid'
 import { elapsedMinutesFrom, useMinuteTick } from '@/hooks/use-minute-tick'
 import { useSocketEvent, useSocketRoom } from '@/hooks/use-socket'
 import { signOut } from '@/lib/auth-client'
+import { loginUrl } from '@/lib/return-to'
 import { clockTime, elapsed } from '@/lib/format'
 import { chosenOptions, unitPriceFor, validateSelection } from '@/lib/options'
 import { cn } from '@/lib/utils'
@@ -496,7 +497,7 @@ export function OrderScreen({
   function handleSeatError(fallback: string) {
     return (error: unknown) => {
       if (error instanceof SessionExpiredError) {
-        window.location.assign('/login')
+        window.location.assign(loginUrl())
         return
       }
       // Never redirect on a 403 — re-authenticating cannot change your role.
@@ -845,7 +846,7 @@ export function OrderScreen({
     },
     onError: (error) => {
       if (error instanceof SessionExpiredError) {
-        window.location.assign('/login')
+        window.location.assign(loginUrl())
         return
       }
       if (error instanceof ForbiddenError) {
@@ -980,7 +981,7 @@ export function OrderScreen({
       // assigns items to people the server does not believe exist.
       if (context) setBillMode(context.previous)
       if (error instanceof SessionExpiredError) {
-        window.location.assign('/login')
+        window.location.assign(loginUrl())
         return
       }
       if (error instanceof ForbiddenError) {
@@ -1118,7 +1119,7 @@ export function OrderScreen({
     },
     onError: (error) => {
       if (error instanceof SessionExpiredError) {
-        window.location.assign('/login')
+        window.location.assign(loginUrl())
         return
       }
       // Never redirect on a 403 — the session is fine, the role is not
@@ -1229,7 +1230,7 @@ export function OrderScreen({
               void queryClient.invalidateQueries({ queryKey: ['tables'] })
               router.push('/')
             } else {
-              window.location.assign('/login')
+              window.location.assign(loginUrl())
             }
           }}
           className={cn(
