@@ -791,7 +791,7 @@ export function OrderScreen({
   /** The dish a refusal points at, by name, when the round still holds it. */
   function refusedDishName(detail: Record<string, unknown>): string | null {
     // By LINE first (Story 4.8): with options, one dish can be on two lines —
-    // a Single and a Double Mojito — and the item id alone names either.
+    // a plain and an extra-shot Mojito — and the item id alone names either.
     if (Number.isInteger(detail.lineIndex)) {
       const line = lines[detail.lineIndex as number]
       if (line) return line.name

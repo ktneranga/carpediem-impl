@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { and, asc, eq } from 'drizzle-orm'
+import { hasUnfillableRequiredGroup } from '@/lib/options'
 import { db } from '@/server/db'
 import { menuCategories, menuItems, tenants } from '@/server/db/schema'
 import { loadModifierGroups } from '@/server/orders/modifier-groups'
@@ -35,7 +36,7 @@ export type MenuItemRow = {
    */
   imageUrl: string | null
   /**
-   * The dish's priced options — "Alcohol: No alcohol / Single / Double shot"
+   * The dish's priced options — "Alcohol: No alcohol / Single", "Extra shots"
    * (Story 4.8). `[]` when it has none. Required, not optional: the tablet
    * PRICES from this, and a missing field would price an optioned dish wrong.
    * Unavailable options are included and flagged, as unavailable items are.
@@ -120,15 +121,19 @@ export async function GET() {
       // Null on the left-join miss — a category with no items.
       if (row.itemId === null) continue
 
+      const groups = groupsByItem.get(row.itemId) ?? []
       category.items.push({
         id: row.itemId,
         name: row.itemName ?? '',
         pricePaisa: row.pricePaisa ?? 0,
-        available: row.available ?? false,
+        // Also unavailable when a REQUIRED option group has nothing left to
+        // choose: the send would refuse every line of it (code review
+        // 2026-11-01), so the waiter sees it greyed instead.
+        available: (row.available ?? false) && !hasUnfillableRequiredGroup(groups),
         productionDestination: row.productionDestination ?? 'kitchen',
         portionCount: row.portionCount,
         imageUrl: row.imageUrl,
-        modifierGroups: groupsByItem.get(row.itemId) ?? [],
+        modifierGroups: groups,
       })
     }
 

@@ -57,7 +57,7 @@ export class PriceChangedError extends Error {
   constructor(
     readonly itemId: string,
     readonly currentPricePaisa: number,
-    readonly lineIndex?: number,
+    readonly lineIndex: number,
   ) {
     super('Price changed')
   }

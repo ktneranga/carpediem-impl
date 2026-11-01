@@ -305,7 +305,7 @@ async function collectBillable(
       ),
     )
     .orderBy(asc(orderEvents.createdAt))
-  // "Double shot, No ice" — the form a bill line stores and shows.
+  // "Extra shot ×2, No ice" — the form a bill line stores and shows.
   const events = rows.map(({ options, ...row }) => ({ ...row, optionText: optionText(options) }))
 
   const [attachedTable] = await tx

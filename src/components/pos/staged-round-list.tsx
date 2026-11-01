@@ -90,7 +90,7 @@ export function StagedRoundList({
   onReassign: (lineId: string, seat: SeatSlot) => void
   /**
    * Takes the new UNIT price onto THIS line. Per line since Story 4.8: per dish
-   * stamped one price on a Single and a Double Mojito alike.
+   * stamped one price on a plain and an extra-shot Mojito alike.
    */
   onAcceptPrice: (lineId: string, pricePaisa: number) => void
 }) {

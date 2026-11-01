@@ -237,6 +237,32 @@ alcohol shot is LKR 1,000.
         NO required groups if they now pick one.
   - [x] `pnpm exec tsc --noEmit`, `pnpm lint`, the three verify scripts.
 
+### Review Findings
+
+_Code review 2026-11-01 — server side (Blind Hunter, Edge Case Hunter, Acceptance Auditor): 3 decisions resolved, 12 patches applied, 6 deferred, 4 dismissed. UI review to follow; status stays `review` until it is done._
+
+- [x] [Review][Decision] "No alcohol" can be combined with extra shots — RESOLVED (Teran): block it → patch below. Was: — a Mojito sent as No alcohol + Extra shot ×4 is accepted at LKR 5,500 and the ticket reads "No alcohol, Extra shot ×4". Validation is per group only; nothing models a rule across groups.
+- [x] [Review][Decision] Another dish's option is refused as `unknown`, not `foreign` — RESOLVED (Teran): keep `unknown`; AC 8 / matrix case 3 read as `unknown`. Was: — AC 8 and matrix case 3 say `foreign`; the code folds it into `unknown`. Accept the deviation (amend the AC) or add the reason.
+- [x] [Review][Decision] After a timeout, a DIFFERENT waiter — RESOLVED (Teran): only the same waiter returns → patch below. Was: a different waiter signing in lands on the previous waiter's page — `next` is not tied to who was signed out.
+- [x] [Review][Patch] Block "No alcohol" with extra shots: server refuses, sheet disables the stepper [src/lib/options.ts, modifier-sheet.tsx, schema]
+- [x] [Review][Patch] After a timeout only the SAME waiter returns to the page; anyone else starts on the floor [src/app/login/page.tsx, src/app/api/auth/login/route.ts]
+- [x] [Review][Patch] OPTION_INVALID says "no longer available" for every reason, including required / too-many / duplicate [src/app/api/sessions/[sessionId]/orders/route.ts]
+- [x] [Review][Patch] A required group with no available option makes the dish unsendable while the menu still shows it available [src/app/api/menu/route.ts, src/lib/options.ts]
+- [x] [Review][Patch] Re-running the bar seed never raises coffee "Extra shot" max_count to 3 on a database seeded before migration 0029 [src/server/db/bar-menu.ts]
+- [x] [Review][Patch] max_count has no upper bound while optionIds is capped at 20 — a valid count can be refused as a 400 body error [migration 0029, src/types/orders.ts]
+- [x] [Review][Patch] A countable option in a `single` group can be taken N times [src/lib/options.ts]
+- [x] [Review][Patch] Text ticket renderer lacks the Array.isArray guard and the "(option)" placeholder the ESC/POS path has [src/server/print/transport.ts]
+- [x] [Review][Patch] PriceChangedError.lineIndex is optional, so a 409 could omit it [src/server/services/order.service.ts]
+- [x] [Review][Patch] Return path keeps Next's internal `_rsc` param and misses /login/, /login#…, /LOGIN [src/lib/return-to.ts, src/proxy.ts]
+- [x] [Review][Patch] No ticket test that "Extra shot ×3" folds to "Extra shot x3" [src/server/print/verify-escpos.ts]
+- [x] [Review][Patch] Comments still describe the removed "Double shot" / "Measure" [schema.ts, menu/route.ts, bar-menu.ts, bill.service.ts, types/bills.ts, types/orders.ts]
+- [x] [Review][Defer] FOR SHARE does not block a NEW or re-activated group being inserted mid-send; group/option locks taken in two statements [src/server/orders/modifier-groups.ts] — deferred to Story 10.4: admin edits should take the menu item row FOR UPDATE, which the send already holds FOR SHARE
+- [x] [Review][Defer] No unique (item, name) / (group, name) constraint on groups and options [migration 0028] — deferred to Story 10.4 (admin is the only writer besides the seed)
+- [x] [Review][Defer] Unit price can overflow int4 with extreme deltas × count [src/lib/options.ts] — deferred to Story 10.4: bound deltas when the owner can enter them
+- [x] [Review][Defer] When the price clamps at 0, base + Σ deltas no longer equals the stored unit price [src/lib/options.ts] — deferred to Epic 7 (audit reconstruction must apply the same clamp)
+- [x] [Review][Defer] PRICE_CHANGED reports only the first changed line per round trip [src/server/services/order.service.ts] — deferred, pre-existing behaviour from Story 4.5
+- [x] [Review][Defer] Send path loads groups without a tenant filter [src/server/services/order.service.ts] — deferred, single-tenant today; item ids are already tenant-scoped
+
 ## Dev Notes
 
 ### Decisions taken for this story (with reasons)
@@ -400,6 +426,12 @@ Claude Opus 5.5 (claude-opus-5-5)
 - src/server/db/migrations/meta/0028_snapshot.json (new)
 - src/server/db/migrations/meta/_journal.json
 - src/server/db/migrations/0029_warm_cable.sql (new)
+- src/server/db/migrations/0030_common_the_liberteens.sql (new)
+- src/server/db/migrations/meta/0030_snapshot.json (new)
+- src/lib/return-to.ts (new)
+- src/proxy.ts
+- src/app/login/page.tsx
+- src/app/api/auth/login/route.ts
 - src/server/db/migrations/meta/0029_snapshot.json (new)
 - src/server/db/bar-menu.ts
 - src/server/db/seed.ts
@@ -430,3 +462,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-31: Story 4.8 implemented — priced options end to end (menu, sheet, staged round, server validation and pricing, tickets, history, bill, seeds, verification). Status → review.
 - 2026-11-01: Countable options (Teran: "more than two shots" without a manual price). `modifier_options.max_count` (migration 0029, CHECK >= 1); an option chosen N times is its id N times, priced delta × N, snapshotted once with `count`, printed "Extra shot ×3". Sheet shows a −/+ stepper. Seeds add "Extra shots" (up to 4, at the shot price) to cocktails and whisky; coffee Extra shot up to 3. verify-options 27/27.
 - 2026-11-01: Removed "Double shot" (Alcohol) and whisky's "Measure" group from the sample options: Extra shots covers them at the same price. `seed-bar-menu.ts` deletes the retired rows (nothing references option rows; sent orders keep their snapshot).
+- 2026-11-01: Server code review fixes — "No alcohol" rules out "Extra shots" (`excludes_group_id`, refused as `conflict`, greyed on the sheet); after a timeout only the same waiter returns to the page; a refusal message per reason; a dish whose required group has nothing available shows unavailable; `max_count` 1–10 (migration 0030) and 40 ids per line; a countable option counts as one choice per unit in a single group; seed raises `max_count` and fills exclusions on existing rows; text ticket guards options like the paper; `PriceChangedError.lineIndex` required; return path drops `_rsc` and refuses /login variants. verify-options 33/33, verify-escpos 48/48, verify-bills 119/119.

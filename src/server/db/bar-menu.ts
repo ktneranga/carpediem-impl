@@ -8,11 +8,11 @@
  * Shared by `seed.ts` (a fresh install) and `seed-bar-menu.ts` (a database
  * seeded before the bar existed), so the two cannot drift.
  *
- * Priced options — no alcohol, double shot, oat milk — ride on the items they
+ * Priced options — no alcohol, extra shots, oat milk — ride on the items they
  * belong to (Story 4.8), as SAMPLE groups until the back office manages them.
  * `ensureModifierGroups` writes them, for both seeds.
  */
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { modifierGroups, modifierOptions } from './schema'
 
@@ -20,8 +20,10 @@ export type SeedOption = {
   name: string
   priceDeltaPaisa: number
   isDefault?: boolean
-  /** More than 1 makes it countable — a −/+ stepper on the sheet. */
+  /** More than 1 makes it countable — a −/+ stepper on the sheet. At most 10. */
   maxCount?: number
+  /** The NAME of a group on the same item this option rules out. */
+  excludes?: string
 }
 
 export type SeedModifierGroup = {
@@ -51,7 +53,9 @@ const ALCOHOL: SeedModifierGroup = {
   selection: 'single',
   required: true,
   options: [
-    { name: 'No alcohol', priceDeltaPaisa: -100000 },
+    // No spirit, so no extra spirit: "No alcohol, Extra shot ×4" was accepted
+    // and charged (code review 2026-11-01).
+    { name: 'No alcohol', priceDeltaPaisa: -100000, excludes: 'Extra shots' },
     { name: 'Single', priceDeltaPaisa: 0, isDefault: true },
   ],
 }
@@ -64,7 +68,7 @@ const ICE: SeedModifierGroup = {
 }
 
 /**
- * More spirit than a double: each extra shot at the shot's own price, up to
+ * More spirit than the standard measure: each extra shot at the shot's own price, up to
  * four (Teran, 2026-11-01 — "more than two shots" without a manual price).
  */
 const extraShots = (shotPaisa: number): SeedModifierGroup => ({
@@ -181,8 +185,11 @@ type SeedTx = Parameters<Parameters<NodePgDatabase['transaction']>[0]>[0]
 /**
  * Gives a menu item its sample option groups. IDEMPOTENT: a group is matched by
  * (item, name) and an option by (group, name), and only what is missing is
- * inserted — an existing one is never changed, so a price the owner edited
- * survives a re-run. Returns how many groups and options it created.
+ * inserted — an existing one keeps its price, so a price the owner edited
+ * survives a re-run. Two things ARE brought forward on an existing option,
+ * because they were added after the first seed and their column defaults
+ * mean "not set": `max_count` is RAISED to the sample's (never lowered), and
+ * an unset `excludes_group_id` is filled in. Returns how many it created.
  */
 export async function ensureModifierGroups(
   tx: SeedTx,
@@ -191,6 +198,7 @@ export async function ensureModifierGroups(
   groups: SeedModifierGroup[] = [],
 ): Promise<{ groups: number; options: number }> {
   const created = { groups: 0, options: 0 }
+  const groupIds = new Map<string, string>()
   for (const [groupIndex, group] of groups.entries()) {
     const [found] = await tx
       .select({ id: modifierGroups.id })
@@ -213,14 +221,23 @@ export async function ensureModifierGroups(
       groupId = inserted.id
       created.groups += 1
     }
+    groupIds.set(group.name, groupId)
 
     for (const [optionIndex, option] of group.options.entries()) {
       const [existing] = await tx
-        .select({ id: modifierOptions.id })
+        .select({ id: modifierOptions.id, maxCount: modifierOptions.maxCount })
         .from(modifierOptions)
         .where(and(eq(modifierOptions.groupId, groupId), eq(modifierOptions.name, option.name)))
         .limit(1)
-      if (existing) continue
+      if (existing) {
+        if ((option.maxCount ?? 1) > existing.maxCount) {
+          await tx
+            .update(modifierOptions)
+            .set({ maxCount: option.maxCount })
+            .where(eq(modifierOptions.id, existing.id))
+        }
+        continue
+      }
       await tx.insert(modifierOptions).values({
         tenantId,
         groupId,
@@ -231,6 +248,25 @@ export async function ensureModifierGroups(
         displayOrder: optionIndex,
       })
       created.options += 1
+    }
+  }
+
+  // Exclusions LAST: the group an option rules out may come after it.
+  for (const group of groups) {
+    for (const option of group.options) {
+      if (!option.excludes) continue
+      const excludedId = groupIds.get(option.excludes)
+      if (!excludedId) throw new Error(`[seed] ${option.name} excludes unknown group ${option.excludes}`)
+      await tx
+        .update(modifierOptions)
+        .set({ excludesGroupId: excludedId })
+        .where(
+          and(
+            eq(modifierOptions.groupId, groupIds.get(group.name)!),
+            eq(modifierOptions.name, option.name),
+            isNull(modifierOptions.excludesGroupId),
+          ),
+        )
     }
   }
   return created

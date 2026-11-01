@@ -118,7 +118,9 @@ export async function POST(request: Request) {
     })
 
     return NextResponse.json(
-      { success: true, data: { role: matched.role, staffName: matched.name } },
+      // `staffId` so the PIN pad can tell whether the person signing in is the
+      // one who timed out — only they go back to the page they were on.
+      { success: true, data: { staffId: matched.id, role: matched.role, staffName: matched.name } },
       { status: 200 },
     )
   } catch (error) {

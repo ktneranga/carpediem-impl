@@ -12,7 +12,7 @@
  */
 
 /**
- * A priced option on a menu item — "Double shot", +LKR 1,000 (Story 4.8, FR65).
+ * A priced option on a menu item — "Extra shot", +LKR 1,000 (Story 4.8, FR65).
  *
  * `priceDeltaPaisa` may be negative ("No alcohol", −LKR 1,000) or 0 ("No ice").
  */
@@ -27,6 +27,8 @@ export type ModifierOptionRow = {
    * option ("Extra shot" ×3). Chosen N times = its id N times in `optionIds`.
    */
   maxCount: number
+  /** A group on the same item that choosing this rules out ("No alcohol" → "Extra shots"). */
+  excludesGroupId: string | null
   /** An unavailable option is shown disabled and refused by the server. */
   available: boolean
 }
@@ -66,7 +68,7 @@ export type SubmittedItemRow = {
   /** Integer paisa, AS QUOTED — read from the event row, never from the menu. */
   unitPricePaisa: number | null
   modifierText: string | null
-  /** The chosen options' names, "Double shot, No ice" — null when none (Story 4.8). */
+  /** The chosen options' names, "Extra shot ×2, No ice" — null when none (Story 4.8). */
   optionText: string | null
   seatLabel: string | null
   submittedAt: string
@@ -85,8 +87,12 @@ export type ProductionDestination = 'kitchen' | 'pizza_kitchen' | 'bar'
 export const MAX_ROUND_LINES = 100
 export const MAX_LINE_QUANTITY = 99
 export const MAX_MODIFIER_TEXT = 120
-/** Options on one line — far above any real dish, a cap on a malformed body. */
-export const MAX_OPTIONS_PER_LINE = 20
+/**
+ * Option ids on one line — a countable option sends its id once per unit, so
+ * this sits well above a few countable options at their cap (`max_count` ≤
+ * 10, a database CHECK). A cap on a malformed body, not on a real dish.
+ */
+export const MAX_OPTIONS_PER_LINE = 40
 
 /** One staged line, as sent to `POST /api/sessions/:sessionId/orders`. */
 export type SubmitRoundLine = {

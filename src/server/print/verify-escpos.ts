@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url'
 import { buildTicket, clockTime, foldToAscii, PAPER_COLUMNS, wrapLine } from './escpos'
 import { escposTcpTransport } from './escpos-transport'
 import { closedPort, startFakePrinter } from './fake-printer'
+import { renderTicketText } from './transport'
 import type { TicketPayload } from '@/types/tickets'
 
 const results: boolean[] = []
@@ -171,6 +172,19 @@ async function main() {
     optioned.includes('pulled short') && printed.every((line) => line.length <= PAPER_COLUMNS))
   check('an option that folds to nothing still prints a marker', printed.some((line) => line.trim() === '- (option)'))
   check('a legacy line with no options still prints', at('1 x Crab Curry') >= 0)
+  const counted = text(buildTicket(ticket({
+    lines: [{ eventId: 'r', name: 'Mojito', quantity: 1, options: ['Extra shot ×3'], modifierText: null, seatLabel: 'Seat 1', seatNote: null }],
+  })))
+  check('a countable label prints as "Extra shot x3" on the paper', counted.includes('- Extra shot x3'),
+    JSON.stringify(counted.split('\n').filter((line) => line.includes('Extra'))))
+  const plain = renderTicketText(ticket({
+    lines: [
+      { eventId: 's', name: 'Mojito', quantity: 1, options: ['', 'No ice'], modifierText: null, seatLabel: 'Seat 1', seatNote: null },
+      { eventId: 't', name: 'Tea', quantity: 1, options: 'oops' as unknown as string[], modifierText: null, seatLabel: 'Seat 1', seatNote: null },
+    ],
+  }))
+  check('the text ticket marks an empty option and ignores a malformed list, like the paper',
+    plain.includes('- (option)') && plain.includes('- No ice') && !plain.includes('- o'), plain)
 
   // ── The socket (AC-3) ─────────────────────────────────────────────────────
   const printer = await startFakePrinter('accept')

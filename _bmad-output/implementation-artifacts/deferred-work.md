@@ -266,3 +266,12 @@
 - **A restored split ignores seats and rounds added since it was saved** [`bill-screen.tsx` restore effect] — on a Separate-bills order with a saved split, a round sent afterwards lands in Not assigned and a seat added afterwards gets no column; the seat pre-split only runs when nothing is saved. Workaround: Merge into one bill, then Split bill again.
 - **`isNavigating` never resets after leaving the floor** [`src/components/pos/table-grid.tsx` onOpenBill / onOpenCounter] — if the floor is restored from the router cache (browser Back), every action guarded by `isNavigating` stays disabled. Pre-existing pattern, now on one more path.
 - **The payment dialog has no Escape key and no focus trap** [`bill-screen.tsx` PaymentDialog] — `aria-modal` is declared but focus is not moved into or kept inside the dialog. Applies to every dialog in the app; fix once with a shared modal primitive.
+
+## Deferred from: code review of 4-8-implement-priced-options (2026-11-01)
+
+- FOR SHARE in `loadModifierGroups` does not block a new or re-activated option group being inserted while a round is sent; the group and option locks are two statements. Story 10.4's admin should take the menu item row FOR UPDATE when editing its groups — the send already holds it FOR SHARE.
+- No unique constraint on modifier group (menu_item_id, name) or option (group_id, name); the seed's idempotency is select-then-insert. Add with Story 10.4.
+- `unitPriceFor` can exceed int4 with extreme deltas × count; bound price deltas when Story 10.4 lets the owner enter them.
+- A clamped line (unit price 0) no longer equals base + Σ(delta × count); Epic 7's audit reconstruction must apply the same clamp.
+- PRICE_CHANGED names only the first changed line per round trip (pre-existing, Story 4.5).
+- `submitRound` loads option groups without a tenant filter; safe while single-tenant because item ids are tenant-scoped.

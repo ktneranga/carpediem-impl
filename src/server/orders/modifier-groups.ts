@@ -54,6 +54,7 @@ export async function loadModifierGroups(
       priceDeltaPaisa: modifierOptions.priceDeltaPaisa,
       isDefault: modifierOptions.isDefault,
       maxCount: modifierOptions.maxCount,
+      excludesGroupId: modifierOptions.excludesGroupId,
       available: modifierOptions.isAvailable,
     })
     .from(modifierOptions)
@@ -70,6 +71,7 @@ export async function loadModifierGroups(
       priceDeltaPaisa: option.priceDeltaPaisa,
       isDefault: option.isDefault,
       maxCount: option.maxCount,
+      excludesGroupId: option.excludesGroupId,
       available: option.available,
     })
     optionsByGroup.set(option.groupId, list)

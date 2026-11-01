@@ -42,7 +42,7 @@ export type StagedLine = {
    */
   optionIds: string[]
   /**
-   * What they were when tapped, for display: "Double shot", +100000. A
+   * What they were when tapped, for display: "Extra shot", +100000, ×2. A
    * snapshot, so the line stays readable if the menu changes under it — the
    * stale check compares against the LIVE options before send.
    */
@@ -373,8 +373,9 @@ export function useStagedRound(sessionId: string) {
    * possibly a different bill.
    *
    * ── So are the OPTIONS (Story 4.8) ───────────────────────────────────────
-   * A Single and a Double Mojito are different drinks at different prices.
-   * Without this, tapping Double after Single raised the Single line's
+   * A plain Mojito and one with an extra shot are different drinks at
+   * different prices. Without this, adding the extra-shot one raised the plain
+   * line's
    * quantity — at the Single price.
    *
    * `optionIds` undefined means "the dish's defaults" — the one-tap add. An
@@ -476,7 +477,7 @@ export function useStagedRound(sessionId: string) {
    * Takes the menu's new UNIT price onto ONE line (Story 4.5 AC-9; per line
    * since Story 4.8).
    *
-   * It was per dish, which stamped one price on a Single and a Double Mojito
+   * It was per dish, which stamped one price on a plain and an extra-shot Mojito
    * alike once options made them cost different amounts. The waiter confirms
    * it; the send is refused until they do. It is a change to the round, so the
    * next send goes under a new id.

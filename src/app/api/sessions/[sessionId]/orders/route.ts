@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import type { SelectionProblem } from '@/lib/options'
 import { db } from '@/server/db'
 import { orderEvents, orderRounds, orderSessions } from '@/server/db/schema'
 import { isUniqueViolation } from '@/server/db/errors'
@@ -34,6 +35,20 @@ import {
 } from '@/types/orders'
 
 export type { SubmittedItemRow, SubmittedRoundRow } from '@/types/orders'
+
+/**
+ * What the waiter should DO, per reason. One sentence for all of them said
+ * "no longer available" when a choice was missing or a fifth shot was over the
+ * limit (code review 2026-11-01).
+ */
+const OPTION_INVALID_MESSAGE: Record<SelectionProblem['reason'], string> = {
+  unknown: 'An option on a dish in this round is not on the menu any more. Change it and send again.',
+  unavailable: 'An option on a dish in this round is no longer available. Change it and send again.',
+  duplicate: 'A dish in this round has more of an option than it allows. Lower it and send again.',
+  'too-many': 'A dish in this round has more than one choice where only one is allowed. Fix it and send again.',
+  required: 'A dish in this round is missing a required choice. Choose it and send again.',
+  conflict: 'A dish in this round has two options that cannot go together. Fix it and send again.',
+}
 
 /** Both the session id in the path and the staff id in the header are uuids. */
 const uuidSchema = z.string().uuid()
@@ -239,7 +254,7 @@ export async function POST(
     if (error instanceof OptionInvalidError) {
       return fail(
         'OPTION_INVALID',
-        'An option on a dish in this round is no longer available. Change it and send again.',
+        OPTION_INVALID_MESSAGE[error.problem.reason],
         422,
         {
           itemId: error.itemId,

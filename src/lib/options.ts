@@ -30,7 +30,7 @@ export function optionLabel(option: { name: string; count?: number }): string {
   return (option.count ?? 1) > 1 ? `${option.name} ×${option.count}` : option.name
 }
 
-/** "Double shot, Extra shot ×2" — the chosen options as one line of text; null when none. */
+/** "Extra shot ×2, No ice" — the chosen options as one line of text; null when none. */
 export function optionText(
   chosen: { name: string; count?: number }[] | null | undefined,
 ): string | null {
@@ -63,7 +63,7 @@ export function sortIds(ids: string[]): string[] {
 }
 
 export type SelectionProblem = {
-  reason: 'unknown' | 'unavailable' | 'duplicate' | 'too-many' | 'required'
+  reason: 'unknown' | 'unavailable' | 'duplicate' | 'too-many' | 'required' | 'conflict'
   optionId?: string
   groupId?: string
 }
@@ -75,7 +75,13 @@ export type SelectionProblem = {
  * - `unavailable`: the option exists but is switched off.
  * - `duplicate`: the same id more times than its `maxCount` — twice, for an
  *   on/off option; a fifth "Extra shot" when four is the limit.
- * - `too-many`: two different options in a `single` group.
+ * - `too-many`: more than one choice in a `single` group — two options, or
+ *   one countable option taken twice (a single group means ONE).
+ * - `conflict`: an option together with a group it rules out ("No alcohol"
+ *   with "Extra shots").
+ *
+ * `unknown` also covers another dish's option: it is not an option of THIS
+ * dish, the same refusal as a retired or made-up id (Teran, 2026-11-01).
  * - `required`: a required group with nothing chosen.
  *
  * Checked in that order, so the reason names the most specific problem.
@@ -84,20 +90,25 @@ export function validateSelection(
   groups: ModifierGroupRow[],
   optionIds: string[],
 ): SelectionProblem | null {
-  const owner = new Map<string, { groupId: string; available: boolean; maxCount: number }>()
+  const owner = new Map<
+    string,
+    { groupId: string; available: boolean; maxCount: number; excludes: string | null }
+  >()
   for (const group of groups) {
     for (const option of group.options) {
       owner.set(option.id, {
         groupId: group.id,
         available: option.available,
-        // A menu read before `max_count` existed has none: on/off.
+        // A menu read before these columns existed has neither: on/off, no rule.
         maxCount: option.maxCount ?? 1,
+        excludes: option.excludesGroupId ?? null,
       })
     }
   }
 
   const taken = new Map<string, number>()
-  // DISTINCT options per group: three extra shots are one choice, not three.
+  // EVERY id per group: in a `single` group, one countable option taken twice
+  // is two choices, and a single group means one.
   const perGroup = new Map<string, number>()
   for (const id of optionIds) {
     const found = owner.get(id)
@@ -106,13 +117,21 @@ export function validateSelection(
     const count = (taken.get(id) ?? 0) + 1
     if (count > found.maxCount) return { reason: 'duplicate', optionId: id, groupId: found.groupId }
     taken.set(id, count)
-    if (count === 1) perGroup.set(found.groupId, (perGroup.get(found.groupId) ?? 0) + 1)
+    perGroup.set(found.groupId, (perGroup.get(found.groupId) ?? 0) + 1)
   }
 
   for (const group of groups) {
     const count = perGroup.get(group.id) ?? 0
     if (group.selection === 'single' && count > 1) return { reason: 'too-many', groupId: group.id }
     if (group.required && count === 0) return { reason: 'required', groupId: group.id }
+  }
+
+  // Rules across groups, last: each option above is valid on its own.
+  for (const id of taken.keys()) {
+    const excluded = owner.get(id)!.excludes
+    if (excluded && (perGroup.get(excluded) ?? 0) > 0) {
+      return { reason: 'conflict', optionId: id, groupId: excluded }
+    }
   }
   return null
 }
@@ -125,6 +144,15 @@ export type ChosenOption = {
   group: string
   /** How many times its id appears in the selection. */
   count: number
+}
+
+/**
+ * A required group the guest cannot fill — every option switched off, or none
+ * left. The dish cannot be sent, so the menu shows it unavailable rather than
+ * letting the waiter stage a line the server must refuse.
+ */
+export function hasUnfillableRequiredGroup(groups: ModifierGroupRow[]): boolean {
+  return groups.some((group) => group.required && !group.options.some((option) => option.available))
 }
 
 /** The chosen options, once each with their `count`, in menu order. */

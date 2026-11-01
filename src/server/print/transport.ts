@@ -38,6 +38,19 @@ export { ticketTypeOf }
  * builder is a separate thing and owns the real layout: paper width, code page,
  * bold, double-height and the cut command.
  */
+/**
+ * A line's options as the paper shows them — the same guard and the same
+ * placeholder as the ESC/POS builder, so the log never disagrees with the
+ * paper: a stored payload's `options` may be missing (a job from before 4.8)
+ * or malformed, and a name that cleans to nothing still marks its line.
+ */
+function optionsOf(line: TicketPayload['lines'][number]): string[] {
+  if (!Array.isArray(line.options)) return []
+  return line.options.map((option) =>
+    typeof option === 'string' && option.trim() !== '' ? option : '(option)',
+  )
+}
+
 export function renderTicketText(ticket: TicketPayload): string {
   const lines: string[] = []
   lines.push(`${ticketTypeOf(ticket.destination)}  ·  ${ticket.tableLabels.join(' + ')}`)
@@ -53,14 +66,14 @@ export function renderTicketText(ticket: TicketPayload): string {
       lines.push(seat)
       for (const line of seatLines) {
         lines.push(`  ${line.quantity} × ${line.name}`)
-        for (const option of line.options ?? []) lines.push(`     - ${option}`)
+        for (const option of optionsOf(line)) lines.push(`     - ${option}`)
         if (line.modifierText) lines.push(`     — ${line.modifierText}`)
       }
     }
   } else {
     for (const line of ticket.lines) {
       lines.push(`${line.quantity} × ${line.name}`)
-      for (const option of line.options ?? []) lines.push(`   - ${option}`)
+      for (const option of optionsOf(line)) lines.push(`   - ${option}`)
       if (line.modifierText) lines.push(`   — ${line.modifierText}`)
     }
   }

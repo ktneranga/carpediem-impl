@@ -14,6 +14,8 @@
  * and it deletes exactly the ids it created.
  */
 import { Pool } from 'pg'
+import { hasUnfillableRequiredGroup } from '@/lib/options'
+import type { ModifierGroupRow } from '@/types/orders'
 
 const BASE = process.env.VERIFY_BASE ?? 'http://localhost:3000'
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 4 })
@@ -341,6 +343,52 @@ async function run() {
   check('14 a quote that counts one shot, not two → 409 with the counted price',
     underQuoted.status === 409 && underQuoted.body?.error?.currentPricePaisa === 450_000,
     `${underQuoted.status} ${underQuoted.body?.error?.currentPricePaisa}`)
+
+  // 15 — code review 2026-11-01
+  // "No alcohol" rules out "Extra shots" (Teran).
+  await sql(`UPDATE modifier_options SET excludes_group_id = $1 WHERE id = $2`, [
+    shots.id,
+    alcohol.options['No alcohol']!,
+  ])
+  const conflict = await send(waiter, sessionId, seatId, [
+    { menuItemId: mojito, optionIds: [alcohol.options['No alcohol']!, extra], quotedPricePaisa: 250_000 },
+  ])
+  check('15 No alcohol + an extra shot → 422 conflict, naming the ruled-out group',
+    conflict.status === 422 && conflict.body?.error?.reason === 'conflict' && conflict.body?.error?.groupId === shots.id,
+    `${conflict.status} ${JSON.stringify(conflict.body?.error)}`)
+  check('15 the refusal says what to fix, not "no longer available"',
+    typeof conflict.body?.error?.message === 'string' && conflict.body.error.message.includes('cannot go together'),
+    conflict.body?.error?.message)
+  const missing = await send(waiter, sessionId, seatId, [
+    { menuItemId: mojito, optionIds: [], quotedPricePaisa: 250_000 },
+  ])
+  check('15 a missing required choice says so', missing.body?.error?.message?.includes('missing a required choice'),
+    missing.body?.error?.message)
+
+  // A countable option in a SINGLE group is still one choice.
+  const single = await makeItem(category.id, 'VO Single Countable', 100_000)
+  const singleGroup = await makeGroup(single, 'Size', 'single', false, [
+    { name: 'Large', delta: 10_000, maxCount: 3 },
+  ])
+  const twiceInSingle = await send(waiter, sessionId, seatId, [
+    { menuItemId: single, optionIds: [singleGroup.options['Large']!, singleGroup.options['Large']!], quotedPricePaisa: 120_000 },
+  ])
+  check('15 a countable option taken twice in a single group → 422 too-many',
+    twiceInSingle.status === 422 && twiceInSingle.body?.error?.reason === 'too-many',
+    `${twiceInSingle.status} ${twiceInSingle.body?.error?.reason}`)
+
+  // A required group with nothing to choose greys the dish on the menu. The
+  // fixture lives in an INACTIVE category, which the menu route never returns,
+  // so the rule the route applies is checked directly.
+  const unfillable: ModifierGroupRow[] = [{
+    id: 'g', name: 'Base', selection: 'single', required: true,
+    options: [{ id: 'o', name: 'Gone', priceDeltaPaisa: 0, isDefault: true, maxCount: 1, excludesGroupId: null, available: false }],
+  }]
+  const optional: ModifierGroupRow[] = [{ ...unfillable[0]!, required: false }]
+  check('15 a required group with nothing available makes the dish unavailable (menu rule)',
+    hasUnfillableRequiredGroup(unfillable) && !hasUnfillableRequiredGroup(optional) && !hasUnfillableRequiredGroup([]))
+  check('15 the max_count CHECK refuses 11',
+    await sql(`UPDATE modifier_options SET max_count = 11 WHERE id = $1`, [extra]).then(() => false, () => true))
 
   // 9 / 11 — re-price and rename AFTER the send, then bill
   await sql(`UPDATE modifier_options SET price_delta_paisa = 300000, name = 'Double (renamed)' WHERE id = $1`, [double])

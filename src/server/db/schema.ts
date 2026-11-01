@@ -282,7 +282,7 @@ export const menuItems = pgTable('menu_items', {
 
 // ── Priced options (Story 4.8, FR65) ──────────────────────────────────────────
 //
-// "Alcohol: No alcohol −1,000 / Single / Double shot +1,000" on a Mojito. Groups
+// "Alcohol: No alcohol −1,000 / Single" and "Extra shots" on a Mojito. Groups
 // belong to ONE item — a shared "Ice" group across drinks needs a join table and
 // the back office (Story 10.4), so it waits for it.
 //
@@ -328,6 +328,12 @@ export const modifierOptions = pgTable('modifier_options', {
    * is a menu choice, not a manual price edit (Teran, 2026-11-01).
    */
   maxCount:        integer('max_count').notNull().default(1),
+  /**
+   * A group on the SAME item this option rules out — "No alcohol" rules out
+   * "Extra shots" (Teran, 2026-11-01). Choosing both is refused as `conflict`,
+   * and the sheet greys the ruled-out group while it is chosen. Null: none.
+   */
+  excludesGroupId: uuid('excludes_group_id').references(() => modifierGroups.id),
   isAvailable:     boolean('is_available').notNull().default(true),
   displayOrder:    integer('display_order').notNull().default(0),
 }, (t) => [
@@ -737,7 +743,7 @@ export const billLines = pgTable('bill_lines', {
   /** The modifier text as billed — "no ice", "extra spicy". */
   modifierText: text('modifier_text'),
   /**
-   * The options' names AS BILLED — "Double shot, No ice" (Story 4.8).
+   * The options' names AS BILLED — "Extra shot ×2, No ice" (Story 4.8).
    * Snapshotted from the event like the name and the note; never joined.
    */
   optionText:   text('option_text'),

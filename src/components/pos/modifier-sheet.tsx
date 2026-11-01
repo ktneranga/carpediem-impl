@@ -39,7 +39,7 @@ import { MAX_MODIFIER_TEXT } from '@/types/orders'
  * default; the note may stay empty and the quantity defaults to 1.
  *
  * ── Priced options as chip groups (Story 4.8, `ux:427`) ─────────────────────
- * "Alcohol: No alcohol −LKR 1,000 / Single / Double shot +LKR 1,000". Required
+ * "Alcohol: No alcohol −LKR 1,000 / Single", then "Extra shots" −/+. Required
  * groups first and marked; a `single` group behaves as radios, a `multi` group
  * as toggles. The header and the commit show the LIVE unit price and line
  * total, computed by `unitPriceFor` — the same function the server prices by.
@@ -80,6 +80,31 @@ export function ModifierSheet({
   const missingGroup =
     problem?.reason === 'required' ? groups.find((group) => group.id === problem.groupId) : null
 
+  // Groups ruled out by what is chosen — "No alcohol" rules out "Extra shots".
+  // Greyed while it stands; the server refuses the pair as `conflict`.
+  // Keyed by the ruled-out group, valued by the option that rules it out.
+  const ruledOut = new Map(
+    groups
+      .flatMap((group) => group.options)
+      .filter((option) => option.excludesGroupId && optionIds.includes(option.id))
+      .map((option) => [option.excludesGroupId!, option.name]),
+  )
+
+  /** Drops choices in any group the new selection rules out. */
+  function withoutRuledOut(ids: string[]): string[] {
+    const excluded = new Set(
+      groups
+        .flatMap((group) => group.options)
+        .filter((option) => option.excludesGroupId && ids.includes(option.id))
+        .map((option) => option.excludesGroupId!),
+    )
+    if (excluded.size === 0) return ids
+    const gone = new Set(
+      groups.filter((group) => excluded.has(group.id)).flatMap((group) => group.options.map((o) => o.id)),
+    )
+    return ids.filter((id) => !gone.has(id))
+  }
+
   function toggle(groupId: string, optionId: string) {
     const group = groups.find((candidate) => candidate.id === groupId)
     if (!group) return
@@ -87,12 +112,14 @@ export function ModifierSheet({
       const inGroup = new Set(group.options.map((option) => option.id))
       const has = current.includes(optionId)
       if (group.selection === 'multi') {
-        return sortIds(has ? current.filter((id) => id !== optionId) : [...current, optionId])
+        return withoutRuledOut(
+          sortIds(has ? current.filter((id) => id !== optionId) : [...current, optionId]),
+        )
       }
       // Single: tapping the chosen chip keeps it in a REQUIRED group (there
       // must be one) and clears it in an optional one; another chip replaces it.
       if (has) return group.required ? current : current.filter((id) => id !== optionId)
-      return sortIds([...current.filter((id) => !inGroup.has(id)), optionId])
+      return withoutRuledOut(sortIds([...current.filter((id) => !inGroup.has(id)), optionId]))
     })
   }
 
@@ -211,7 +238,13 @@ export function ModifierSheet({
 
         {/* ── The options, one row of chips per group ─────────────────────── */}
         {groups.map((group) => (
-          <fieldset key={group.id} className="flex flex-col gap-sp-2">
+          <fieldset
+            key={group.id}
+            // Ruled out by another choice ("No alcohol"): every control in it
+            // is disabled, and the legend says why.
+            disabled={ruledOut.has(group.id)}
+            className={cn('flex flex-col gap-sp-2', ruledOut.has(group.id) && 'opacity-40')}
+          >
             <legend className="mb-sp-2 flex items-center gap-sp-2 text-fs-12 font-semibold tracking-micro text-slate-600 uppercase">
               {group.name}
               {group.required ? (
@@ -220,7 +253,11 @@ export function ModifierSheet({
                 </span>
               ) : (
                 <span className="font-semibold normal-case tracking-normal text-slate-600">
-                  {group.selection === 'multi' ? 'optional · any' : 'optional'}
+                  {ruledOut.has(group.id)
+                    ? `not with ${ruledOut.get(group.id)}`
+                    : group.selection === 'multi'
+                      ? 'optional · any'
+                      : 'optional'}
                 </span>
               )}
             </legend>

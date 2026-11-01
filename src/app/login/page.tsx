@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react'
 import { PINPad } from '@/components/pos/pin-pad'
-import { safeReturnPath } from '@/lib/return-to'
+import { LAST_STAFF_KEY, safeReturnPath } from '@/lib/return-to'
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
@@ -28,8 +28,22 @@ export default function LoginPage() {
           // role server-side to set [data-context], so the server must re-render.
           // Back to where the timeout interrupted them, if anywhere — checked,
           // because `next` is in a URL anyone can craft.
+          //
+          // Only for the SAME waiter (Teran, 2026-11-01): someone else signing
+          // in on this tablet starts on the floor, not inside another waiter's
+          // order or bill.
+          const payload = await response.json().catch(() => null)
+          const staffId: string | null = payload?.data?.staffId ?? null
+          let previous: string | null = null
+          try {
+            previous = window.localStorage.getItem(LAST_STAFF_KEY)
+            if (staffId) window.localStorage.setItem(LAST_STAFF_KEY, staffId)
+          } catch {
+            // Storage blocked: no way to know who was here, so start fresh.
+          }
           const next = new URLSearchParams(window.location.search).get('next')
-          window.location.assign(safeReturnPath(next))
+          const sameWaiter = staffId !== null && staffId === previous
+          window.location.assign(sameWaiter ? safeReturnPath(next) : '/')
           return
         }
 
