@@ -218,6 +218,13 @@
       "when": 1793534073677,
       "tag": "0030_common_the_liberteens",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793534931477,
+      "tag": "0031_common_power_pack",
+      "breakpoints": true
     }
   ]
 }

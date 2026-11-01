@@ -154,7 +154,17 @@ export function StagedRoundList({
             >
               <div className="flex items-center gap-sp-2">
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <p className="truncate text-fs-16 font-bold text-slate-900">{line.name}</p>
+                  <p className="flex items-center gap-sp-2 text-fs-16 font-bold text-slate-900">
+                    <span className="truncate">{line.name}</span>
+                    {/* A typed charge, not a dish (Story 4.9) — it goes to no
+                        station, so the waiter should not look for it on a
+                        ticket. slate-600, not 400: 400 fails AA on the row. */}
+                    {line.customName !== undefined ? (
+                      <span className="shrink-0 rounded-pill border border-slate-200 px-sp-2 text-fs-12 font-semibold text-slate-600">
+                        Custom
+                      </span>
+                    ) : null}
+                  </p>
                   {/* Seat, the kitchen note and the line total on one small
                       line. The note is here so it can be checked before it
                       goes; it wraps rather than truncates, because a clipped

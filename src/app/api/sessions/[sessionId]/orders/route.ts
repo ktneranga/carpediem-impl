@@ -6,6 +6,8 @@ import type { SelectionProblem } from '@/lib/options'
 import { db } from '@/server/db'
 import { orderEvents, orderRounds, orderSessions } from '@/server/db/schema'
 import { isUniqueViolation } from '@/server/db/errors'
+import { canAddCustomCharge, type StaffRole } from '@/server/auth/permissions'
+import { sanitizeTicketText } from '@/server/print/ticket'
 import { dishCount, dishTotalPaisa } from '@/server/orders/item-count'
 import { wakePrintQueue } from '@/server/print/wake'
 import { loadSubmittedRounds } from '@/server/orders/submitted-rounds'
@@ -27,6 +29,8 @@ import {
   emitTableStatusChanged,
 } from '@/server/socket/events'
 import {
+  MAX_CUSTOM_CHARGE_PAISA,
+  MAX_CUSTOM_NAME,
   MAX_LINE_QUANTITY,
   MAX_MODIFIER_TEXT,
   MAX_OPTIONS_PER_LINE,
@@ -70,11 +74,8 @@ const ROUND_NUMBER_INDEX = 'idx_order_rounds_session_round'
  * One send. A body that is present and malformed is a 400 — no `.catch()`
  * fallback, which is the defect Story 4.3's review found on the seat route.
  */
-const submitSchema = z.object({
-  submissionId: z.string().uuid(),
-  lines: z
-    .array(
-      z.object({
+const menuLineSchema = z
+  .object({
         menuItemId: z.string().uuid(),
         seatSlotId: z.string().uuid(),
         quantity: z.number().int().min(1).max(MAX_LINE_QUANTITY),
@@ -91,8 +92,33 @@ const submitSchema = z.object({
         optionIds: z.array(z.string().uuid()).max(MAX_OPTIONS_PER_LINE).default([]),
         // The UNIT price the waiter saw, options included — a check only.
         quotedPricePaisa: z.number().int().min(0),
-      }),
-    )
+  })
+  // STRICT, both shapes: without it a body carrying `menuItemId` AND
+  // `customName` parses as a dish and the typed name is silently dropped.
+  .strict()
+
+/**
+ * A custom charge (Story 4.9): a typed name and price, no menu item. The name
+ * is cleaned of control characters BEFORE it is measured — it reaches the
+ * bill and the audit as typed, and must never carry a printer escape byte.
+ */
+const customLineSchema = z
+  .object({
+    customName: z
+      .string()
+      .transform((text) => sanitizeTicketText(text) ?? '')
+      .refine((text) => text.length >= 1 && text.length <= MAX_CUSTOM_NAME),
+    // The VALUE charged, not a quote — positive only: a reduction is a comp.
+    pricePaisa: z.number().int().min(1).max(MAX_CUSTOM_CHARGE_PAISA),
+    quantity: z.number().int().min(1).max(MAX_LINE_QUANTITY),
+    seatSlotId: z.string().uuid(),
+  })
+  .strict()
+
+const submitSchema = z.object({
+  submissionId: z.string().uuid(),
+  lines: z
+    .array(z.union([menuLineSchema, customLineSchema]))
     .min(1)
     .max(MAX_ROUND_LINES),
 })
@@ -214,6 +240,16 @@ export async function POST(
     return fail('INVALID_BODY', 'The round could not be read. Nothing was sent.', 400)
   }
   const { submissionId, lines } = parsedBody.data
+
+  // Who may add a custom charge — ONE function, which Story 10.6 replaces with
+  // a per-person permission. The role comes from the proxy, from the session,
+  // never from the body. Refused before anything is written.
+  if (
+    lines.some((line) => 'customName' in line) &&
+    !canAddCustomCharge(request.headers.get('x-staff-role') as StaffRole | null)
+  ) {
+    return fail('CUSTOM_CHARGE_NOT_ALLOWED', 'Only the owner can add a custom charge.', 403)
+  }
 
   let result
   try {

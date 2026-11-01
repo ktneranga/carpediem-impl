@@ -26,6 +26,7 @@ import {
   type SelectionProblem,
 } from '@/lib/options'
 import { loadModifierGroups } from '@/server/orders/modifier-groups'
+import { isCustomLine } from '@/types/orders'
 import type {
   OrderEventOption,
   ProductionDestination,
@@ -285,18 +286,27 @@ export async function submitRound(
 
   // 5 — dishes. `FOR SHARE` lets other sends read the same rows concurrently
   // while blocking an owner's 86 or re-price until this round commits.
-  const itemIds = [...new Set(lines.map((line) => line.menuItemId))]
-  const itemRows = await tx
-    .select({
-      id: menuItems.id,
-      name: menuItems.name,
-      pricePaisa: menuItems.pricePaisa,
-      isAvailable: menuItems.isAvailable,
-      productionDestination: menuItems.productionDestination,
-    })
-    .from(menuItems)
-    .where(inArray(menuItems.id, itemIds))
-    .for('share')
+  //
+  // MENU lines only: a custom charge (Story 4.9) has no menu item. A round of
+  // nothing but custom charges reads no menu at all — `inArray(…, [])` is not
+  // something to send to the database.
+  const itemIds = [
+    ...new Set(lines.flatMap((line) => (isCustomLine(line) ? [] : [line.menuItemId]))),
+  ]
+  const itemRows =
+    itemIds.length === 0
+      ? []
+      : await tx
+          .select({
+            id: menuItems.id,
+            name: menuItems.name,
+            pricePaisa: menuItems.pricePaisa,
+            isAvailable: menuItems.isAvailable,
+            productionDestination: menuItems.productionDestination,
+          })
+          .from(menuItems)
+          .where(inArray(menuItems.id, itemIds))
+          .for('share')
   const itemsById = new Map(itemRows.map((item) => [item.id, item]))
   // Their priced options (Story 4.8), `FOR SHARE` in the same transaction for
   // the same reason: an owner re-pricing or retiring an option waits for this
@@ -305,6 +315,13 @@ export async function submitRound(
 
   // In line order, so the error names the first line the waiter would see.
   const priced = lines.map((line, lineIndex) => {
+    // A custom charge's typed price IS its value (Story 4.9). Decision 2's
+    // "the quote is a check" protects the MENU's price from a tablet; a custom
+    // charge has none, and the route already refused it unless the sender may
+    // add one (`canAddCustomCharge`). Name and range were checked there too.
+    if (isCustomLine(line)) {
+      return { unitPricePaisa: line.pricePaisa, options: [] as OrderEventOption[] }
+    }
     const item = itemsById.get(line.menuItemId)
     if (!item || !item.isAvailable) throw new ItemUnavailableError(line.menuItemId)
     const groups = groupsByItem.get(line.menuItemId) ?? []
@@ -375,12 +392,17 @@ export async function submitRound(
   // tied to its event without relying on RETURNING preserving insert order.
   const eventRows = lines.map((line, index) => {
     const { unitPricePaisa, options } = priced[index]
-    const note = line.modifierText.trim()
+    const custom = isCustomLine(line)
+    const note = custom ? '' : line.modifierText.trim()
     return {
       id: randomUUID(),
       sessionId,
       staffId,
-      menuItemId: line.menuItemId,
+      // Exactly one of these two (migration 0031's CHECK): a dish, or a
+      // custom charge with its typed name. This row is the charge's audit:
+      // `staff_id` is who, `created_at` when, `unit_price_paisa` how much.
+      menuItemId: custom ? null : line.menuItemId,
+      customName: custom ? line.customName : null,
       eventType: 'ITEM_ADDED' as const,
       seatSlotId: line.seatSlotId,
       quantity: line.quantity,
@@ -397,6 +419,8 @@ export async function submitRound(
   const byDestination = new Map<ProductionDestination, TicketLine[]>()
   eventRows.forEach((row, index) => {
     const line = lines[index]
+    // A custom charge prints on no ticket (Story 4.9): nobody makes a corkage.
+    if (isCustomLine(line)) return
     const item = itemsById.get(line.menuItemId)!
     const seat = seatsById.get(line.seatSlotId)!
     const ticketLines = byDestination.get(item.productionDestination) ?? []
@@ -464,15 +488,19 @@ export async function submitRound(
     submittedAt: committedRound!.submittedAt,
     timeZone: session!.timeZone,
   })
-  await tx.insert(printJobs).values(
-    tickets.map((ticket) => ({
-      tenantId: session!.tenantId,
-      sessionId,
-      roundId: submissionId,
-      destination: ticket.destination,
-      ticket,
-    })),
-  )
+  // A round of only custom charges has no ticket (Story 4.9) — and Drizzle
+  // throws on `values([])`, which would 500 a round that is otherwise fine.
+  if (tickets.length > 0) {
+    await tx.insert(printJobs).values(
+      tickets.map((ticket) => ({
+        tenantId: session!.tenantId,
+        sessionId,
+        roundId: submissionId,
+        destination: ticket.destination,
+        ticket,
+      })),
+    )
+  }
 
   return {
     submissionId,

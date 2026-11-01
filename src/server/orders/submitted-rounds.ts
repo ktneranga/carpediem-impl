@@ -45,6 +45,8 @@ export async function loadSubmittedRounds(sessionId: string): Promise<SubmittedR
       options: orderEvents.options,
       createdAt: orderEvents.createdAt,
       itemName: menuItems.name,
+      // A custom charge's typed name (Story 4.9) — it has no menu item.
+      customName: orderEvents.customName,
       seatLabel: seatSlots.seatLabel,
     })
     .from(orderEvents)
@@ -74,7 +76,7 @@ export async function loadSubmittedRounds(sessionId: string): Promise<SubmittedR
     }
     round.items.push({
       id: row.id,
-      name: row.itemName ?? MISSING_ITEM_NAME,
+      name: row.customName ?? row.itemName ?? MISSING_ITEM_NAME,
       quantity: row.quantity,
       unitPricePaisa: row.unitPricePaisa,
       modifierText: row.modifierText,

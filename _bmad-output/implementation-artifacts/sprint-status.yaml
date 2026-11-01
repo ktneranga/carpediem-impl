@@ -92,7 +92,7 @@ development_status:
   4-6-implement-bar-tabs: done  # code-reviewed 2026-10-31 (server + UI), fixes applied
   4-7-implement-bar-menu-and-drinks-pill: done  # code-reviewed 2026-10-31 (server + UI), fixes applied
   4-8-implement-priced-options: review
-  4-9-implement-custom-charge: ready-for-dev
+  4-9-implement-custom-charge: review
   epic-4-retrospective: done
 
   # ── Epic 5: Ticket Output — ESC/POS Printing & KDS Display ───────────────

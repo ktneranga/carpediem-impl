@@ -5,6 +5,7 @@ import { Receipt, Users } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MenuBrowser } from '@/components/pos/menu-browser'
+import { CustomChargeSheet } from '@/components/pos/custom-charge-sheet'
 import { OrderHeader } from '@/components/pos/order-header'
 import { OrderSummary } from '@/components/pos/order-summary'
 import {
@@ -20,6 +21,7 @@ import {
 } from '@/components/pos/staged-round-list'
 import {
   clearStagedRound,
+  isCustomStaged,
   resetSendId,
   sendIdForRound,
   type StagedLine,
@@ -142,6 +144,12 @@ export type OrderScreenProps = {
    * the 6.2 review found broken.
    */
   initialHasUnbilled: boolean
+  /**
+   * Whether this person may add a custom charge (Story 4.9) — decided on the
+   * server by `canAddCustomCharge` and passed down. Hides the More-menu item;
+   * the send route decides again.
+   */
+  canAddCustomCharge?: boolean
 }
 
 /** FR9's destinations as a waiter says them, for the bottom bar. */
@@ -339,6 +347,7 @@ export function OrderScreen({
   initialBillMode,
   initialBills,
   initialHasUnbilled,
+  canAddCustomCharge = false,
   tableLabel,
   tabLabel = null,
   tabName = null,
@@ -609,6 +618,7 @@ export function OrderScreen({
   const {
     lines,
     addLine,
+    addCustomLine,
     removeLine,
     setQuantity,
     reassignLine,
@@ -710,6 +720,9 @@ export function OrderScreen({
     // Once it HAS loaded, an item that is not in it was deleted or its category
     // was switched off, and either way it cannot be ordered.
     if (!menu) continue
+    // A custom charge has no menu item to check (Story 4.9): looking it up
+    // would flag it "no longer available" and block Send for good.
+    if (isCustomStaged(line)) continue
     const known = menuItemsById.get(line.menuItemId)
     if (!known) stagedProblems.set(line.lineId, { kind: 'item-gone' })
     else if (!known.available) stagedProblems.set(line.lineId, { kind: 'item-unavailable' })
@@ -772,6 +785,22 @@ export function OrderScreen({
 
   const sheetSeat = sheet ? (seats.find((seat) => seat.id === sheet.seatId) ?? null) : null
 
+  // ── The custom-charge sheet (Story 4.9) ───────────────────────────────────
+  // Holds the SEAT it was opened for, like the options sheet, so a seat change
+  // behind the backdrop cannot move the charge onto someone else.
+  const [customSheetSeatId, setCustomSheetSeatId] = useState<string | null>(null)
+  const customSheetSeat = customSheetSeatId
+    ? (seats.find((seat) => seat.id === customSheetSeatId) ?? null)
+    : null
+
+  function openCustomCharge() {
+    if (!activeSeat) {
+      setSeatNotice('Add a seat before ordering.')
+      return
+    }
+    setCustomSheetSeatId(activeSeat.id)
+  }
+
   /**
    * What the bar says about the last send, when it did not go.
    *
@@ -812,15 +841,26 @@ export function OrderScreen({
       const sent = lines
       const response = await sendRound(sessionId, {
         submissionId,
-        lines: sent.map((line) => ({
-          menuItemId: line.menuItemId,
-          seatSlotId: line.seatSlotId,
-          quantity: line.quantity,
-          modifierText: line.modifierText,
-          optionIds: line.optionIds,
-          // The UNIT price, options included — the server computes the same.
-          quotedPricePaisa: line.pricePaisa,
-        })),
+        lines: sent.map((line) =>
+          line.customName !== undefined
+            ? {
+                // A custom charge (Story 4.9): its price IS the value, so it
+                // goes as `pricePaisa`, not as a quote to be checked.
+                customName: line.customName,
+                pricePaisa: line.pricePaisa,
+                quantity: line.quantity,
+                seatSlotId: line.seatSlotId,
+              }
+            : {
+                menuItemId: line.menuItemId,
+                seatSlotId: line.seatSlotId,
+                quantity: line.quantity,
+                modifierText: line.modifierText,
+                optionIds: line.optionIds,
+                // The UNIT price, options included — the server computes the same.
+                quotedPricePaisa: line.pricePaisa,
+              },
+        ),
       })
       return { response, sentLineIds: sent.map((line) => line.lineId) }
     },
@@ -884,6 +924,14 @@ export function OrderScreen({
               text: dish
                 ? `Not sent — ${dish} is no longer available. Take it off and send again.`
                 : 'Not sent — a dish is no longer available. Take it off and send again.',
+              forLines: lines,
+            })
+            return
+          case 'CUSTOM_CHARGE_NOT_ALLOWED':
+            // The role changed mid-shift, or a staged charge survived a switch
+            // of user on this tablet. The server is the judge (Story 4.9).
+            setSendNote({
+              text: 'Not sent — only the owner can add a custom charge. Take it off and send again.',
               forLines: lines,
             })
             return
@@ -1156,7 +1204,8 @@ export function OrderScreen({
     // "3 · Add another" because Seats 1–3 had it — which a waiter reads as
     // "this guest already has it", while the header says SEAT 4 SELECTED.
     // On a table ordering separately that is exactly the wrong signal.
-    if (line.seatSlotId === activeSeatId) {
+    // Custom charges have no card to badge (Story 4.9).
+    if (line.seatSlotId === activeSeatId && !isCustomStaged(line)) {
       stagedCountByItem.set(
         line.menuItemId,
         (stagedCountByItem.get(line.menuItemId) ?? 0) + line.quantity,
@@ -1650,6 +1699,24 @@ export function OrderScreen({
         />
       ) : null}
 
+      {customSheetSeat ? (
+        <CustomChargeSheet
+          key={customSheetSeat.id}
+          seatLabel={usesSeats ? seatName(customSheetSeat) : null}
+          onCancel={() => setCustomSheetSeatId(null)}
+          onAdd={({ name, pricePaisa, quantity: chargeQuantity }) => {
+            addCustomLine({
+              name,
+              pricePaisa,
+              quantity: chargeQuantity,
+              seatSlotId: customSheetSeat.id,
+              seatLabel: seatName(customSheetSeat),
+            })
+            setCustomSheetSeatId(null)
+          }}
+        />
+      ) : null}
+
       {/* Closing the table is reached from the bar's More menu now, so its
           confirmation is a centred dialog rather than a panel at the foot of
           the order column. It used to be both the trigger AND the warning
@@ -1810,6 +1877,8 @@ export function OrderScreen({
           if (isWalkout) setConfirmingWalkout(true)
           else closeMutation.mutate({ sessionId, reason: 'abandoned' })
         }}
+        // Only for staff allowed to add one (Story 4.9); absent otherwise.
+        onAddCustomCharge={canAddCustomCharge ? openCustomCharge : undefined}
       />
     </div>
   )

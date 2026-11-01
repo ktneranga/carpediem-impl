@@ -1,6 +1,6 @@
 # Story 4.9: Implement Custom Charge
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -71,104 +71,104 @@ so that charges the menu cannot express still reach the bill, with a record of w
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Schema (AC: 6)**
-  - [ ] `schema.ts` `orderEvents`: `customName: text('custom_name')` with a doc comment
+- [x] **Task 1 — Schema (AC: 6)**
+  - [x] `schema.ts` `orderEvents`: `customName: text('custom_name')` with a doc comment
         (what, why nullable, that it is the audit's "what").
-  - [ ] `pnpm db:generate`, then APPEND to the generated SQL a CHECK:
+  - [x] `pnpm db:generate`, then APPEND to the generated SQL a CHECK:
         `CHECK (event_type <> 'ITEM_ADDED' OR ((menu_item_id IS NULL) <> (custom_name IS NULL)))`
         named `order_events_item_names_one_source`. Before migrating, confirm no
         existing `ITEM_ADDED` row has a NULL `menu_item_id`
         (`SELECT count(*) …`); if any do, add the constraint `NOT VALID` and say so.
-  - [ ] `pnpm db:migrate` on the dev database.
+  - [x] `pnpm db:migrate` on the dev database.
 
-- [ ] **Task 2 — Types and permission (AC: 1, 4, 5)**
-  - [ ] `types/orders.ts`: split `SubmitRoundLine` into `SubmitMenuLine` (today's
+- [x] **Task 2 — Types and permission (AC: 1, 4, 5)**
+  - [x] `types/orders.ts`: split `SubmitRoundLine` into `SubmitMenuLine` (today's
         shape) and `SubmitCustomLine` `{ customName: string; pricePaisa: number;
         quantity: number; seatSlotId: string }`; `SubmitRoundLine = SubmitMenuLine |
         SubmitCustomLine`. Constants `MAX_CUSTOM_NAME = 60`,
         `MAX_CUSTOM_CHARGE_PAISA = 10_000_000`. Error code
         `CUSTOM_CHARGE_NOT_ALLOWED`.
-  - [ ] `server/auth/permissions.ts`: `export function canAddCustomCharge(role:
+  - [x] `server/auth/permissions.ts`: `export function canAddCustomCharge(role:
         StaffRole): boolean { return role === 'owner' }` with a comment pointing at
         Story 10.6 (the ONE place to change).
 
-- [ ] **Task 3 — Send route (AC: 1, 4, 5)**
-  - [ ] Zod: `lines` items become `z.union([menuLine, customLine])`. `customLine`:
+- [x] **Task 3 — Send route (AC: 1, 4, 5)**
+  - [x] Zod: `lines` items become `z.union([menuLine, customLine])`. `customLine`:
         `customName` string → trim → sanitise (reuse `sanitizeTicketText` from
         `src/server/print/ticket.ts`, or a shared helper) → length 1..60;
         `pricePaisa` int 1..`MAX_CUSTOM_CHARGE_PAISA`; `quantity` as dishes;
         `seatSlotId` uuid. Use `.strict()` on both so a body mixing the two shapes
         is a 400, not silently one of them.
-  - [ ] Before `submitRound`: if any line is custom and
+  - [x] Before `submitRound`: if any line is custom and
         `!canAddCustomCharge(x-staff-role)` → 403 `CUSTOM_CHARGE_NOT_ALLOWED`
         (`fail(...)` helper). Keep the existing unique-violation ordering comment.
 
-- [ ] **Task 4 — `submitRound` (AC: 4, 5, 6, 7)**
-  - [ ] Item ids, the menu `FOR SHARE` read and `loadModifierGroups` use MENU lines
+- [x] **Task 4 — `submitRound` (AC: 4, 5, 6, 7)**
+  - [x] Item ids, the menu `FOR SHARE` read and `loadModifierGroups` use MENU lines
         only. Custom lines skip availability/options/price checks — their price is
         the value (comment why: Decision 2's "quote is a check" is about the menu).
-  - [ ] `priced` per line: menu → as today; custom → `{ unitPricePaisa:
+  - [x] `priced` per line: menu → as today; custom → `{ unitPricePaisa:
         line.pricePaisa, options: [] }`.
-  - [ ] `eventRows`: custom → `menuItemId: null, customName: line.customName,
+  - [x] `eventRows`: custom → `menuItemId: null, customName: line.customName,
         modifierText: null, options: null`.
-  - [ ] `byDestination`: skip custom lines (no `itemsById` lookup for them — that
+  - [x] `byDestination`: skip custom lines (no `itemsById` lookup for them — that
         `!` would throw).
-  - [ ] **Guard the print-job insert**: `tickets.length === 0` → no
+  - [x] **Guard the print-job insert**: `tickets.length === 0` → no
         `tx.insert(printJobs)` (Drizzle throws on an empty `values([])`). The
         announcement's `byDestination` is then empty; check the route's emit loop
         and `wakePrintQueue()` are harmless with it.
-  - [ ] Keep: replay-before-lock, seat/bill guards for ALL lines (they look at
+  - [x] Keep: replay-before-lock, seat/bill guards for ALL lines (they look at
         `seatSlotId`), line-order error reporting, the Epic 8 placeholder after
         validation, emit only after commit.
 
-- [ ] **Task 5 — Readers (AC: 8, 9)**
-  - [ ] `submitted-rounds.ts`: select `orderEvents.customName`; `name:
+- [x] **Task 5 — Readers (AC: 8, 9)**
+  - [x] `submitted-rounds.ts`: select `orderEvents.customName`; `name:
         row.customName ?? row.itemName ?? MISSING_ITEM_NAME`.
-  - [ ] `bill.service.ts collectBillable`: select `customName`; everywhere the line
+  - [x] `bill.service.ts collectBillable`: select `customName`; everywhere the line
         name is formed (`buildBill` insert and return, ~line 743 and ~794) use
         `event.customName ?? event.itemName ?? 'Unknown item'`. `getBill` already
         reads the snapshotted `bill_lines.name` — no change.
-  - [ ] `bill/page.tsx` draft lines: same name rule (it maps `event.itemName`).
+  - [x] `bill/page.tsx` draft lines: same name rule (it maps `event.itemName`).
         Its station `innerJoin(menuItems)` stays (a custom line simply has no chip).
-  - [ ] Grep every `eq(orderEvents.eventType, 'ITEM_ADDED')` reader (list in Dev
+  - [x] Grep every `eq(orderEvents.eventType, 'ITEM_ADDED')` reader (list in Dev
         Notes) and confirm none assumes a non-null `menu_item_id`. Counting readers
         need no change.
 
-- [ ] **Task 6 — Staged round (AC: 3)**
-  - [ ] `use-staged-round.ts` `StagedLine`: add `customName?: string`; for a custom
+- [x] **Task 6 — Staged round (AC: 3)**
+  - [x] `use-staged-round.ts` `StagedLine`: add `customName?: string`; for a custom
         line `menuItemId = ''`, `optionIds = []`, `options = []`, `modifierText =
         ''`, and widen `productionDestination` to `… | null` (custom → null).
         `readStorage` accepts the new optional field (a line with `customName`
         must have a positive integer price) — tolerant read, NO storage-key bump.
-  - [ ] `addCustomLine({ name, pricePaisa, quantity, seatSlotId, seatLabel })`;
+  - [x] `addCustomLine({ name, pricePaisa, quantity, seatSlotId, seatLabel })`;
         merges only with an identical custom line (name, price, seat).
-  - [ ] Every consumer keyed by `menuItemId` skips custom lines: the staged count
+  - [x] Every consumer keyed by `menuItemId` skips custom lines: the staged count
         per item (cards' badges), the destination summary (no destination), and
         the stale checks in `order-screen.tsx` (~line 713 `menuItemsById.get(...)`
         would otherwise flag it "no longer available").
 
-- [ ] **Task 7 — UI (AC: 2, 3)**
-  - [ ] `orders/[sessionId]/page.tsx`: read `x-staff-role` (already reads
+- [x] **Task 7 — UI (AC: 2, 3)**
+  - [x] `orders/[sessionId]/page.tsx`: read `x-staff-role` (already reads
         `x-staff-id`), pass `canAddCustomCharge={canAddCustomCharge(role)}`.
-  - [ ] `order-action-strip.tsx`: a More-menu item "Add custom charge" when an
+  - [x] `order-action-strip.tsx`: a More-menu item "Add custom charge" when an
         `onAddCustomCharge` handler is given (pattern: `onCloseTable`, line ~112).
-  - [ ] New `components/pos/custom-charge-sheet.tsx`, modelled on
+  - [x] New `components/pos/custom-charge-sheet.tsx`, modelled on
         `modifier-sheet.tsx` (`<dialog>` + `showModal`, focus the name field after
         `showModal`, Escape/close, 56px controls, `commitButtonClass`, quantity
         stepper). LKR input → paisa with `Math.round(lkr * 100)`; reject NaN, ≤ 0,
         > 100,000. Live total via `lkrFromPaisa`.
-  - [ ] `staged-round-list.tsx`: a custom line shows its name, a "Custom" tag
+  - [x] `staged-round-list.tsx`: a custom line shows its name, a "Custom" tag
         (`text-slate-600`, not 400), price; no options; seat as others.
-  - [ ] Send body: custom lines → `{ customName, pricePaisa, quantity,
+  - [x] Send body: custom lines → `{ customName, pricePaisa, quantity,
         seatSlotId }`. Handle 403 `CUSTOM_CHARGE_NOT_ALLOWED`: "Not sent — only
         the owner can add a custom charge." (role changed mid-shift).
 
-- [ ] **Task 8 — Verification (AC: 10)**
-  - [ ] `src/server/services/verify-custom-charge.ts` on the `verify-options.ts`
+- [x] **Task 8 — Verification (AC: 10)**
+  - [x] `src/server/services/verify-custom-charge.ts` on the `verify-options.ts`
         pattern (login owner `5678` AND waiter `1234`; `mine` registry; cleanup
         with triggers disabled in try/finally; deletes print_jobs/order_rounds/
         order_events/bills it made).
-  - [ ] Re-run `verify-options.ts`, `verify-bills.ts`, `verify-escpos.ts`; tsc;
+  - [x] Re-run `verify-options.ts`, `verify-bills.ts`, `verify-escpos.ts`; tsc;
         lint.
 
 ## Dev Notes
@@ -300,10 +300,47 @@ approximate.
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
+
+- Pre-migration check: 0 `ITEM_ADDED` rows with NULL `menu_item_id`, so the CHECK was added VALID (not `NOT VALID`).
+- `verify-custom-charge.ts`: 21/21 (all 11 matrix cases; case 11 first failed because the test used `type: 'seat'` on `/bills` — per-seat bills have their own endpoint; fixed in the test).
+- Regression: `verify-options.ts` 33/33, `verify-bills.ts` 119/119, `verify-escpos.ts` 48/48.
+- `pnpm exec tsc --noEmit` clean; `pnpm lint` 0 errors, 1 pre-existing warning (`src/server/socket/index.ts`).
 
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created.
+- A custom charge is one `ITEM_ADDED` row with `menu_item_id NULL` and the new `custom_name` (migration 0031, plus CHECK `order_events_item_names_one_source`). The row is the audit: staff, time, price.
+- Wire: `SubmitRoundLine = SubmitMenuLine | SubmitCustomLine` (`isCustomLine`); the route parses `z.union` of two `.strict()` schemas; the custom name is sanitised (control characters) before being measured; price 1..10,000,000 paisa.
+- Permission: `canAddCustomCharge(role)` in `src/server/auth/permissions.ts` (owner until Story 10.6); the route returns 403 `CUSTOM_CHARGE_NOT_ALLOWED` before writing; the order page passes the same answer to hide the More-menu item.
+- `submitRound`: menu read and options only for menu lines (no read at all for a custom-only round); custom lines priced at their typed value; skipped in tickets; print-job insert guarded for an empty list.
+- Readers: history and bill name a line `customName ?? itemName`; all other `ITEM_ADDED` readers only count and needed no change (checked each).
+- Tablet: `StagedLine.customName` (tolerant read, no key bump), `addCustomLine`, `isCustomStaged`; custom lines skip the menu stale check and the card badges; a "Custom" tag on the staged row; new `CustomChargeSheet` (name, LKR price with cents, quantity, live total) from the More menu; 403 shows "only the owner can add a custom charge".
+- Not checked in a browser: the sheet and the More-menu item were type-checked and linted, not clicked through.
 
 ### File List
+
+- src/server/db/schema.ts
+- src/server/db/migrations/0031_common_power_pack.sql (new)
+- src/server/db/migrations/meta/0031_snapshot.json (new)
+- src/server/db/migrations/meta/_journal.json
+- src/types/orders.ts
+- src/server/auth/permissions.ts
+- src/app/api/sessions/[sessionId]/orders/route.ts
+- src/server/services/order.service.ts
+- src/server/orders/submitted-rounds.ts
+- src/server/services/bill.service.ts
+- src/app/orders/[sessionId]/bill/page.tsx
+- src/app/orders/[sessionId]/page.tsx
+- src/components/pos/use-staged-round.ts
+- src/components/pos/order-screen.tsx
+- src/components/pos/order-action-strip.tsx
+- src/components/pos/staged-round-list.tsx
+- src/components/pos/custom-charge-sheet.tsx (new)
+- src/server/services/verify-custom-charge.ts (new)
+
+## Change Log
+
+- 2026-11-01: Story 4.9 implemented — custom charges (owner only until 10.6): schema + CHECK, send route and service, readers, staged round, sheet and More-menu item, verification (21/21). Status → review.

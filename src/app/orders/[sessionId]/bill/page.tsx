@@ -158,7 +158,7 @@ export default async function BillPage({
           ...priced.totals,
           lines: priced.events.map((event, index) => ({
             orderEventId: event.eventId,
-            name: event.itemName ?? 'Unknown item',
+            name: event.customName ?? event.itemName ?? 'Unknown item',
             // What is still UNBILLED of it — one of a "2×" once the other is
             // on someone's bill (migration 0025).
             quantity: priced.lineQuantities[index]!,

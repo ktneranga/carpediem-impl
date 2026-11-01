@@ -265,6 +265,8 @@ async function collectBillable(
       options: orderEvents.options,
       roundNumber: orderEvents.roundNumber,
       itemName: menuItems.name,
+      // A custom charge's typed name (Story 4.9); null on every dish.
+      customName: orderEvents.customName,
       seatLabel: seatSlots.seatLabel,
       // The bill screen pre-splits a Separate-bills order by seat.
       seatSlotId: orderEvents.seatSlotId,
@@ -740,7 +742,7 @@ async function buildBill(
         amountPaisa: lineAmounts[index]!,
         // Snapshotted, not joined at render time (migration 0019). The name a
         // guest was charged under must not change when the owner edits a menu.
-        name: event.itemName ?? 'Unknown item',
+        name: event.customName ?? event.itemName ?? 'Unknown item',
         seatLabel: event.seatLabel,
         modifierText: event.modifierText,
         // Snapshotted like the name (Story 4.8): the options a guest was
@@ -791,7 +793,7 @@ async function buildBill(
     ...totals,
     lines: events.map((event, index) => ({
       orderEventId: event.eventId,
-      name: event.itemName ?? 'Unknown item',
+      name: event.customName ?? event.itemName ?? 'Unknown item',
       quantity: lineQuantities[index]!,
       unitPricePaisa: event.unitPricePaisa ?? 0,
       amountPaisa: lineAmounts[index]!,

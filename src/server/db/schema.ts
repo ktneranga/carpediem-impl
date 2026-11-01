@@ -541,6 +541,17 @@ export const orderEvents = pgTable('order_events', {
    */
   options:        jsonb('options').$type<OrderEventOption[]>(),
   /**
+   * The name of a CUSTOM CHARGE — "Corkage", "Broken glass" — typed by staff
+   * allowed to (Story 4.9, FR66). Such a line has no `menu_item_id`; its
+   * `unit_price_paisa` is the typed price, and this row (who, when, how much)
+   * is its audit record.
+   *
+   * NULL on every menu line. Migration 0031's CHECK makes each ITEM_ADDED row
+   * name exactly one of `menu_item_id` / `custom_name`, so no reader ever meets
+   * a line with neither.
+   */
+  customName:     text('custom_name'),
+  /**
    * Which round of this session's ordering an ITEM belongs to.
    *
    * 1 for the first submission, 2 after "Add More Items", and so on.

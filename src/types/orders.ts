@@ -94,8 +94,8 @@ export const MAX_MODIFIER_TEXT = 120
  */
 export const MAX_OPTIONS_PER_LINE = 40
 
-/** One staged line, as sent to `POST /api/sessions/:sessionId/orders`. */
-export type SubmitRoundLine = {
+/** One staged DISH, as sent to `POST /api/sessions/:sessionId/orders`. */
+export type SubmitMenuLine = {
   menuItemId: string
   seatSlotId: string
   /** 1..MAX_LINE_QUANTITY */
@@ -114,6 +114,36 @@ export type SubmitRoundLine = {
    */
   quotedPricePaisa: number
 }
+
+/**
+ * One CUSTOM CHARGE — a typed name and price, no menu item (Story 4.9, FR66).
+ *
+ * Unlike a dish's `quotedPricePaisa`, `pricePaisa` IS the value charged: there
+ * is no menu price to check it against. The protection is who may send it
+ * (`canAddCustomCharge`), not a comparison. No options, no note, no ticket.
+ */
+export type SubmitCustomLine = {
+  /** Trimmed, 1..MAX_CUSTOM_NAME. */
+  customName: string
+  /** The UNIT price, 1..MAX_CUSTOM_CHARGE_PAISA. Positive only: a reduction is a comp. */
+  pricePaisa: number
+  /** 1..MAX_LINE_QUANTITY */
+  quantity: number
+  seatSlotId: string
+}
+
+/** One staged line on the wire: a dish or a custom charge. */
+export type SubmitRoundLine = SubmitMenuLine | SubmitCustomLine
+
+/** Narrows a wire line to a custom charge. */
+export function isCustomLine(line: SubmitRoundLine): line is SubmitCustomLine {
+  return 'customName' in line
+}
+
+/** A custom charge's name, after trimming. */
+export const MAX_CUSTOM_NAME = 60
+/** LKR 100,000 — far above any real corkage, a cap on a typo. */
+export const MAX_CUSTOM_CHARGE_PAISA = 10_000_000
 
 export type SubmitRoundRequest = {
   /** Client-generated, stable across retries of the same round (AC-8, AC-13). */
@@ -140,6 +170,8 @@ export type SubmitRoundErrorCode =
   | 'ROUND_CONFLICT'
   /** An option unknown, foreign, unavailable, repeated, too many, or a required group empty. */
   | 'OPTION_INVALID'
+  /** A custom charge from staff not allowed to add one (Story 4.9). */
+  | 'CUSTOM_CHARGE_NOT_ALLOWED'
 
 /** One line of a production ticket, as the `order:submitted` event carries it. */
 export type TicketLine = {

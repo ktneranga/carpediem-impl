@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import { dishCount } from '@/server/orders/item-count'
 import { z } from 'zod'
+import { canAddCustomCharge, type StaffRole } from '@/server/auth/permissions'
 import { db } from '@/server/db'
 import { loadSubmittedRounds } from '@/server/orders/submitted-rounds'
 import { hasUnbilledItems, loadSessionBills } from '@/server/services/bill.service'
@@ -55,6 +56,9 @@ export default async function OrderPage({
 
   const headersList = await headers()
   const staffId = headersList.get('x-staff-id')
+  // Set by the proxy from the session. Decides whether the More menu offers a
+  // custom charge (Story 4.9); the send route decides again.
+  const staffRole = headersList.get('x-staff-role') as StaffRole | null
 
   // LEFT joins from the session outward. A counter sale returns exactly one row
   // with nulls for the table columns; a merged group returns one row per table,
@@ -203,6 +207,7 @@ export default async function OrderPage({
       initialBillMode={session.billMode}
       initialBills={initialBills}
       initialHasUnbilled={initialHasUnbilled}
+      canAddCustomCharge={canAddCustomCharge(staffRole)}
     />
   )
 }

@@ -168,3 +168,15 @@ export function isRoleAllowed(pathname: string, role: StaffRole, method?: string
   const policy = findRoutePolicy(pathname, method)
   return policy === null || policy.roles.includes(role)
 }
+
+/**
+ * Whether this person may add a CUSTOM CHARGE — a typed name and price
+ * (Story 4.9, FR66).
+ *
+ * The owner role until Story 10.6, which grants it per person
+ * (`custom_charge`). This is the ONE place that decides: the send route and the
+ * order page both ask it, so 10.6 changes this function and nothing else.
+ */
+export function canAddCustomCharge(role: StaffRole | null | undefined): boolean {
+  return role === 'owner'
+}

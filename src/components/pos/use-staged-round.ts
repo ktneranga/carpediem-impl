@@ -51,8 +51,22 @@ export type StagedLine = {
   seatSlotId: string
   /** That seat's name at the moment of the tap — its note, else its label. */
   seatLabel: string
-  /** Carried so Story 4.5 can route without re-reading the menu. */
-  productionDestination: MenuItemRow['productionDestination']
+  /**
+   * Carried so Story 4.5 can route without re-reading the menu. Null on a
+   * custom charge: it goes to no station and prints on no ticket.
+   */
+  productionDestination: MenuItemRow['productionDestination'] | null
+  /**
+   * Set on a CUSTOM CHARGE (Story 4.9) — the typed name, which is also `name`.
+   * Such a line has `menuItemId: ''`, no options and no note, and its
+   * `pricePaisa` is the value charged, not a quote. Absent on every dish.
+   */
+  customName?: string
+}
+
+/** A staged custom charge rather than a dish. */
+export function isCustomStaged(line: StagedLine): boolean {
+  return typeof line.customName === 'string'
 }
 
 const DESTINATIONS: readonly string[] = ['kitchen', 'pizza_kitchen', 'bar']
@@ -133,10 +147,26 @@ function readStorage(sessionId: string): StagedLine[] {
         Number.isInteger(c.quantity) &&
         (c.quantity as number) > 0 &&
         typeof c.modifierText === 'string' &&
-        typeof c.seatSlotId === 'string' &&
-        typeof c.productionDestination === 'string' &&
-        DESTINATIONS.includes(c.productionDestination)
+        typeof c.seatSlotId === 'string'
       if (!valid) continue
+
+      // A custom charge (Story 4.9) has a name of its own, a POSITIVE price and
+      // no station; a dish has a known station. Anything else is dropped.
+      const customName =
+        c.customName === undefined
+          ? undefined
+          : typeof c.customName === 'string' && c.customName.trim() !== ''
+            ? c.customName
+            : null
+      if (customName === null) continue
+      if (customName !== undefined) {
+        if ((c.pricePaisa as number) < 1 || c.productionDestination !== null) continue
+      } else if (
+        typeof c.productionDestination !== 'string' ||
+        !DESTINATIONS.includes(c.productionDestination)
+      ) {
+        continue
+      }
 
       const optionIds =
         c.optionIds === undefined
@@ -175,6 +205,7 @@ function readStorage(sessionId: string): StagedLine[] {
         seatSlotId: c.seatSlotId as string,
         seatLabel: typeof c.seatLabel === 'string' ? c.seatLabel : '',
         productionDestination: c.productionDestination as StagedLine['productionDestination'],
+        ...(customName !== undefined ? { customName } : {}),
       })
     }
     return lines
@@ -450,6 +481,65 @@ export function useStagedRound(sessionId: string) {
     ])
   }
 
+  /**
+   * Stages a CUSTOM CHARGE (Story 4.9): a typed name and price on a seat.
+   *
+   * Merges only with an identical custom charge — same name, price and seat —
+   * and never with a dish. Whether this person may add one is decided by the
+   * server (`canAddCustomCharge`); the screen only hides the control.
+   */
+  function addCustomLine({
+    name,
+    pricePaisa,
+    quantity = 1,
+    seatSlotId,
+    seatLabel,
+  }: {
+    name: string
+    pricePaisa: number
+    quantity?: number
+    seatSlotId: string
+    seatLabel: string
+  }): void {
+    const current = snapshot(sessionId)
+    const customName = name.trim()
+    const amount = Math.max(1, Math.trunc(quantity))
+    const existing = current.find(
+      (line) =>
+        line.customName === customName &&
+        line.pricePaisa === pricePaisa &&
+        line.seatSlotId === seatSlotId,
+    )
+    if (existing) {
+      write(
+        sessionId,
+        current.map((line) =>
+          line.lineId === existing.lineId
+            ? { ...line, quantity: Math.min(line.quantity + amount, MAX_LINE_QUANTITY) }
+            : line,
+        ),
+      )
+      return
+    }
+    write(sessionId, [
+      ...current,
+      {
+        lineId: newId(),
+        menuItemId: '',
+        name: customName,
+        customName,
+        pricePaisa,
+        quantity: Math.min(amount, MAX_LINE_QUANTITY),
+        modifierText: '',
+        optionIds: [],
+        options: [],
+        seatSlotId,
+        seatLabel,
+        productionDestination: null,
+      },
+    ])
+  }
+
   function removeLine(lineId: string): void {
     write(
       sessionId,
@@ -526,6 +616,7 @@ export function useStagedRound(sessionId: string) {
   return {
     lines,
     addLine,
+    addCustomLine,
     removeLine,
     setQuantity,
     reassignLine,
