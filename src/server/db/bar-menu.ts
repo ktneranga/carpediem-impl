@@ -16,7 +16,13 @@ import { and, eq } from 'drizzle-orm'
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { modifierGroups, modifierOptions } from './schema'
 
-export type SeedOption = { name: string; priceDeltaPaisa: number; isDefault?: boolean }
+export type SeedOption = {
+  name: string
+  priceDeltaPaisa: number
+  isDefault?: boolean
+  /** More than 1 makes it countable — a −/+ stepper on the sheet. */
+  maxCount?: number
+}
 
 export type SeedModifierGroup = {
   name: string
@@ -65,12 +71,23 @@ const measure = (shotPaisa: number): SeedModifierGroup => ({
   ],
 })
 
+/**
+ * More spirit than a double: each extra shot at the shot's own price, up to
+ * four (Teran, 2026-11-01 — "more than two shots" without a manual price).
+ */
+const extraShots = (shotPaisa: number): SeedModifierGroup => ({
+  name: 'Extra shots',
+  selection: 'multi',
+  required: false,
+  options: [{ name: 'Extra shot', priceDeltaPaisa: shotPaisa, maxCount: 4 }],
+})
+
 const COFFEE_EXTRAS: SeedModifierGroup = {
   name: 'Extras',
   selection: 'multi',
   required: false,
   options: [
-    { name: 'Extra shot', priceDeltaPaisa: 20000 },
+    { name: 'Extra shot', priceDeltaPaisa: 20000, maxCount: 3 },
     { name: 'Oat milk', priceDeltaPaisa: 25000 },
   ],
 }
@@ -79,13 +96,23 @@ export const BAR_MENU: { category: string; items: SeedItem[] }[] = [
   {
     category: 'Cocktails',
     items: [
-      { name: 'Mojito', pricePaisa: 250000, destination: 'bar', modifierGroups: [ALCOHOL, ICE] },
-      { name: 'Piña Colada', pricePaisa: 280000, destination: 'bar', modifierGroups: [ALCOHOL, ICE] },
+      {
+        name: 'Mojito',
+        pricePaisa: 250000,
+        destination: 'bar',
+        modifierGroups: [ALCOHOL, extraShots(100000), ICE],
+      },
+      {
+        name: 'Piña Colada',
+        pricePaisa: 280000,
+        destination: 'bar',
+        modifierGroups: [ALCOHOL, extraShots(100000), ICE],
+      },
       {
         name: 'Long Island Iced Tea',
         pricePaisa: 320000,
         destination: 'bar',
-        modifierGroups: [ALCOHOL, ICE],
+        modifierGroups: [ALCOHOL, extraShots(100000), ICE],
       },
       { name: 'Arrack & Soda', pricePaisa: 70000, destination: 'bar' },
     ],
@@ -130,19 +157,19 @@ export const BAR_MENU: { category: string; items: SeedItem[] }[] = [
         name: 'Johnnie Walker Red (shot)',
         pricePaisa: 100000,
         destination: 'bar',
-        modifierGroups: [measure(100000)],
+        modifierGroups: [measure(100000), extraShots(100000)],
       },
       {
         name: 'Jameson (shot)',
         pricePaisa: 120000,
         destination: 'bar',
-        modifierGroups: [measure(120000)],
+        modifierGroups: [measure(120000), extraShots(120000)],
       },
       {
         name: 'Johnnie Walker Black (shot)',
         pricePaisa: 150000,
         destination: 'bar',
-        modifierGroups: [measure(150000)],
+        modifierGroups: [measure(150000), extraShots(150000)],
       },
     ],
   },
@@ -200,6 +227,7 @@ export async function ensureModifierGroups(
         name: option.name,
         priceDeltaPaisa: option.priceDeltaPaisa,
         isDefault: option.isDefault ?? false,
+        maxCount: option.maxCount ?? 1,
         displayOrder: optionIndex,
       })
       created.options += 1

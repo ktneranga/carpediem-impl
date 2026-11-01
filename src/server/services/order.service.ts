@@ -18,7 +18,13 @@ import { lockOpenSession } from '@/server/services/table-session.service'
 import { billedSeats, findConsolidatedBill } from '@/server/services/bill.service'
 import { buildTicketPayloads } from '@/server/print/ticket'
 import { zoneUsesSeats } from '@/lib/design'
-import { chosenOptions, unitPriceFor, validateSelection, type SelectionProblem } from '@/lib/options'
+import {
+  chosenOptions,
+  optionLabel,
+  unitPriceFor,
+  validateSelection,
+  type SelectionProblem,
+} from '@/lib/options'
 import { loadModifierGroups } from '@/server/orders/modifier-groups'
 import type {
   OrderEventOption,
@@ -320,6 +326,7 @@ export async function submitRound(
       group: option.group,
       name: option.name,
       priceDeltaPaisa: option.priceDeltaPaisa,
+      count: option.count,
     }))
     return { unitPricePaisa, options }
   })
@@ -398,7 +405,8 @@ export async function submitRound(
       name: item.name,
       quantity: row.quantity,
       // Names only, in menu order: the kitchen needs "Double shot", not a price.
-      options: (row.options ?? []).map((option) => option.name),
+      // "Extra shot ×3" — one line on the paper, not three.
+      options: (row.options ?? []).map(optionLabel),
       modifierText: row.modifierText,
       seatLabel: seat.seatLabel,
       seatNote: seat.seatNote,

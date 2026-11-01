@@ -5,6 +5,7 @@ import type { SeatSlot } from '@/components/pos/seat-selector'
 import type { StagedLine } from '@/components/pos/use-staged-round'
 import { MAX_LINE_QUANTITY } from '@/types/orders'
 import { lkrFromPaisa } from '@/lib/format'
+import { optionText } from '@/lib/options'
 import { cn } from '@/lib/utils'
 
 /**
@@ -136,7 +137,7 @@ export function StagedRoundList({
           const details = [
             showSeats ? seatName : null,
             // The chosen options, before the waiter's own note (Story 4.8).
-            line.options.length > 0 ? line.options.map((option) => option.name).join(', ') : null,
+            optionText(line.options),
             line.modifierText || null,
             lkrFromPaisa(line.pricePaisa * line.quantity),
           ].filter(Boolean)

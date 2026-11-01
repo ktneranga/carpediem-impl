@@ -46,7 +46,7 @@ export type StagedLine = {
    * snapshot, so the line stays readable if the menu changes under it — the
    * stale check compares against the LIVE options before send.
    */
-  options: { id: string; name: string; priceDeltaPaisa: number }[]
+  options: { id: string; name: string; priceDeltaPaisa: number; count?: number }[]
   /** Whichever seat was selected at the moment of the tap. */
   seatSlotId: string
   /** That seat's name at the moment of the tap — its note, else its label. */
@@ -154,7 +154,10 @@ function readStorage(sessionId: string): StagedLine[] {
                   option !== null &&
                   typeof (option as Record<string, unknown>).id === 'string' &&
                   typeof (option as Record<string, unknown>).name === 'string' &&
-                  Number.isInteger((option as Record<string, unknown>).priceDeltaPaisa),
+                  Number.isInteger((option as Record<string, unknown>).priceDeltaPaisa) &&
+                  // Optional: lines staged before countable options read as 1.
+                  ((option as Record<string, unknown>).count === undefined ||
+                    Number.isInteger((option as Record<string, unknown>).count)),
               )
             ? (c.options as StagedLine['options'])
             : null
@@ -433,7 +436,12 @@ export function useStagedRound(sessionId: string) {
         quantity: amount,
         modifierText: note,
         optionIds: ids,
-        options: chosen.map(({ id, name, priceDeltaPaisa }) => ({ id, name, priceDeltaPaisa })),
+        options: chosen.map(({ id, name, priceDeltaPaisa, count }) => ({
+          id,
+          name,
+          priceDeltaPaisa,
+          count,
+        })),
         seatSlotId,
         seatLabel,
         productionDestination: item.productionDestination,

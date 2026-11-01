@@ -22,6 +22,11 @@ export type ModifierOptionRow = {
   priceDeltaPaisa: number
   /** Preselected when the dish is added with one tap. */
   isDefault: boolean
+  /**
+   * How many times one line may take it: 1 for on/off, more for a countable
+   * option ("Extra shot" ×3). Chosen N times = its id N times in `optionIds`.
+   */
+  maxCount: number
   /** An unavailable option is shown disabled and refused by the server. */
   available: boolean
 }
@@ -47,7 +52,10 @@ export type OrderEventOption = {
   optionId: string
   group: string
   name: string
+  /** PER UNIT. The line paid `priceDeltaPaisa × count`. */
   priceDeltaPaisa: number
+  /** How many were taken — "Extra shot" ×3. Absent on early snapshots: 1. */
+  count?: number
 }
 
 /** One submitted item, as the history renders it. */

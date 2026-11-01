@@ -96,6 +96,15 @@ export function ModifierSheet({
     })
   }
 
+  /** One more or one fewer of a COUNTABLE option ("Extra shot"). */
+  function step(optionId: string, by: 1 | -1) {
+    setOptionIds((current) => {
+      if (by === 1) return sortIds([...current, optionId])
+      const index = current.indexOf(optionId)
+      return index === -1 ? current : current.filter((_, at) => at !== index)
+    })
+  }
+
   // Read once, at open: the effect below runs on mount only, and a menu refetch
   // while the sheet is up must not move the focus.
   const opensOnNoteRef = useRef(groups.length === 0)
@@ -219,6 +228,59 @@ export function ModifierSheet({
               {group.options.map((option) => {
                 const isOn = optionIds.includes(option.id)
                 const delta = signedLkrFromPaisa(option.priceDeltaPaisa)
+                if ((option.maxCount ?? 1) > 1) {
+                  // A countable option: name, price EACH, and a −/+ stepper,
+                  // so "three extra shots" is three taps, priced by the menu.
+                  const count = optionIds.filter((id) => id === option.id).length
+                  return (
+                    <div
+                      key={option.id}
+                      role="group"
+                      aria-label={`${option.name}, ${count} chosen`}
+                      className={cn(
+                        'flex min-h-touch-kitchen items-center gap-sp-2 rounded-pill border-2 pr-sp-1 pl-sp-4',
+                        'text-fs-16 font-bold',
+                        count > 0
+                          ? 'border-brand-800 bg-brand-800 text-white'
+                          : 'border-slate-200 bg-white text-slate-900',
+                        option.available ? null : 'opacity-40',
+                      )}
+                    >
+                      {option.name}
+                      {delta ? (
+                        <span
+                          className={cn(
+                            'text-fs-14 font-semibold tabular-nums',
+                            count > 0 ? 'text-white' : 'text-slate-600',
+                          )}
+                        >
+                          {delta} each
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        aria-label={`One fewer ${option.name}`}
+                        disabled={count === 0}
+                        onClick={() => step(option.id, -1)}
+                        className="flex size-touch-standard items-center justify-center rounded-pill active:scale-[0.94] disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                      >
+                        <Minus aria-hidden="true" className="size-5" />
+                      </button>
+                      <span aria-hidden="true" className="w-5 text-center tabular-nums">
+                        {count}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`One more ${option.name}`}
+                        disabled={!option.available || count >= option.maxCount}
+                        onClick={() => step(option.id, 1)}
+                        className="flex size-touch-standard items-center justify-center rounded-pill active:scale-[0.94] disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                      >
+                        <Plus aria-hidden="true" className="size-5" />
+                      </button>
+                    </div>
+                  )
+                }
                 return (
                   <button
                     key={option.id}

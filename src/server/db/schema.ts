@@ -321,6 +321,13 @@ export const modifierOptions = pgTable('modifier_options', {
   priceDeltaPaisa: integer('price_delta_paisa').notNull().default(0),
   /** Preselected on a one-tap add, so a required group need not open the sheet. */
   isDefault:       boolean('is_default').notNull().default(false),
+  /**
+   * How many times one line may take it. 1 for an on/off choice ("No ice");
+   * more for a COUNTABLE one ("Extra shot" up to 4), which the sheet shows as
+   * a −/+ stepper and prices per unit — a guest asking for three extra shots
+   * is a menu choice, not a manual price edit (Teran, 2026-11-01).
+   */
+  maxCount:        integer('max_count').notNull().default(1),
   isAvailable:     boolean('is_available').notNull().default(true),
   displayOrder:    integer('display_order').notNull().default(0),
 }, (t) => [

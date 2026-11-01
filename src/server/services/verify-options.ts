@@ -3,7 +3,7 @@
    Nothing here is imported by the app. */
 /**
  * Story 4.8 — priced options, verified against the running server and
- * database. The story's 13-case matrix.
+ * database. The story's 13-case matrix, plus 14: countable options.
  *
  *   pnpm exec tsx --env-file=.env <this file>
  *
@@ -79,7 +79,7 @@ async function makeGroup(
   name: string,
   selection: 'single' | 'multi',
   required: boolean,
-  options: { name: string; delta: number; isDefault?: boolean; available?: boolean }[],
+  options: { name: string; delta: number; isDefault?: boolean; available?: boolean; maxCount?: number }[],
 ): Promise<{ id: string; options: Record<string, string> }> {
   const tid = await tenantId()
   const [group] = await sql(
@@ -92,9 +92,9 @@ async function makeGroup(
   for (const [index, option] of options.entries()) {
     const [row] = await sql(
       `INSERT INTO modifier_options
-         (tenant_id, group_id, name, price_delta_paisa, is_default, is_available, display_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [tid, group.id, option.name, option.delta, option.isDefault ?? false, option.available ?? true, index],
+         (tenant_id, group_id, name, price_delta_paisa, is_default, is_available, display_order, max_count)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [tid, group.id, option.name, option.delta, option.isDefault ?? false, option.available ?? true, index, option.maxCount ?? 1],
     )
     mine.options.push(row.id)
     ids[option.name] = row.id
@@ -190,6 +190,9 @@ async function run() {
     { name: 'Single', delta: 0, isDefault: true },
     { name: 'Double shot', delta: 100_000 },
     { name: 'Triple', delta: 200_000, available: false },
+  ])
+  const shots = await makeGroup(mojito, 'Extra shots', 'multi', false, [
+    { name: 'Extra shot', delta: 100_000, maxCount: 4 },
   ])
   const ice = await makeGroup(mojito, 'Ice', 'multi', false, [
     { name: 'No ice', delta: 0 },
@@ -305,6 +308,40 @@ async function run() {
     JSON.stringify(ticketLine?.options) === JSON.stringify(['Double shot', 'No ice']),
     JSON.stringify(ticketLine?.options))
 
+  // 14 — countable options (Teran, 2026-11-01): "more than two shots"
+  const extra = shots.options['Extra shot']!
+  const threeExtra = await send(waiter, sessionId, seatId, [
+    { menuItemId: mojito, optionIds: [double, extra, extra, extra], quotedPricePaisa: 650_000 },
+  ])
+  check('14 Double + 3 extra shots → 201 at base + 1,000 + 3 × 1,000',
+    threeExtra.status === 201, `${threeExtra.status} ${JSON.stringify(threeExtra.body?.error ?? '')}`)
+  const [counted] = await sql(
+    `SELECT unit_price_paisa, options FROM order_events WHERE session_id = $1 AND unit_price_paisa = 650000`,
+    [sessionId],
+  )
+  check('14 the snapshot stores the option ONCE with its count',
+    counted?.options?.filter((o: any) => o.optionId === extra).length === 1 &&
+      counted?.options?.find((o: any) => o.optionId === extra)?.count === 3,
+    JSON.stringify(counted?.options))
+  const [countedJob] = await sql(`SELECT ticket FROM print_jobs WHERE round_id = $1`, [
+    threeExtra.body?.data?.submissionId,
+  ])
+  check('14 the ticket prints "Extra shot ×3" on one line',
+    JSON.stringify(countedJob?.ticket?.lines?.[0]?.options) === JSON.stringify(['Double shot', 'Extra shot ×3']),
+    JSON.stringify(countedJob?.ticket?.lines?.[0]?.options))
+  const fiveExtra = await send(waiter, sessionId, seatId, [
+    { menuItemId: mojito, optionIds: [alcohol.options['Single']!, extra, extra, extra, extra, extra], quotedPricePaisa: 750_000 },
+  ])
+  check('14 a fifth extra shot over the limit of 4 → 422 duplicate',
+    fiveExtra.status === 422 && fiveExtra.body?.error?.reason === 'duplicate',
+    `${fiveExtra.status} ${fiveExtra.body?.error?.reason}`)
+  const underQuoted = await send(waiter, sessionId, seatId, [
+    { menuItemId: mojito, optionIds: [alcohol.options['Single']!, extra, extra], quotedPricePaisa: 350_000 },
+  ])
+  check('14 a quote that counts one shot, not two → 409 with the counted price',
+    underQuoted.status === 409 && underQuoted.body?.error?.currentPricePaisa === 450_000,
+    `${underQuoted.status} ${underQuoted.body?.error?.currentPricePaisa}`)
+
   // 9 / 11 — re-price and rename AFTER the send, then bill
   await sql(`UPDATE modifier_options SET price_delta_paisa = 300000, name = 'Double (renamed)' WHERE id = $1`, [double])
   const [unchanged] = await sql(
@@ -321,6 +358,14 @@ async function run() {
   })
   if (bill.body?.data?.billId) mine.bills.push(bill.body.data.billId)
   check('9 the bill is created', bill.status === 201, `${bill.status} ${JSON.stringify(bill.body?.error ?? '')}`)
+  const [countedLine] = await sql(
+    `SELECT bl.option_text FROM bill_lines bl
+       JOIN order_events e ON e.id = bl.order_event_id
+      WHERE bl.bill_id = $1 AND e.unit_price_paisa = 650000`,
+    [bill.body?.data?.billId ?? '00000000-0000-0000-0000-000000000000'],
+  )
+  check('14 the bill line reads "Double shot, Extra shot ×3"',
+    countedLine?.option_text === 'Double shot, Extra shot ×3', String(countedLine?.option_text))
   const [billLine] = await sql(
     `SELECT bl.amount_paisa, bl.option_text FROM bill_lines bl
        JOIN order_events e ON e.id = bl.order_event_id
