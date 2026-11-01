@@ -12,15 +12,20 @@
  * - the old "Drinks" category is DEACTIVATED, never deleted — items and order
  *   history reference it, and a deactivated category simply leaves the menu;
  * - every bar item, found OR created, gets its sample priced options (Story
- *   4.8): a group or option already there by name is left exactly as it is.
+ *   4.8): a group or option already there by name is left exactly as it is;
+ * - the RETIRED sample options ("Double shot", whisky's "Measure") are DELETED
+ *   from bar items. Unlike a category, nothing references an option row: a
+ *   sent order keeps its own copy in `order_events.options`, so past orders and
+ *   bills still read "Double shot". A line staged with one and not yet sent is
+ *   flagged on the tablet and re-added.
  *
  * Refuses to run in production, like `seed.ts`: this is sample data.
  */
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
-import { menuCategories, menuItems, tenants } from './schema'
-import { BAR_MENU, ensureModifierGroups } from './bar-menu'
+import { menuCategories, menuItems, modifierGroups, modifierOptions, tenants } from './schema'
+import { BAR_MENU, RETIRED_GROUPS, RETIRED_OPTIONS, ensureModifierGroups } from './bar-menu'
 
 async function main() {
   if (process.env.NODE_ENV === 'production') {
@@ -43,6 +48,8 @@ async function main() {
     itemsMoved: 0,
     groupsCreated: 0,
     optionsCreated: 0,
+    groupsRemoved: 0,
+    optionsRemoved: 0,
     drinksRetired: false,
   }
 
@@ -102,6 +109,33 @@ async function main() {
         const added = await ensureModifierGroups(tx, tenant.id, itemId!, item.modifierGroups)
         summary.groupsCreated += added.groups
         summary.optionsCreated += added.options
+
+        // ── Retired sample options on THIS item ───────────────────────────
+        const groups = await tx
+          .select({ id: modifierGroups.id, name: modifierGroups.name })
+          .from(modifierGroups)
+          .where(eq(modifierGroups.menuItemId, itemId!))
+        for (const group of groups) {
+          if (RETIRED_GROUPS.includes(group.name)) {
+            const gone = await tx
+              .delete(modifierOptions)
+              .where(eq(modifierOptions.groupId, group.id))
+              .returning({ id: modifierOptions.id })
+            summary.optionsRemoved += gone.length
+            await tx.delete(modifierGroups).where(eq(modifierGroups.id, group.id))
+            summary.groupsRemoved += 1
+            continue
+          }
+          const names = RETIRED_OPTIONS.filter((retired) => retired.group === group.name).map(
+            (retired) => retired.option,
+          )
+          if (names.length === 0) continue
+          const gone = await tx
+            .delete(modifierOptions)
+            .where(and(eq(modifierOptions.groupId, group.id), inArray(modifierOptions.name, names)))
+            .returning({ id: modifierOptions.id })
+          summary.optionsRemoved += gone.length
+        }
       }
     }
 

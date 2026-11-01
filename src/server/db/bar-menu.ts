@@ -41,7 +41,11 @@ export type SeedItem = {
 }
 
 // ── The sample options (Story 4.8, AC 13) ───────────────────────────────────
-/** A cocktail's spirit: none for LKR 1,000 less, or a double for LKR 1,000 more. */
+/**
+ * A cocktail's spirit: none for LKR 1,000 less, or the standard single. More
+ * spirit is the Extra shots stepper — a "Double shot" here priced exactly what
+ * Single + 1 extra shot does, so it was removed (Teran, 2026-11-01).
+ */
 const ALCOHOL: SeedModifierGroup = {
   name: 'Alcohol',
   selection: 'single',
@@ -49,7 +53,6 @@ const ALCOHOL: SeedModifierGroup = {
   options: [
     { name: 'No alcohol', priceDeltaPaisa: -100000 },
     { name: 'Single', priceDeltaPaisa: 0, isDefault: true },
-    { name: 'Double shot', priceDeltaPaisa: 100000 },
   ],
 }
 
@@ -59,17 +62,6 @@ const ICE: SeedModifierGroup = {
   required: false,
   options: [{ name: 'No ice', priceDeltaPaisa: 0 }],
 }
-
-/** A double is two shots, so it costs the shot's own price again. */
-const measure = (shotPaisa: number): SeedModifierGroup => ({
-  name: 'Measure',
-  selection: 'single',
-  required: true,
-  options: [
-    { name: 'Single', priceDeltaPaisa: 0, isDefault: true },
-    { name: 'Double', priceDeltaPaisa: shotPaisa },
-  ],
-})
 
 /**
  * More spirit than a double: each extra shot at the shot's own price, up to
@@ -157,23 +149,31 @@ export const BAR_MENU: { category: string; items: SeedItem[] }[] = [
         name: 'Johnnie Walker Red (shot)',
         pricePaisa: 100000,
         destination: 'bar',
-        modifierGroups: [measure(100000), extraShots(100000)],
+        modifierGroups: [extraShots(100000)],
       },
       {
         name: 'Jameson (shot)',
         pricePaisa: 120000,
         destination: 'bar',
-        modifierGroups: [measure(120000), extraShots(120000)],
+        modifierGroups: [extraShots(120000)],
       },
       {
         name: 'Johnnie Walker Black (shot)',
         pricePaisa: 150000,
         destination: 'bar',
-        modifierGroups: [measure(150000), extraShots(150000)],
+        modifierGroups: [extraShots(150000)],
       },
     ],
   },
 ]
+
+/**
+ * Sample options that were seeded once and then dropped (Teran, 2026-11-01):
+ * "Double shot" and whisky's "Measure" duplicate the Extra shots stepper.
+ * `seed-bar-menu.ts` deletes them from a database seeded before.
+ */
+export const RETIRED_OPTIONS = [{ group: 'Alcohol', option: 'Double shot' }]
+export const RETIRED_GROUPS = ['Measure']
 
 /** A seed's transaction handle — both seeds open their own `node-postgres` pool. */
 type SeedTx = Parameters<Parameters<NodePgDatabase['transaction']>[0]>[0]

@@ -429,3 +429,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 - 2026-10-31: Story 4.8 implemented — priced options end to end (menu, sheet, staged round, server validation and pricing, tickets, history, bill, seeds, verification). Status → review.
 - 2026-11-01: Countable options (Teran: "more than two shots" without a manual price). `modifier_options.max_count` (migration 0029, CHECK >= 1); an option chosen N times is its id N times, priced delta × N, snapshotted once with `count`, printed "Extra shot ×3". Sheet shows a −/+ stepper. Seeds add "Extra shots" (up to 4, at the shot price) to cocktails and whisky; coffee Extra shot up to 3. verify-options 27/27.
+- 2026-11-01: Removed "Double shot" (Alcohol) and whisky's "Measure" group from the sample options: Extra shots covers them at the same price. `seed-bar-menu.ts` deletes the retired rows (nothing references option rows; sent orders keep their snapshot).
