@@ -386,13 +386,32 @@ export function BillScreen({
         saved.allocation &&
         typeof saved.allocation === 'object'
       ) {
+        // An item ordered AFTER this split was saved — a custom charge on Seat
+        // 2, a late dessert — has no entry in it, and fell into Not assigned
+        // for the waiter to drag (Teran, 2026-11-02). On a Separate-bills
+        // split it goes on the seat it was ordered on, as at first opening.
+        // Only lines the saved split has never seen: one moved to Not assigned
+        // keeps an entry (owner null) and stays where the waiter put it.
+        const allocation = { ...saved.allocation }
+        if (billMode === 'separate' && saved.view === 'split') {
+          const columns = new Set(saved.persons.map((person) => person.id))
+          for (const line of draftLines) {
+            const owner = `seat-${line.seatSlotId}`
+            if (!(line.orderEventId in allocation) && line.seatSlotId && columns.has(owner)) {
+              allocation[line.orderEventId] = [{ owner, qty: line.quantity }]
+            }
+          }
+        }
         // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring browser-only state after hydration is exactly this
-        setSplit(saved)
+        setSplit({ ...saved, allocation })
       }
     } catch {
       // A private window or blocked storage: start fresh.
     }
     setRestored(true)
+    // Not on `draftLines`: a refreshed bill must not throw away moves made
+    // since opening — this is the restore, run once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [billMode, storageKey])
 
   useEffect(() => {
