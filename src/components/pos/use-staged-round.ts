@@ -60,6 +60,10 @@ export type StagedLine = {
    * Set on a CUSTOM CHARGE (Story 4.9) — the typed name, which is also `name`.
    * Such a line has `menuItemId: ''`, no options and no note, and its
    * `pricePaisa` is the value charged, not a quote. Absent on every dish.
+   *
+   * Charges are now SAVED straight from their sheet, never staged (Teran,
+   * 2026-11-02). Reading and sending one is kept so a charge staged on a
+   * tablet before that change still goes out rather than being dropped.
    */
   customName?: string
 }
@@ -95,7 +99,8 @@ function sendKey(sessionId: string): string {
  * validates the format, and a collision would be answered as someone else's
  * round.
  */
-function newId(): string {
+/** A v4 UUID, also where `crypto.randomUUID` is missing (plain-http tablets). */
+export function newId(): string {
   if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID()
   // The fallback must still be a UUID: it is also used for the send id, which
   // the server validates as one. Version 4 layout, from Math.random.
@@ -481,65 +486,6 @@ export function useStagedRound(sessionId: string) {
     ])
   }
 
-  /**
-   * Stages a CUSTOM CHARGE (Story 4.9): a typed name and price on a seat.
-   *
-   * Merges only with an identical custom charge — same name, price and seat —
-   * and never with a dish. Whether this person may add one is decided by the
-   * server (`canAddCustomCharge`); the screen only hides the control.
-   */
-  function addCustomLine({
-    name,
-    pricePaisa,
-    quantity = 1,
-    seatSlotId,
-    seatLabel,
-  }: {
-    name: string
-    pricePaisa: number
-    quantity?: number
-    seatSlotId: string
-    seatLabel: string
-  }): void {
-    const current = snapshot(sessionId)
-    const customName = name.trim()
-    const amount = Math.max(1, Math.trunc(quantity))
-    const existing = current.find(
-      (line) =>
-        line.customName === customName &&
-        line.pricePaisa === pricePaisa &&
-        line.seatSlotId === seatSlotId,
-    )
-    if (existing) {
-      write(
-        sessionId,
-        current.map((line) =>
-          line.lineId === existing.lineId
-            ? { ...line, quantity: Math.min(line.quantity + amount, MAX_LINE_QUANTITY) }
-            : line,
-        ),
-      )
-      return
-    }
-    write(sessionId, [
-      ...current,
-      {
-        lineId: newId(),
-        menuItemId: '',
-        name: customName,
-        customName,
-        pricePaisa,
-        quantity: Math.min(amount, MAX_LINE_QUANTITY),
-        modifierText: '',
-        optionIds: [],
-        options: [],
-        seatSlotId,
-        seatLabel,
-        productionDestination: null,
-      },
-    ])
-  }
-
   function removeLine(lineId: string): void {
     write(
       sessionId,
@@ -616,7 +562,6 @@ export function useStagedRound(sessionId: string) {
   return {
     lines,
     addLine,
-    addCustomLine,
     removeLine,
     setQuantity,
     reassignLine,

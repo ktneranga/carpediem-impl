@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Receipt, Users } from 'lucide-react'
+import { Plus, Receipt, Users } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MenuBrowser } from '@/components/pos/menu-browser'
@@ -22,6 +22,7 @@ import {
 import {
   clearStagedRound,
   isCustomStaged,
+  newId,
   resetSendId,
   sendIdForRound,
   type StagedLine,
@@ -618,7 +619,6 @@ export function OrderScreen({
   const {
     lines,
     addLine,
-    addCustomLine,
     removeLine,
     setQuantity,
     reassignLine,
@@ -787,10 +787,12 @@ export function OrderScreen({
 
   // ── The custom-charge sheet (Story 4.9) ───────────────────────────────────
   // Holds the SEAT it was opened for, like the options sheet, so a seat change
-  // behind the backdrop cannot move the charge onto someone else.
-  const [customSheetSeatId, setCustomSheetSeatId] = useState<string | null>(null)
-  const customSheetSeat = customSheetSeatId
-    ? (seats.find((seat) => seat.id === customSheetSeatId) ?? null)
+  // behind the backdrop cannot move the charge onto someone else — and its own
+  // send id, minted at open, so a retry after a lost response is a replay, not
+  // a second charge.
+  const [customSheet, setCustomSheet] = useState<{ seatId: string; sendId: string } | null>(null)
+  const customSheetSeat = customSheet
+    ? (seats.find((seat) => seat.id === customSheet.seatId) ?? null)
     : null
 
   function openCustomCharge() {
@@ -798,8 +800,54 @@ export function OrderScreen({
       setSeatNotice('Add a seat before ordering.')
       return
     }
-    setCustomSheetSeatId(activeSeat.id)
+    chargeMutation.reset()
+    setCustomSheet({ seatId: activeSeat.id, sendId: newId() })
   }
+
+  /**
+   * SAVES a custom charge — no staging, no Send, no kitchen (Teran,
+   * 2026-11-02). It is its own small round on the server: same route, same
+   * idempotency and billed-seat guards, and `submitRound` writes no print job
+   * for it. Its own send id, never the staged round's, so dishes waiting to be
+   * sent are untouched.
+   */
+  const chargeMutation = useMutation({
+    mutationFn: async (input: { name: string; pricePaisa: number; quantity: number }) => {
+      if (!customSheet) throw new Error('No charge open.')
+      return sendRound(sessionId, {
+        submissionId: customSheet.sendId,
+        lines: [
+          {
+            customName: input.name,
+            pricePaisa: input.pricePaisa,
+            quantity: input.quantity,
+            seatSlotId: customSheet.seatId,
+          },
+        ],
+      })
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['orders', sessionId] })
+      void queryClient.invalidateQueries({ queryKey: ['tables'] })
+      setCustomSheet(null)
+    },
+    onError: (error) => {
+      if (error instanceof SessionExpiredError) window.location.assign(loginUrl())
+    },
+  })
+
+  const chargeError = !chargeMutation.error
+    ? null
+    : chargeMutation.error instanceof SendRefusedError
+      ? chargeMutation.error.code === 'CUSTOM_CHARGE_NOT_ALLOWED'
+        ? 'Only the owner can add a custom charge.'
+        : chargeMutation.error.code === 'SESSION_ALREADY_BILLED' ||
+            chargeMutation.error.code === 'SEAT_ALREADY_BILLED'
+          ? 'This order is already billed — nothing more can be added to it.'
+          : chargeMutation.error.message
+      : chargeMutation.error instanceof SessionGoneError
+        ? 'This order is closed.'
+        : 'Not added — check the connection and try again.'
 
   /**
    * What the bar says about the last send, when it did not go.
@@ -1671,6 +1719,28 @@ export function OrderScreen({
             </div>
           ) : null}
 
+          {/* A custom charge — corkage, a broken glass — straight onto the
+              bill, never to a kitchen (Teran, 2026-11-02). Here, by the totals
+              it changes, rather than hidden in More; shown only to staff
+              allowed to add one (owner until Story 10.6). */}
+          {canAddCustomCharge ? (
+            <div className="shrink-0 border-t border-slate-200 px-sp-4 pt-sp-3">
+              <button
+                type="button"
+                onClick={openCustomCharge}
+                className={cn(
+                  'flex h-touch-kitchen w-full items-center justify-center gap-sp-2 rounded-control',
+                  'border-2 border-dashed border-slate-200 bg-white text-fs-16 font-bold text-slate-900',
+                  'transition-transform duration-80 ease-standard active:scale-[0.97]',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                )}
+              >
+                <Plus aria-hidden="true" strokeWidth={2.5} className="size-5" />
+                Custom charge
+              </button>
+            </div>
+          ) : null}
+
           {/* Pinned to the foot of the column — `shrink-0`, outside every
               scrolling section above it — so the figure a waiter reads to a
               guest is never one scroll away. */}
@@ -1699,21 +1769,14 @@ export function OrderScreen({
         />
       ) : null}
 
-      {customSheetSeat ? (
+      {customSheet && customSheetSeat ? (
         <CustomChargeSheet
-          key={customSheetSeat.id}
+          key={customSheet.sendId}
           seatLabel={usesSeats ? seatName(customSheetSeat) : null}
-          onCancel={() => setCustomSheetSeatId(null)}
-          onAdd={({ name, pricePaisa, quantity: chargeQuantity }) => {
-            addCustomLine({
-              name,
-              pricePaisa,
-              quantity: chargeQuantity,
-              seatSlotId: customSheetSeat.id,
-              seatLabel: seatName(customSheetSeat),
-            })
-            setCustomSheetSeatId(null)
-          }}
+          busy={chargeMutation.isPending}
+          error={chargeError}
+          onCancel={() => setCustomSheet(null)}
+          onAdd={(input) => chargeMutation.mutate(input)}
         />
       ) : null}
 
@@ -1877,8 +1940,6 @@ export function OrderScreen({
           if (isWalkout) setConfirmingWalkout(true)
           else closeMutation.mutate({ sessionId, reason: 'abandoned' })
         }}
-        // Only for staff allowed to add one (Story 4.9); absent otherwise.
-        onAddCustomCharge={canAddCustomCharge ? openCustomCharge : undefined}
       />
     </div>
   )

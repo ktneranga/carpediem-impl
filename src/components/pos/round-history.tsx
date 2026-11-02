@@ -51,7 +51,10 @@ export function RoundHistory({
           >
             <div className="flex items-baseline justify-between gap-sp-3">
               <h2 className="text-fs-14 font-bold text-slate-600">
-                Round {round.roundNumber}
+                {/* A custom charge is saved on its own, straight to the bill
+                    (Teran, 2026-11-02) — it was never "sent", so it does not
+                    read as a round of food. */}
+                {round.items.every((item) => item.custom) ? 'Custom charge' : `Round ${round.roundNumber}`}
                 {sentAt ? (
                   // The time is formatted in the RENDERING environment's
                   // timezone, and the server's need not be the tablet's. The
@@ -60,7 +63,7 @@ export function RoundHistory({
                   // the server tree.
                   <span className="font-semibold text-slate-600" suppressHydrationWarning>
                     {' '}
-                    · sent {clockTime(sentAt)}
+                    · {round.items.every((item) => item.custom) ? 'added' : 'sent'} {clockTime(sentAt)}
                   </span>
                 ) : null}
               </h2>

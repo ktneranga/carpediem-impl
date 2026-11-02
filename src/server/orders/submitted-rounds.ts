@@ -81,6 +81,7 @@ export async function loadSubmittedRounds(sessionId: string): Promise<SubmittedR
       unitPricePaisa: row.unitPricePaisa,
       modifierText: row.modifierText,
       optionText: optionText(row.options),
+      custom: row.customName !== null,
       seatLabel: row.seatLabel,
       submittedAt: row.createdAt.toISOString(),
     })

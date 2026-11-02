@@ -198,6 +198,13 @@ async function run() {
     historyNames.includes('Corkage') && historyNames.includes('Broken glass'),
     JSON.stringify(historyNames))
 
+  const historyItems = (history.body?.data?.rounds ?? history.body?.data ?? [])
+    .flatMap?.((round: any) => round.items ?? []) ?? []
+  check('8 history flags the charge as custom and the dish as not',
+    historyItems.find((item: any) => item.name === 'Corkage')?.custom === true &&
+      historyItems.find((item: any) => item.name !== 'Corkage' && item.name !== 'Broken glass')?.custom === false,
+    JSON.stringify(historyItems.map((item: any) => [item.name, item.custom])))
+
   // 9 — unbilled → walkout
   const close = await api(owner, `/api/sessions/${sessionId}/close`, {
     method: 'POST', body: JSON.stringify({ reason: 'abandoned' }),

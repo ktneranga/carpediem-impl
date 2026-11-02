@@ -80,11 +80,6 @@ export type OrderActionStripProps = {
    */
   onCloseTable?: () => void
   closeLabel?: string
-  /**
-   * Opens the custom-charge sheet (Story 4.9). Passed only for staff allowed
-   * to add one, so for everyone else the item is absent, never dead.
-   */
-  onAddCustomCharge?: () => void
 }
 
 export function OrderActionStrip({
@@ -99,7 +94,6 @@ export function OrderActionStrip({
   onGenerateBill,
   onCloseTable,
   closeLabel = 'Close table',
-  onAddCustomCharge,
 }: OrderActionStripProps) {
   const [moreOpen, setMoreOpen] = useState(false)
 
@@ -114,7 +108,6 @@ export function OrderActionStrip({
   // Ordered least to most destructive, with the one that ends the sitting
   // last, separated by a rule and red.
   const moreItems = [
-    ...(onAddCustomCharge ? [{ label: 'Add custom charge', onClick: onAddCustomCharge }] : []),
     ...(onClear ? [{ label: 'Clear unsent items', onClick: onClear }] : []),
     ...(onCloseTable ? [{ label: closeLabel, onClick: onCloseTable, danger: true }] : []),
   ]

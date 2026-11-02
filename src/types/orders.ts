@@ -70,6 +70,8 @@ export type SubmittedItemRow = {
   modifierText: string | null
   /** The chosen options' names, "Extra shot ×2, No ice" — null when none (Story 4.8). */
   optionText: string | null
+  /** A custom charge (Story 4.9), not a dish — it went to no kitchen. */
+  custom: boolean
   seatLabel: string | null
   submittedAt: string
 }

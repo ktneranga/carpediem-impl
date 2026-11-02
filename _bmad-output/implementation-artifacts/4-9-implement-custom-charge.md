@@ -344,3 +344,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 ## Change Log
 
 - 2026-11-01: Story 4.9 implemented — custom charges (owner only until 10.6): schema + CHECK, send route and service, readers, staged round, sheet and More-menu item, verification (21/21). Status → review.
+- 2026-11-02: Placement changed (Teran): a "+ Custom charge" button in the order column above the totals (owner only) replaces the More-menu item. Add SAVES the charge immediately as its own small round (own send id, no staging, no Send, no ticket); errors stay in the sheet. History titles such a round "Custom charge · added <time>" (`SubmittedItemRow.custom`). Staging of custom lines removed; reading one already staged is kept. verify-custom-charge 22/22; owner sees the button, waiter does not (page render checked).

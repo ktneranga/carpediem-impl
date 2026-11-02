@@ -11,9 +11,10 @@ import { MAX_CUSTOM_CHARGE_PAISA, MAX_CUSTOM_NAME, MAX_LINE_QUANTITY } from '@/t
  * A custom charge — "Corkage", "Broken glass", "4 shots, guest request" — with
  * a name and price the owner types (Story 4.9, FR66).
  *
- * Opened from the action bar's More menu, which offers it only to staff
- * allowed to add one. The server decides again on Send (`canAddCustomCharge`);
- * hiding the control is convenience, not the guard.
+ * Opened from the "Custom charge" button in the order column, shown only to
+ * staff allowed to add one (Teran, 2026-11-02). Add SAVES it — straight to the
+ * order and the bill, no Send, no kitchen ticket. The server decides again
+ * (`canAddCustomCharge`); hiding the button is convenience, not the guard.
  *
  * ── The same dialog as the options sheet ───────────────────────────────────
  * `modifier-sheet.tsx`'s pattern, for the same reasons: a native modal
@@ -29,11 +30,17 @@ import { MAX_CUSTOM_CHARGE_PAISA, MAX_CUSTOM_NAME, MAX_LINE_QUANTITY } from '@/t
  */
 export function CustomChargeSheet({
   seatLabel,
+  busy = false,
+  error = null,
   onCancel,
   onAdd,
 }: {
   /** Which person this lands on, or null where seats are not used. */
   seatLabel: string | null
+  /** Saving: Add is disabled so a second tap cannot charge twice. */
+  busy?: boolean
+  /** Why the last save failed, in words — the sheet stays open to retry. */
+  error?: string | null
   onCancel: () => void
   onAdd: (input: { name: string; pricePaisa: number; quantity: number }) => void
 }) {
@@ -108,7 +115,7 @@ export function CustomChargeSheet({
         method="dialog"
         onSubmit={(event) => {
           event.preventDefault()
-          if (!ready) return
+          if (!ready || busy) return
           onAdd({ name: trimmedName, pricePaisa: pricePaisa!, quantity })
         }}
         className={cn(
@@ -208,12 +215,21 @@ export function CustomChargeSheet({
           </div>
         </div>
 
+        {error ? (
+          <p role="alert" className="text-fs-14 font-semibold text-unavailable-ink">
+            {error}
+          </p>
+        ) : null}
         <button
           type="submit"
-          disabled={!ready}
+          disabled={!ready || busy}
           className={cn(commitButtonClass, 'w-full disabled:opacity-40')}
         >
-          {ready ? `Add to Order · ${lkrFromPaisa(pricePaisa! * quantity)}` : 'Add to Order'}
+          {busy
+            ? 'Adding…'
+            : ready
+              ? `Add to bill · ${lkrFromPaisa(pricePaisa! * quantity)}`
+              : 'Add to bill'}
         </button>
       </form>
     </dialog>
