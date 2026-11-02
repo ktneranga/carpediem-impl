@@ -447,6 +447,9 @@ export async function submitRound(
       // Read here and copied onto the job, so the paper does not depend on
       // whether `TZ` was set on the host — see `src/server/time.ts`.
       timeZone: tenants.timezone,
+      // The order number, printed on every ticket (Teran, 2026-11-02).
+      dailyNumber: orderSessions.dailyNumber,
+      businessDate: orderSessions.businessDate,
     })
     .from(orderSessions)
     .innerJoin(tenants, eq(tenants.id, orderSessions.tenantId))
@@ -487,6 +490,8 @@ export async function submitRound(
     usesSeats,
     submittedAt: committedRound!.submittedAt,
     timeZone: session!.timeZone,
+    dailyNumber: session!.dailyNumber,
+    businessDate: session!.businessDate,
   })
   // A round of only custom charges has no ticket (Story 4.9) — and Drizzle
   // throws on `values([])`, which would 500 a round that is otherwise fine.

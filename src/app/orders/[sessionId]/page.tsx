@@ -1,6 +1,7 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { and, asc, eq, isNull } from 'drizzle-orm'
+import { dailyOrderLabel } from '@/lib/order-number'
 import { dishCount } from '@/server/orders/item-count'
 import { z } from 'zod'
 import { canAddCustomCharge, type StaffRole } from '@/server/auth/permissions'
@@ -71,6 +72,7 @@ export default async function OrderPage({
       billMode: orderSessions.billMode,
       tabLabel: orderSessions.tabLabel,
       kind: orderSessions.kind,
+      dailyNumber: orderSessions.dailyNumber,
       primaryTableId: orderSessions.tableId,
       tableId: tables.id,
       tableLabel: tables.label,
@@ -188,6 +190,7 @@ export default async function OrderPage({
       staffName={staffRow?.name ?? 'Unknown'}
       zoneName={primary?.zoneName ?? null}
       tableLabel={tableLabel}
+      orderLabel={dailyOrderLabel(session.dailyNumber)}
       tabLabel={session.tabLabel}
       tabName={
         session.kind === 'counter' && attached.length === 0

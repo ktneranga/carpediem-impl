@@ -54,6 +54,14 @@ export type TicketPayload = {
    * job queued before this field existed prints without the line.
    */
   alsoFor?: ProductionDestination[]
+  /**
+   * The order number (Teran, 2026-11-02): `dailyNumber` prints as `#042` in the
+   * header, and with `businessDate` (`YYYY-MM-DD`) as `Order 20261102-042` at
+   * the foot. Optional — a job queued before the number existed prints
+   * without it.
+   */
+  dailyNumber?: number
+  businessDate?: string
   lines: TicketLine[]
 }
 

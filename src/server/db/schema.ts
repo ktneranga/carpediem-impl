@@ -8,6 +8,7 @@ import {
   boolean,
   jsonb,
   timestamp,
+  date,
   index,
   uniqueIndex,
   primaryKey,
@@ -130,6 +131,13 @@ export const tenants = pgTable('tenants', {
   id:        uuid('id').primaryKey().defaultRandom(),
   name:      text('name').notNull(),
   timezone:  text('timezone').notNull().default('Asia/Colombo'),
+  /**
+   * The hour the business day turns over, in `timezone` (Teran, 2026-11-02).
+   * 4 = an order opened at 1 AM still belongs to last night's service, so its
+   * daily order number does not restart mid-shift. Read by the
+   * `assign_order_number` trigger (migration 0032).
+   */
+  businessDayStartHour: integer('business_day_start_hour').notNull().default(4),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -399,8 +407,26 @@ export const orderSessions = pgTable('order_sessions', {
    * and for a tab opened without one (it is then just "Tab 7").
    */
   tabLabel:         text('tab_label'),
+  /**
+   * The order number (Teran, 2026-11-02): `#042` on the floor and the tickets,
+   * `20261102-042` where it must be unique for ever — the dashboard, past
+   * orders, a dispute. The pair IS the unique number; no third column to keep
+   * in step.
+   *
+   * ASSIGNED BY THE DATABASE, never by the caller: the BEFORE INSERT trigger
+   * `assign_order_number` (migration 0032) computes the business date from
+   * `opened_at`, the tenant's zone and `business_day_start_hour`, and takes
+   * the next number from `order_number_counters` under that row's lock — so
+   * two tablets opening tables at once cannot share a number, and no insert
+   * path (service, seed, verify script) can forget it. `$defaultFn` sends
+   * DEFAULT only so the insert type does not demand a value; whatever a caller
+   * sends, the trigger overwrites. A second trigger refuses any later change.
+   */
+  businessDate:     date('business_date', { mode: 'string' }).notNull().$defaultFn(() => sql`default`),
+  dailyNumber:      integer('daily_number').notNull().$defaultFn(() => sql`default`),
 }, (t) => [
   index('idx_order_sessions_tenant_id').on(t.tenantId),
+  uniqueIndex('idx_order_sessions_order_number').on(t.tenantId, t.businessDate, t.dailyNumber),
   index('idx_order_sessions_table_id').on(t.tableId),
   // `idx_order_sessions_one_open_per_table` USED to live here, on table_id where
   // closed_at IS NULL. It moved to order_session_tables in Story 3.8: once a
@@ -408,6 +434,19 @@ export const orderSessions = pgTable('order_sessions', {
   // a partial index here could not see the others. A partial index also cannot
   // reach into another table to ask whether a session is open, which is why the
   // join row carries its own `released_at`.
+])
+
+/**
+ * The last order number handed out, per restaurant per business day. Written
+ * only by the `assign_order_number` trigger; its row lock is what serialises
+ * two orders opened at the same moment (migration 0032).
+ */
+export const orderNumberCounters = pgTable('order_number_counters', {
+  tenantId:     uuid('tenant_id').notNull().references(() => tenants.id),
+  businessDate: date('business_date', { mode: 'string' }).notNull(),
+  lastNumber:   integer('last_number').notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.tenantId, t.businessDate] }),
 ])
 
 /**

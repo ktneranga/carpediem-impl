@@ -225,6 +225,13 @@
       "when": 1793534931477,
       "tag": "0031_common_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793612119300,
+      "tag": "0032_dusty_freak",
+      "breakpoints": true
     }
   ]
 }

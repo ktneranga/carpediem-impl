@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
+import { dailyOrderLabel } from '@/lib/order-number'
 import { db } from '@/server/db'
 import {
   menuItems,
@@ -50,6 +51,7 @@ export default async function BillPage({
       billMode: orderSessions.billMode,
       tabLabel: orderSessions.tabLabel,
       kind: orderSessions.kind,
+      dailyNumber: orderSessions.dailyNumber,
       tableLabel: tables.label,
     })
     .from(orderSessions)
@@ -176,6 +178,7 @@ export default async function BillPage({
       key={sessionId}
       sessionId={sessionId}
       tableLabel={tableLabel}
+      orderLabel={dailyOrderLabel(rows[0]!.dailyNumber)}
       // A bar tab is always one bill, whatever its stored mode (code review
       // UI-P9) — the order screen already ignores it; this screen must agree.
       billMode={isBarTab ? 'one' : rows[0]!.billMode}

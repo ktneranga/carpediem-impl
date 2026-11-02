@@ -17,7 +17,8 @@
  * `server.ts`, outside Next, where that module throws at import time.
  */
 import type { TicketPayload } from '@/types/tickets'
-import { clockTime, groupBySeat, serveWithLine, ticketTypeOf } from './escpos'
+import { calendarDate, clockTime, groupBySeat, serveWithLine, ticketTypeOf } from './escpos'
+import { dailyOrderLabel } from '@/lib/order-number'
 import { escposTcpTransport } from './escpos-transport'
 import { usbTransport } from './usb-transport'
 
@@ -54,8 +55,11 @@ function optionsOf(line: TicketPayload['lines'][number]): string[] {
 
 export function renderTicketText(ticket: TicketPayload): string {
   const lines: string[] = []
-  lines.push(`${ticketTypeOf(ticket.destination)}  ·  ${ticket.tableLabels.join(' + ')}`)
-  lines.push(`Round ${ticket.roundNumber}  ·  ${clockTime(ticket.submittedAt)}`)
+  const number = Number.isInteger(ticket.dailyNumber) ? ` ${dailyOrderLabel(ticket.dailyNumber!)}` : ''
+  lines.push(`${ticketTypeOf(ticket.destination)}${number}  ·  ${ticket.tableLabels.join(' + ')}`)
+  lines.push(
+    `Round ${ticket.roundNumber}  ·  ${calendarDate(ticket.submittedAt, ticket.timeZone)}  ${clockTime(ticket.submittedAt, ticket.timeZone)}`,
+  )
   const serveWith = serveWithLine(ticket)
   if (serveWith) lines.push(serveWith)
   lines.push('—'.repeat(32))

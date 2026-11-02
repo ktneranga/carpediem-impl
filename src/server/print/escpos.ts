@@ -18,6 +18,7 @@
  * Pure: no I/O, no configuration, no clock beyond the timestamp it is handed.
  * `escpos-transport.ts` owns the socket.
  */
+import { dailyOrderLabel, orderReference } from '@/lib/order-number'
 import type { TicketPayload } from '@/types/tickets'
 import type { TicketLine } from '@/types/orders'
 
@@ -218,6 +219,28 @@ export function serveWithLine(ticket: TicketPayload): string | null {
   return `SERVE WITH: ${[...new Set(others)].map(ticketTypeOf).join(' + ')}`
 }
 
+/** The day's order number, or null for a job queued before it existed. */
+function orderNumberOf(ticket: TicketPayload): number | null {
+  return Number.isInteger(ticket.dailyNumber) && ticket.dailyNumber! > 0 ? ticket.dailyNumber! : null
+}
+
+/**
+ * "02 Nov 2026", in the restaurant's zone — the same rules as `clockTime`:
+ * pinned locale, the tenant's zone when the job carries it, and a placeholder
+ * rather than "Invalid Date" for a malformed timestamp.
+ */
+export function calendarDate(iso: string, timeZone?: string): string {
+  const when = new Date(iso)
+  if (Number.isNaN(when.getTime())) return '--'
+  const options: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric' }
+  try {
+    return new Intl.DateTimeFormat('en-GB', { ...options, timeZone }).format(when)
+  } catch {
+    // An unknown zone string must not stop a ticket printing.
+    return new Intl.DateTimeFormat('en-GB', options).format(when)
+  }
+}
+
 /** KOT / KOT-P / BOT (FR14–FR16). */
 export function ticketTypeOf(destination: TicketPayload['destination']): string {
   if (destination === 'pizza_kitchen') return 'KOT-P'
@@ -310,7 +333,10 @@ export function buildTicket(ticket: TicketPayload): Buffer {
   command(ALIGN_CENTRE)
   command(SIZE_DOUBLE)
   command(BOLD_ON)
-  emit(ticketTypeOf(ticket.destination))
+  // The order number beside the station, at the same size (Teran,
+  // 2026-11-02): "KOT #042" is what a cook calls across the pass.
+  const number = orderNumberOf(ticket)
+  emit(number ? `${ticketTypeOf(ticket.destination)} ${dailyOrderLabel(number)}` : ticketTypeOf(ticket.destination))
   command(SIZE_NORMAL)
 
   // FR18: EVERY table on the session, or COUNTER where it has none. This line
@@ -323,7 +349,11 @@ export function buildTicket(ticket: TicketPayload): Buffer {
   command(BOLD_OFF)
   command(ALIGN_LEFT)
 
-  emit(`Round ${ticket.roundNumber}    ${clockTime(ticket.submittedAt, ticket.timeZone)}`)
+  // The date as well as the time (Teran, 2026-11-02): a ticket found the
+  // next morning, or quoted in a dispute, says which day it was.
+  emit(
+    `Round ${ticket.roundNumber}    ${calendarDate(ticket.submittedAt, ticket.timeZone)}  ${clockTime(ticket.submittedAt, ticket.timeZone)}`,
+  )
   // The round's other stations, by name only (Teran, 2026-11-02): one line
   // tells the kitchen the pizza and the drinks are coming for the same table,
   // without spending paper on their items.
@@ -364,6 +394,16 @@ export function buildTicket(ticket: TicketPayload): Buffer {
     }
   } else {
     for (const line of lines) item(line, 0)
+  }
+
+  // The number that is unique for ever, at the foot where it does not compete
+  // with the food: what the dashboard and a dispute look an order up by.
+  const businessDate = typeof ticket.businessDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ticket.businessDate)
+    ? ticket.businessDate
+    : null
+  if (number && businessDate) {
+    emit('-'.repeat(PAPER_COLUMNS))
+    emit(`Order ${orderReference(businessDate, number)}`)
   }
 
   // Feed the text clear of the blade, THEN cut. `GS V 66` alone only feeds

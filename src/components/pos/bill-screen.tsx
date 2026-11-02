@@ -329,6 +329,7 @@ function splitFromSeats(
 export function BillScreen({
   sessionId,
   tableLabel,
+  orderLabel = null,
   billMode,
   bills,
   draft,
@@ -337,6 +338,8 @@ export function BillScreen({
 }: {
   sessionId: string
   tableLabel: string
+  /** The day's order number, "#042" (Teran, 2026-11-02). */
+  orderLabel?: string | null
   billMode: 'one' | 'separate'
   bills: BillScreenBill[]
   draft: BillScreenDraft | null
@@ -816,6 +819,7 @@ export function BillScreen({
               Bill · {tableLabel}
             </h1>
             <p className="truncate text-fs-12 font-semibold text-slate-600">
+              {orderLabel ? `${orderLabel} · ` : ''}
               {itemCount(allLines)} item{itemCount(allLines) === 1 ? '' : 's'} ·{' '}
               {inSplit
                 ? `${split.persons.length} ${split.persons.length === 1 ? 'person' : 'people'} · settling separately`

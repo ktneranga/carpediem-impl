@@ -63,6 +63,8 @@ export type OrderScreenProps = {
    */
   zoneName: string | null
   tableLabel: string | null
+  /** The day's order number, "#042" (Teran, 2026-11-02) — first on the context line. */
+  orderLabel?: string | null
   /** A bar tab's nickname — "white shirt". Null for a table, or an unnamed tab. */
   tabLabel?: string | null
   /** A bar tab's full name, "Tab 7 · white shirt", numbered by the server. */
@@ -350,6 +352,7 @@ export function OrderScreen({
   initialHasUnbilled,
   canAddCustomCharge = false,
   tableLabel,
+  orderLabel = null,
   tabLabel = null,
   tabName = null,
   barTab = false,
@@ -1297,6 +1300,7 @@ export function OrderScreen({
       ? `${coverCount} of ${capacity} covers`
       : `${coverCount} cover${coverCount === 1 ? '' : 's'}`
   const contextLine = [
+    orderLabel,
     zoneName ?? 'Bar',
     coverText,
     elapsedMinutes !== undefined ? `open ${elapsed(elapsedMinutes)}` : null,

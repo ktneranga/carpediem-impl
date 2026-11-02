@@ -76,6 +76,9 @@ export function buildTicketPayloads(input: {
    * rule `src/server/time.ts` exists to enforce.
    */
   timeZone?: string
+  /** The order number (Teran, 2026-11-02), assigned when the order opened. */
+  dailyNumber: number
+  businessDate: string
 }): TicketPayload[] {
   return [...input.byDestination.entries()].map(([destination, lines]) => ({
     destination,
@@ -92,6 +95,8 @@ export function buildTicketPayloads(input: {
     submittedAt: input.submittedAt.toISOString(),
     timeZone: input.timeZone,
     alsoFor: [...input.byDestination.keys()].filter((other) => other !== destination),
+    dailyNumber: input.dailyNumber,
+    businessDate: input.businessDate,
     lines: lines.map(sanitizeLine),
   }))
 }
