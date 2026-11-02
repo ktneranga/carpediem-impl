@@ -17,7 +17,7 @@
  * `server.ts`, outside Next, where that module throws at import time.
  */
 import type { TicketPayload } from '@/types/tickets'
-import { clockTime, groupBySeat, ticketTypeOf } from './escpos'
+import { clockTime, groupBySeat, serveWithLine, ticketTypeOf } from './escpos'
 import { escposTcpTransport } from './escpos-transport'
 import { usbTransport } from './usb-transport'
 
@@ -56,6 +56,8 @@ export function renderTicketText(ticket: TicketPayload): string {
   const lines: string[] = []
   lines.push(`${ticketTypeOf(ticket.destination)}  ·  ${ticket.tableLabels.join(' + ')}`)
   lines.push(`Round ${ticket.roundNumber}  ·  ${clockTime(ticket.submittedAt)}`)
+  const serveWith = serveWithLine(ticket)
+  if (serveWith) lines.push(serveWith)
   lines.push('—'.repeat(32))
 
   // Grouped by seat, because that is how the runner hands the plates out

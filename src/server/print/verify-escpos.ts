@@ -268,6 +268,9 @@ async function main() {
 
   // ── The seam (AC-7) ───────────────────────────────────────────────────────
   const { resolveTransport } = await import('./transport')
+  // A till's `.env` may name a real USB printer; it would win over everything
+  // below and send these test tickets to paper.
+  delete process.env.PRINTER_USB_NAME
   delete process.env.PRINTER_IP
   check('no PRINTER_IP → the null transport', resolveTransport('kitchen').name.startsWith('null:'),
     resolveTransport('kitchen').name)
@@ -275,7 +278,22 @@ async function main() {
   process.env.PRINTER_PORT = '9100'
   check('PRINTER_IP set → the ESC/POS transport',
     resolveTransport('kitchen').name === 'escpos:127.0.0.1:9100', resolveTransport('kitchen').name)
+  process.env.PRINTER_USB_NAME = 'XP-80C'
+  check('PRINTER_USB_NAME set → the USB transport, over PRINTER_IP',
+    resolveTransport('kitchen').name === 'usb:XP-80C', resolveTransport('kitchen').name)
+  delete process.env.PRINTER_USB_NAME
   delete process.env.PRINTER_IP
+
+  // ── SERVE WITH: the round's other stations, names only ────────────────────
+  const withText = (over: Partial<TicketPayload>) => buildTicket(ticket(over)).toString('latin1')
+  check('a ticket names the round\'s other stations',
+    withText({ alsoFor: ['pizza_kitchen', 'bar'] }).includes('SERVE WITH: KOT-P + BOT'))
+  check('a station alone prints no SERVE WITH line',
+    !withText({ alsoFor: [] }).includes('SERVE WITH'))
+  check('a job queued before alsoFor existed prints without it',
+    !withText({}).includes('SERVE WITH'))
+  check('a malformed alsoFor and the ticket\'s own station are ignored',
+    withText({ alsoFor: ['kitchen', 'nonsense', 'bar'] as never }).includes('SERVE WITH: BOT\n'))
 
   // ── Through the queue, end to end ─────────────────────────────────────────
   // The parts above are the builder and the socket in isolation. This is the

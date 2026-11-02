@@ -91,6 +91,7 @@ export function buildTicketPayloads(input: {
     usesSeats: input.usesSeats,
     submittedAt: input.submittedAt.toISOString(),
     timeZone: input.timeZone,
+    alsoFor: [...input.byDestination.keys()].filter((other) => other !== destination),
     lines: lines.map(sanitizeLine),
   }))
 }

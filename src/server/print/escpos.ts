@@ -204,6 +204,20 @@ export function groupBySeat(lines: TicketLine[]): Map<string, TicketLine[]> {
   return bySeat
 }
 
+/**
+ * "SERVE WITH: KOT-P + BOT", or null when the round went to this station
+ * alone. Guarded like every stored field: a job from before `alsoFor` existed,
+ * or a malformed one, prints without the line.
+ */
+export function serveWithLine(ticket: TicketPayload): string | null {
+  const known = ['kitchen', 'pizza_kitchen', 'bar'] as const
+  const others = (Array.isArray(ticket.alsoFor) ? ticket.alsoFor : []).filter(
+    (other) => (known as readonly unknown[]).includes(other) && other !== ticket.destination,
+  )
+  if (others.length === 0) return null
+  return `SERVE WITH: ${[...new Set(others)].map(ticketTypeOf).join(' + ')}`
+}
+
 /** KOT / KOT-P / BOT (FR14–FR16). */
 export function ticketTypeOf(destination: TicketPayload['destination']): string {
   if (destination === 'pizza_kitchen') return 'KOT-P'
@@ -310,6 +324,15 @@ export function buildTicket(ticket: TicketPayload): Buffer {
   command(ALIGN_LEFT)
 
   emit(`Round ${ticket.roundNumber}    ${clockTime(ticket.submittedAt, ticket.timeZone)}`)
+  // The round's other stations, by name only (Teran, 2026-11-02): one line
+  // tells the kitchen the pizza and the drinks are coming for the same table,
+  // without spending paper on their items.
+  const serveWith = serveWithLine(ticket)
+  if (serveWith) {
+    command(BOLD_ON)
+    for (const wrapped of wrapLine(serveWith)) emit(wrapped)
+    command(BOLD_OFF)
+  }
   emit('-'.repeat(PAPER_COLUMNS))
 
   // ── Body ──────────────────────────────────────────────────────────────────

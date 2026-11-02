@@ -46,6 +46,14 @@ export type TicketPayload = {
    * on whether `TZ` was set on the host.
    */
   timeZone?: string
+  /**
+   * The OTHER stations this round went to — a kitchen ticket printed with
+   * "SERVE WITH: KOT-P + BOT" so each station knows the table's food is coming
+   * from more than one place and goes out together (Teran, 2026-11-02). Names
+   * only, never the other stations' items: those waste the roll. Optional — a
+   * job queued before this field existed prints without the line.
+   */
+  alsoFor?: ProductionDestination[]
   lines: TicketLine[]
 }
 
