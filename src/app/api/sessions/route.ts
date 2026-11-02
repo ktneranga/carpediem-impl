@@ -158,6 +158,7 @@ export async function GET() {
         closedAt: orderSessions.closedAt,
         openedByName: staff.name,
         tabLabel: orderSessions.tabLabel,
+        dailyNumber: orderSessions.dailyNumber,
       })
       .from(orderSessions)
       .leftJoin(staff, eq(staff.id, orderSessions.openedByStaffId))
@@ -240,6 +241,7 @@ export async function GET() {
       data: rows.map((row) => ({
         sessionId: row.sessionId,
         openedAt: row.openedAt.toISOString(),
+        dailyNumber: row.dailyNumber,
         itemCount: counts.get(row.sessionId) ?? 0,
         // Who started it. On a shared tablet this is the difference between
         // "whose sale is this?" and having to ask across the bar.

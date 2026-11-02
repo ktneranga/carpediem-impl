@@ -14,6 +14,7 @@ import { signOut } from '@/lib/auth-client'
 import { loginUrl } from '@/lib/return-to'
 import { elapsedMinutesFrom, useMinuteTick } from '@/hooks/use-minute-tick'
 import { clockTime, elapsed } from '@/lib/format'
+import { dailyOrderLabel } from '@/lib/order-number'
 import { zoneIcon } from '@/lib/design'
 import { cn } from '@/lib/utils'
 import type { TableGridRow } from '@/app/api/tables/route'
@@ -44,6 +45,8 @@ export type CounterSession = {
   sequence: number
   /** The bar tab's nickname — "white shirt". Staff-only. */
   tabLabel: string | null
+  /** The order's number for the day, `#042` (Teran, 2026-11-02). */
+  dailyNumber: number
 }
 
 /**
@@ -674,6 +677,7 @@ export function TableGrid({
         status: payload.status,
         sessionId: payload.sessionId,
         openedAt: payload.openedAt,
+        dailyNumber: payload.dailyNumber,
         itemCount: payload.itemCount,
         // Patched with the count, never apart from it. The card shows dishes
         // and money side by side, so a payload that moved one and not the other
@@ -1410,11 +1414,17 @@ export function TableGrid({
                           {/* The table card's wording: most of the time the
                               answer is "yes, still here", so it asks rather
                               than accuses. */}
+                          {/* The order number, as on its tickets (Teran,
+                              2026-11-02) — quieter than the name staff use. */}
                           {isLate ? (
                             <span className="truncate text-fs-12 font-bold text-unavailable-band">
-                              Still open? Check
+                              {dailyOrderLabel(counter.dailyNumber)} · Still open? Check
                             </span>
-                          ) : null}
+                          ) : (
+                            <span className="truncate text-fs-12 font-semibold tabular-nums text-slate-600">
+                              {dailyOrderLabel(counter.dailyNumber)}
+                            </span>
+                          )}
                         </span>
 
                         <span className="flex shrink-0 items-center gap-sp-3">
@@ -1563,6 +1573,7 @@ export function TableGrid({
                   status={table.status}
                   capacity={unit.capacity}
                   elapsedMinutes={elapsedMinutesFrom(table.openedAt, minuteTick)}
+                  orderLabel={table.dailyNumber != null ? dailyOrderLabel(table.dailyNumber) : null}
                   itemCount={table.sessionId ? table.itemCount : undefined}
                   coverCount={table.sessionId ? table.coverCount : undefined}
                   // Decided HERE, not in the card, so every card and the

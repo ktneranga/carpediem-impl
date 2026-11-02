@@ -204,7 +204,7 @@ export async function POST(
       return fail('TABLE_ALREADY_OCCUPIED', 'This table already has an open session', 409)
     }
 
-    let session: { id: string; openedAt: Date }
+    let session: { id: string; openedAt: Date; dailyNumber: number }
 
     try {
       // One transaction: the session, the table's status and the audit event
@@ -266,6 +266,7 @@ export async function POST(
         status: 'occupied',
         sessionId: session.id,
         openedAt,
+        dailyNumber: session.dailyNumber,
         itemCount: 0,
         // A session opens empty; the first send emits the running total.
         totalPaisa: 0,

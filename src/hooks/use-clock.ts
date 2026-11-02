@@ -33,6 +33,22 @@ function getClockSnapshot(): string {
   return cachedLabel
 }
 
+// Today's date, cached the same way — "Mon 2 Nov" (Teran, 2026-11-02: the
+// system shows the date, not only the time). Re-read on the same 30-second
+// tick, so it turns over within half a minute of midnight.
+let cachedDay = -1
+let cachedDate = ''
+
+function getDateSnapshot(): string {
+  const now = new Date()
+  const day = now.getFullYear() * 400 + now.getMonth() * 32 + now.getDate()
+  if (day !== cachedDay) {
+    cachedDay = day
+    cachedDate = now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  }
+  return cachedDate
+}
+
 /** Blank on the server — there is no meaningful "now" to commit to at build time. */
 function getServerClockSnapshot(): string {
   return ''
@@ -48,4 +64,9 @@ function getServerClockSnapshot(): string {
  */
 export function useClock(): string {
   return useSyncExternalStore(subscribeToClock, getClockSnapshot, getServerClockSnapshot)
+}
+
+/** Today as "Mon 2 Nov", blank on the server — the same store as `useClock`. */
+export function useToday(): string {
+  return useSyncExternalStore(subscribeToClock, getDateSnapshot, getServerClockSnapshot)
 }

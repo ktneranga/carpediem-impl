@@ -53,6 +53,7 @@ export async function POST(
       .select({
         sessionId: orderSessions.id,
         openedAt: orderSessions.openedAt,
+        dailyNumber: orderSessions.dailyNumber,
         label: tables.label,
       })
       .from(orderSessionTables)
@@ -142,6 +143,7 @@ export async function POST(
       status: 'open',
       sessionId: null,
       openedAt: null,
+      dailyNumber: null,
       itemCount: 0,
       // It is back on the floor as a free table; the order it left stays with
       // the survivors below.
@@ -156,6 +158,7 @@ export async function POST(
         status: 'occupied',
         sessionId: row.sessionId,
         openedAt: row.openedAt.toISOString(),
+        dailyNumber: row.dailyNumber,
         itemCount: itemCount,
         totalPaisa,
         unavailableReason: null,

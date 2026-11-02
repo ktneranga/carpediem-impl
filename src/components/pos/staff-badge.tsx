@@ -1,5 +1,6 @@
 'use client'
 
+import { useToday } from '@/hooks/use-clock'
 import { cn } from '@/lib/utils'
 
 /**
@@ -36,6 +37,9 @@ export function StaffBadge({
   // '?' rather than an empty circle: a nameless staff row is a data fault, and
   // a blank disc looks like a loading state that will never finish.
   const initial = staffName.trim().charAt(0).toUpperCase() || '?'
+  // The date beside the time on every screen (Teran, 2026-11-02). Read here
+  // rather than passed in: unlike the clock, no screen ticks anything off it.
+  const today = useToday()
 
   return (
     <button
@@ -62,7 +66,9 @@ export function StaffBadge({
         <span className="text-fs-14 font-bold text-slate-900">{staffName}</span>
         {/* Empty during SSR and hydration, filled immediately after — see
             `useClock`. No suppressHydrationWarning needed. */}
-        <span className="text-fs-12 tabular-nums text-slate-600">{clock}</span>
+        <span className="text-fs-12 tabular-nums text-slate-600">
+          {today && clock ? `${today} · ${clock}` : clock}
+        </span>
       </span>
     </button>
   )

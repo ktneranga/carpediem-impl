@@ -95,7 +95,7 @@ export async function POST(
     // The anchor's open session, found through the join table so any table in an
     // existing group can act as the anchor.
     const [session] = await db
-      .select({ id: orderSessions.id, openedAt: orderSessions.openedAt })
+      .select({ id: orderSessions.id, openedAt: orderSessions.openedAt, dailyNumber: orderSessions.dailyNumber })
       .from(orderSessions)
       .innerJoin(orderSessionTables, eq(orderSessionTables.sessionId, orderSessions.id))
       .where(
@@ -234,6 +234,7 @@ export async function POST(
         status: 'occupied',
         sessionId: session.id,
         openedAt: session.openedAt.toISOString(),
+        dailyNumber: session.dailyNumber,
         itemCount,
         totalPaisa,
         unavailableReason: null,

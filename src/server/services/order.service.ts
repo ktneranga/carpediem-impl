@@ -145,6 +145,8 @@ export type SubmittedRound = SubmitRoundResponse & {
     tableLabels: string[]
     usesSeats: boolean
     openedAt: Date
+    /** The order's number for the day, for the floor card (Teran, 2026-11-02). */
+    dailyNumber: number
     /**
      * Whether this is a counter sale, from `order_sessions.kind`.
      *
@@ -517,6 +519,7 @@ export async function submitRound(
       tableLabels,
       usesSeats,
       openedAt: session!.openedAt,
+      dailyNumber: session!.dailyNumber,
       isCounterSale: session!.kind === 'counter',
       submittedAt: committedRound!.submittedAt,
       byDestination,

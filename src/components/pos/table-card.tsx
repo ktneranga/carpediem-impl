@@ -18,6 +18,12 @@ export type TableCardProps = {
   /** Guests seated, from `order_sessions.cover_count`. Absent with no session. */
   coverCount?: number | null
   elapsedMinutes?: number
+  /**
+   * The order's number for the day, "#042" (Teran, 2026-11-02) — the number on
+   * its tickets, so a cook's "#42's pizza" can be matched to a card. Beside
+   * the open time, in the same quiet type. Null with no session.
+   */
+  orderLabel?: string | null
   itemCount?: number
   /**
    * What the open order has run up, in paisa. Undefined when there is no session.
@@ -101,6 +107,7 @@ export function TableCard({
   capacity,
   coverCount,
   elapsedMinutes,
+  orderLabel = null,
   itemCount,
   totalPaisa,
   unavailableReason,
@@ -147,6 +154,7 @@ export function TableCard({
   const accessibleName = [
     spokenName,
     stale ? 'needs check' : tone.label.toLowerCase(),
+    status === 'occupied' && orderLabel ? `order ${orderLabel}` : null,
     showOccupiedDetail ? elapsed(elapsedMinutes) : null,
     status === 'occupied' && coverCount != null
       ? `${coverCount} of ${capacity ?? coverCount} guests`
@@ -245,13 +253,27 @@ export function TableCard({
 
         {status === 'occupied' ? (
           stale ? (
-            <span className="flex items-center gap-sp-1 pt-0.5 text-fs-12 font-bold text-unavailable-band">
-              <AlertTriangle aria-hidden="true" strokeWidth={2.5} className="size-3.5 shrink-0" />
-              Open {elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : '—'}
+            <span className="flex flex-col items-end gap-0.5 pt-0.5">
+              <span className="flex items-center gap-sp-1 text-fs-12 font-bold text-unavailable-band">
+                <AlertTriangle aria-hidden="true" strokeWidth={2.5} className="size-3.5 shrink-0" />
+                Open {elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : '—'}
+              </span>
+              {orderLabel ? (
+                <span className="text-fs-12 font-semibold tabular-nums text-unavailable-band">
+                  {orderLabel}
+                </span>
+              ) : null}
             </span>
           ) : (
-            <span className="pt-0.5 text-fs-12 font-bold tabular-nums text-occupied-ink">
-              {elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : '—'}
+            <span className="flex flex-col items-end gap-0.5 pt-0.5">
+              <span className="text-fs-12 font-bold tabular-nums text-occupied-ink">
+                {elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : '—'}
+              </span>
+              {orderLabel ? (
+                <span className="text-fs-12 font-semibold tabular-nums text-occupied-ink">
+                  {orderLabel}
+                </span>
+              ) : null}
             </span>
           )
         ) : status === 'unavailable' ? (

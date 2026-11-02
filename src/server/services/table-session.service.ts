@@ -111,13 +111,13 @@ export async function openSession(
     /** Labels of those same tables, for the audit note. */
     additionalTableLabels?: string[]
   },
-): Promise<{ id: string; openedAt: Date }> {
+): Promise<{ id: string; openedAt: Date; dailyNumber: number }> {
   const [created] = await tx
     .insert(orderSessions)
     // table_id is the PRIMARY table — breadcrumbs, labels, ticket headers. Every
     // table the party occupies, including this one, is in order_session_tables.
     .values({ tenantId, tableId, openedByStaffId: staffId })
-    .returning({ id: orderSessions.id, openedAt: orderSessions.openedAt })
+    .returning({ id: orderSessions.id, openedAt: orderSessions.openedAt, dailyNumber: orderSessions.dailyNumber })
 
   const allTableIds = [tableId, ...additionalTableIds]
 
@@ -177,7 +177,7 @@ export async function openCounterSession(
     staffId,
     tabLabel = null,
   }: { tenantId: string; staffId: string; tabLabel?: string | null },
-): Promise<{ id: string; openedAt: Date }> {
+): Promise<{ id: string; openedAt: Date; dailyNumber: number }> {
   const [created] = await tx
     .insert(orderSessions)
     // No tableId and no order_session_tables rows. `kind` is what makes this a
@@ -188,7 +188,7 @@ export async function openCounterSession(
     // nickname ("white shirt"). `kind` stays 'counter' — renaming the enum
     // value would rewrite every historical session for a word.
     .values({ tenantId, kind: 'counter', openedByStaffId: staffId, tabLabel })
-    .returning({ id: orderSessions.id, openedAt: orderSessions.openedAt })
+    .returning({ id: orderSessions.id, openedAt: orderSessions.openedAt, dailyNumber: orderSessions.dailyNumber })
 
   await writeAuditEvent(tx, { sessionId: created.id, staffId, eventType: 'SESSION_OPENED' })
 

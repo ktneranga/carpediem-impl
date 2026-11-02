@@ -467,6 +467,7 @@ export async function POST(
           status: 'occupied',
           sessionId,
           openedAt: announcement.openedAt.toISOString(),
+          dailyNumber: announcement.dailyNumber,
           itemCount: dishes?.total ?? 0,
           totalPaisa: dishes?.totalPaisa ?? 0,
           // An occupied table carries no out-of-service reason — migration

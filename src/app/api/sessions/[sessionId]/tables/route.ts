@@ -82,6 +82,7 @@ export async function POST(
       .select({
         id: orderSessions.id,
         openedAt: orderSessions.openedAt,
+        dailyNumber: orderSessions.dailyNumber,
         kind: orderSessions.kind,
       })
       .from(orderSessions)
@@ -217,6 +218,7 @@ export async function POST(
         status: 'occupied',
         sessionId: session.id,
         openedAt: session.openedAt.toISOString(),
+        dailyNumber: session.dailyNumber,
         itemCount,
         totalPaisa,
         unavailableReason: null,

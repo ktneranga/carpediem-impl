@@ -22,6 +22,8 @@ export type TableGridRow = {
   sessionId: string | null
   /** ISO timestamp from PostgreSQL. The client derives elapsed time from it. */
   openedAt: string | null
+  /** The order's number for the day, `#042` on the card. Null with no session. */
+  dailyNumber: number | null
   itemCount: number
   /**
    * Guests seated, from `order_sessions.cover_count`. Null with no session.
@@ -86,6 +88,7 @@ export async function GET() {
         zoneName: zones.name,
         sessionId: orderSessions.id,
         openedAt: orderSessions.openedAt,
+        dailyNumber: orderSessions.dailyNumber,
       })
       .from(tables)
       .innerJoin(zones, eq(zones.id, tables.zoneId))
@@ -216,6 +219,7 @@ export async function GET() {
       unavailableReason: row.unavailableReason,
       sessionId: row.sessionId,
       openedAt: row.openedAt ? row.openedAt.toISOString() : null,
+      dailyNumber: row.dailyNumber ?? null,
       // DISHES — the sum of ITEM_ADDED quantities (`dishCount`), not rows: since
       // Story 4.4 one row can carry "× 3". ITEM_REMOVED is not subtracted
       // because nothing writes it yet; Epic 7's corrections will.

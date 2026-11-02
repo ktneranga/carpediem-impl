@@ -90,6 +90,7 @@ export async function POST(
       status: 'open',
       sessionId: null,
       openedAt: null,
+      dailyNumber: null,
       itemCount: 0,
       // No session, so nothing has been run up.
       totalPaisa: 0,

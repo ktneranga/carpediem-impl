@@ -183,6 +183,7 @@ export async function POST(
         status: 'open',
         sessionId: null,
         openedAt: null,
+        dailyNumber: null,
         itemCount: 0,
         totalPaisa: 0,
         // A session change never alters availability; the table is not out of

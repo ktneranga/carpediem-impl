@@ -17,6 +17,13 @@ export type TableStatusChangedPayload = {
   status: 'open' | 'occupied' | 'unavailable'
   sessionId: string | null
   openedAt: string | null
+  /**
+   * The order's number for the day, shown as `#042` on the card (Teran,
+   * 2026-11-02). Null when there is no session. Carried for the same reason as
+   * every field here: the client patches its cache, and an omitted field keeps
+   * the previous order's number on the next party's card.
+   */
+  dailyNumber: number | null
   itemCount: number
   /**
    * The session's running total in paisa. 0 when there is no session.

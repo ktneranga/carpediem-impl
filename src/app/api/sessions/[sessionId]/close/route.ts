@@ -142,6 +142,7 @@ export async function POST(
           status: 'open',
           sessionId: null,
           openedAt: null,
+          dailyNumber: null,
           itemCount: 0,
           totalPaisa: 0,
           unavailableReason: null,

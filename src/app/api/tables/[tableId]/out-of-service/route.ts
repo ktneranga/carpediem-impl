@@ -136,6 +136,7 @@ export async function POST(
       status: 'unavailable',
       sessionId: null,
       openedAt: null,
+      dailyNumber: null,
       itemCount: 0,
       totalPaisa: 0,
       unavailableReason: reason,
