@@ -19,6 +19,7 @@
 import type { TicketPayload } from '@/types/tickets'
 import { clockTime, groupBySeat, ticketTypeOf } from './escpos'
 import { escposTcpTransport } from './escpos-transport'
+import { usbTransport } from './usb-transport'
 
 export type TicketTransport = {
   /** For the log line and for `last_error` context. */
@@ -126,6 +127,12 @@ export function resolveTransport(destination: TicketPayload['destination']): Tic
   // `printer_configs` hold no rows and have no `connection_mode`, so per-station
   // printers and the USB path wait for Story 10.3 — building a second delivery
   // path behind a flag that cannot be set is how untested code ships.
+  // A printer on a USB cable (Teran, 2026-11-02) — its Windows printer name,
+  // or a Linux device path. Checked first: a till with a USB printer has no
+  // reason to also set an IP, and if both are set the cable is the one in use.
+  const usbPrinter = process.env.PRINTER_USB_NAME?.trim()
+  if (usbPrinter) return usbTransport(usbPrinter)
+
   const host = process.env.PRINTER_IP
   if (host) {
     // Every malformed value falls back to 9100 — including the two the first
