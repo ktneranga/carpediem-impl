@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Receipt, Users } from 'lucide-react'
+import { Receipt, Users } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MenuBrowser } from '@/components/pos/menu-browser'
@@ -1719,28 +1719,6 @@ export function OrderScreen({
             </div>
           ) : null}
 
-          {/* A custom charge — corkage, a broken glass — straight onto the
-              bill, never to a kitchen (Teran, 2026-11-02). Here, by the totals
-              it changes, rather than hidden in More; shown only to staff
-              allowed to add one (owner until Story 10.6). */}
-          {canAddCustomCharge ? (
-            <div className="shrink-0 border-t border-slate-200 px-sp-4 pt-sp-3">
-              <button
-                type="button"
-                onClick={openCustomCharge}
-                className={cn(
-                  'flex h-touch-kitchen w-full items-center justify-center gap-sp-2 rounded-control',
-                  'border-2 border-dashed border-slate-200 bg-white text-fs-16 font-bold text-slate-900',
-                  'transition-transform duration-80 ease-standard active:scale-[0.97]',
-                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                )}
-              >
-                <Plus aria-hidden="true" strokeWidth={2.5} className="size-5" />
-                Custom charge
-              </button>
-            </div>
-          ) : null}
-
           {/* Pinned to the foot of the column — `shrink-0`, outside every
               scrolling section above it — so the figure a waiter reads to a
               guest is never one scroll away. */}
@@ -1749,6 +1727,9 @@ export function OrderScreen({
             notSentPaisa={subtotalPaisa}
             serviceChargeBp={serviceChargeBp}
             taxRatePercent={taxRatePercent}
+            // A custom charge straight onto the bill, never to a kitchen
+            // (Story 4.9) — owner only until Story 10.6.
+            onAddCharge={canAddCustomCharge ? openCustomCharge : undefined}
           />
         </aside>
       </div>

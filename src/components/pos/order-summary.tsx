@@ -1,6 +1,8 @@
 'use client'
 
+import { CirclePlus } from 'lucide-react'
 import { lkrFromPaisa } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 /**
  * What the table owes, at the foot of the order column.
@@ -33,6 +35,7 @@ export function OrderSummary({
   notSentPaisa,
   serviceChargeBp,
   taxRatePercent,
+  onAddCharge,
 }: {
   /** Already with the kitchen, summed from the submitted rounds. */
   sentPaisa: number
@@ -48,6 +51,13 @@ export function OrderSummary({
   serviceChargeBp: number
   /** `tenant_config.tax_rate_percent`. Also hidden at 0, its default. */
   taxRatePercent: number
+  /**
+   * Opens the custom-charge sheet (Story 4.9). Only for staff allowed to add
+   * one; absent, the icon is not drawn. A small icon beside the total it
+   * changes, not a full-width button: it is rare and owner-only, and the order
+   * column's space belongs to the order (Teran, 2026-11-02).
+   */
+  onAddCharge?: () => void
 }) {
   const itemsPaisa = sentPaisa + notSentPaisa
   const servicePaisa =
@@ -71,7 +81,27 @@ export function OrderSummary({
       {taxRatePercent > 0 ? <Row label={`Tax ${taxRatePercent}%`} value={taxPaisa} /> : null}
 
       <div className="flex items-baseline justify-between gap-sp-3 border-t border-slate-200 pt-sp-2">
-        <span className="text-fs-16 font-bold text-slate-900">Table total</span>
+        <span className="flex items-center gap-sp-1">
+          <span className="text-fs-16 font-bold text-slate-900">Table total</span>
+          {onAddCharge ? (
+            <button
+              type="button"
+              onClick={onAddCharge}
+              aria-label="Add custom charge"
+              title="Add custom charge"
+              className={cn(
+                // A 44px target around a 20px glyph; the negative margin keeps
+                // the row the height of its text.
+                '-my-sp-3 flex size-touch-standard items-center justify-center rounded-pill text-slate-600',
+                'transition-[transform,background-color] duration-80 ease-standard',
+                'hover:bg-slate-100 active:scale-[0.94] active:bg-slate-100',
+                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+              )}
+            >
+              <CirclePlus aria-hidden="true" strokeWidth={2} className="size-5" />
+            </button>
+          ) : null}
+        </span>
         <span className="text-fs-24 font-extrabold tabular-nums text-slate-900">
           {lkrFromPaisa(totalPaisa)}
         </span>

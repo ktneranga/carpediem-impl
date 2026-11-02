@@ -11,8 +11,8 @@ import { MAX_CUSTOM_CHARGE_PAISA, MAX_CUSTOM_NAME, MAX_LINE_QUANTITY } from '@/t
  * A custom charge — "Corkage", "Broken glass", "4 shots, guest request" — with
  * a name and price the owner types (Story 4.9, FR66).
  *
- * Opened from the "Custom charge" button in the order column, shown only to
- * staff allowed to add one (Teran, 2026-11-02). Add SAVES it — straight to the
+ * Opened from the small + beside "Table total" in the order column, shown
+ * only to staff allowed to add one (Teran, 2026-11-02). Add SAVES it — straight to the
  * order and the bill, no Send, no kitchen ticket. The server decides again
  * (`canAddCustomCharge`); hiding the button is convenience, not the guard.
  *
