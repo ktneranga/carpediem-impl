@@ -35,11 +35,15 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-03
-last_updated: 2026-10-31
+last_updated: 2026-11-04
 project: carpe-diem-restaurant
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
+
+# GO-LIVE ORDER (sprint-change-proposal-2026-11-04.md):
+#   review 4-8, 4-9 → 7-3 → 6-6 → 10-0 → 10-4 + 8-3 → 10-2 → 9-5 → 11-3 (lite) → 1-4 (install)
+# Everything else is after launch.
 
 development_status:
   # ── Epic 1: Project Foundation & Infrastructure ──────────────────────────
@@ -110,6 +114,7 @@ development_status:
   6-3-implement-mid-settlement-person-split: done  # code-reviewed 2026-10-31 (server + UI), fixes applied
   6-4-implement-per-seat-slot-independent-billing: done
   6-5-implement-payment-recording-and-session-auto-close: done  # code-reviewed 2026-10-31 (server + UI), fixes applied
+  6-6-print-the-customer-bill: backlog  # added 2026-11-04 — go-live
   epic-6-retrospective: optional
 
   # ── Epic 7: Audit Trail & Dispute Resolution ──────────────────────────────
@@ -133,10 +138,12 @@ development_status:
   9-2-implement-real-time-revenue-chart: backlog
   9-3-implement-cash-reconciliation-comp-log-inventory-alerts-and-long-open-tables: backlog
   9-4-implement-manager-shift-summary-and-remote-access: backlog
+  9-5-end-of-day-takings: backlog  # added 2026-11-04 — go-live
   epic-9-retrospective: optional
 
   # ── Epic 10: System Configuration & Staff Management ─────────────────────
   epic-10: backlog
+  10-0-manage-area-and-owner-password: backlog  # added 2026-11-04 — go-live
   10-1-build-hamburgerdrawer-component: backlog
   10-2-implement-staff-account-management: backlog
   10-3-implement-zone-table-and-station-configuration: backlog
@@ -163,3 +170,14 @@ development_status:
   12-5-implement-tablet-unavailable-state-and-fallback: backlog
   12-6-implement-relay-observability: backlog
   epic-12-retrospective: optional
+
+  # ── Epic 13: Cloud Hub & Two-Way Config Sync ─────────────────────────────
+  # Added 2026-11-04 by sprint-change-proposal-2026-11-04.md — after launch
+  epic-13: backlog
+  13-1-cloud-hub: backlog
+  13-2-record-push: backlog
+  13-3-off-site-backup-upload: backlog
+  13-4-owner-cloud-dashboard: backlog
+  13-5-two-way-config-sync: backlog
+  13-6-sync-status: backlog
+  epic-13-retrospective: optional

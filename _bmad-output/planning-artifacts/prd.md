@@ -388,6 +388,19 @@ All 6 journeys are fully supported in MVP — waiter happy path order entry, upf
 **Must-Have Capabilities:**
 All 9 capabilities defined in the Product Scope MVP section are load-bearing — none are optional or deferrable. Removing any single item breaks the operational control gate. Validation: each capability was tested against "without this, does the system fail its core purpose?" — all returned yes.
 
+### Go-live line (2026-11-04)
+
+*(sprint-change-proposal-2026-11-04.md)* The restaurant is handed the system when these work end to end on site; everything else follows launch.
+
+1. Order entry, routing and printed tickets (built) — reviews of 4.8/4.9 closed.
+2. Void / comp a sent item with a reason (FR47, FR48, Story 7.3).
+3. Customer bill printed (FR69, Story 6.6).
+4. Manage area (FR70): menu with prices, options and sold-out (FR56, FR36); staff and PINs (FR58); end-of-day takings by business date (FR50, FR54 subset).
+5. Nightly backup, local plus an off-site copy (NFR-R4).
+6. Installed on site: starts on boot, survives a power cut, Tailscale for the owner, printer and tablets tested at the furthest table (NFR-R6).
+
+After launch: audit timeline views (7.1, 7.2, 7.4), KDS, portion counts, dashboard charts, table/zone editor, per-user permissions, branding, vendor APIs, then Epic 13 (cloud hub and FR71), then Epic 12 (cloud order relay) only if site Wi-Fi proves a problem.
+
 ### Post-MVP Roadmap
 
 Post-launch development follows the Growth and Vision feature sets defined in the Product Scope section. Phase 2 (Growth) addresses dispute escalation, merged-table re-assignment, tip pooling, advanced inventory, and the SaaS management plane. Phase 3 (Vision) delivers the multi-restaurant platform, native mobile app, and third-party integrations.
@@ -497,6 +510,9 @@ Printer integration and mid-settlement drag-and-drop are the two highest-effort 
 - **FR66:** Staff holding the custom-charge permission can add a line with a name and price to an order; every such line is attributed and audited. *(Added 2026-10-31.)*
 - **FR67:** The owner can grant or revoke individual permissions for individual staff members, beyond their role. *(Added 2026-10-31.)*
 - **FR68:** Every order (table session or bar tab) receives an order number when it opens: a daily number (`#042`) that restarts each business day, and a permanent reference (`20261102-042`, business date + daily number) that is unique forever. The business day turns over at a configurable hour (default 4 AM, restaurant timezone), so service past midnight keeps one numbering. The number is assigned by the database, never by a client, and never changes after assignment. It is shown on every ticket, table card, bar tab, the order screen and the bill screen, and is the key staff and the dashboard use to find a past order. *(Added 2026-11-03 — sprint-change-proposal-2026-11-03.md. Teran: "an order should have a unique number… when the user wants to check past orders")*
+- **FR69:** Staff can print the customer bill for any generated bill on the receipt printer: restaurant name, order number (FR68), table(s) or tab, business date and time, itemised lines with options and notes, comps, subtotal, service charge, tax, total, and — once settled — the payment method(s) and any change given. A reprint is marked `COPY`. *(Added 2026-11-04 — sprint-change-proposal-2026-11-04.md. The bill screen could settle a bill but not hand the guest one.)*
+- **FR70:** All owner configuration (menu, sold-out, staff, end-of-day takings, later tables and settings) lives in one **Manage** area of the same app. Entering it requires an owner PIN session **and** the Manage password; managers enter only the sold-out screen. It is laid out for a laptop as well as a tablet, and is reachable remotely over Tailscale. *(Added 2026-11-04.)*
+- **FR71 (Post-MVP):** Menu and staff configuration is kept in step between the local POS and a cloud dashboard in both directions. A change made locally is saved locally at once and sent to the cloud when the internet is available; a change made in the cloud dashboard is applied to the local POS on its next connection. When the same record was changed on both sides while apart, the later edit wins and the overwritten one is kept in the change log. The Manage area shows the sync state: synced, changes waiting, or offline since a time. Orders, payments and audit records sync one way only (local → cloud). *(Added 2026-11-04 — Teran.)*
 
 ### System Configuration & Tenant Management
 
@@ -524,9 +540,10 @@ Printer integration and mid-settlement drag-and-drop are the two highest-effort 
 - **NFR-S1:** Staff PIN credentials are stored as hashed values — plaintext PINs are never persisted, logged, or transmitted
 - **NFR-S2:** No action can be performed without a valid authenticated PIN session; every device interaction is gated by authentication
 - **NFR-S3:** Audit trail records are immutable at the database level — no role, including Owner, can modify or delete a submitted record
-- **NFR-S4:** All application data resides on the local PostgreSQL instance. No operational data is transmitted to external services without explicit Owner opt-in. Cloud relay order transport is such an opt-in, governed by the `cloud_relay_enabled` tenant flag; when disabled, no order data leaves the premises. Relayed order requests are transient, encrypted in transit, and deleted from the cloud once the local POS acknowledges commit
+- **NFR-S4:** All application data resides on the local PostgreSQL instance. No operational data is transmitted to external services without explicit Owner opt-in. Cloud relay order transport is such an opt-in, governed by the `cloud_relay_enabled` tenant flag; when disabled, no order data leaves the premises. Relayed order requests are transient, encrypted in transit, and deleted from the cloud once the local POS acknowledges commit. Config sync (FR71) is a second such opt-in, governed by `cloud_sync_enabled`; when disabled nothing leaves the premises *(amended 2026-11-04)*
 - **NFR-S5:** Owner remote access is restricted to Tailscale VPN; no public-facing ports are exposed on the restaurant network
 - **NFR-S6:** Staff sessions expire after a configurable idle timeout (default: 30 minutes); expired sessions require PIN re-entry before any action is permitted
+- **NFR-S7:** The Manage area requires the Manage password in addition to an owner PIN session; the password is stored hashed, entry is rate-limited, and the Manage session expires after 15 minutes idle. A 4-digit PIN alone never opens configuration, because the area is reachable from outside the restaurant *(added 2026-11-04)*
 
 ### Reliability
 

@@ -476,6 +476,18 @@ _Actionable requirements from the UX Design Specification:_
 
 ---
 
+### Epic 13: Cloud Hub & Two-Way Config Sync (Post-launch)
+
+**Goal:** A hosted hub that receives each restaurant's records (one way), stores its backups, gives the owner a cloud dashboard without Tailscale, and keeps menu and staff in step in both directions with a visible sync state on the POS. *(Added 2026-11-04 — sprint-change-proposal-2026-11-04.md)*
+
+**Requirements Covered:**
+- FR71 (two-way menu/staff sync with sync status)
+- FR53 (owner remote access — without VPN)
+- NFR-S4 (cloud sync is an owner opt-in)
+- NFR-R4 (off-site backup)
+
+---
+
 ## Epic 1: Project Foundation & Infrastructure
 
 **Goal:** Establish the complete working development and production environment — from initialized Next.js project to deployed Docker Compose stack with CI/CD pipeline, database schema, custom Socket.io server, design token system, and PWA configuration. Every subsequent epic builds on this foundation.
@@ -587,6 +599,10 @@ So that the database structure is always correct when the app starts and audit r
 ---
 
 ### Story 1.4: Configure Docker Compose Stack & Health Endpoint
+
+> **Amended 2026-11-04 — on-site install (go-live):** the stack starts on boot and after a power cut;
+> Tailscale on the server and the owner's devices; USB printer configured; each zone's furthest table
+> tested from a tablet (NFR-R6).
 
 As a system operator,
 I want the application deployable as a self-contained Docker Compose stack with a working health endpoint,
@@ -1933,6 +1949,38 @@ So that every payment is captured and the table closes automatically when fully 
 
 ---
 
+### Story 6.6: Print the Customer Bill
+
+> **Added 2026-11-04** *(sprint-change-proposal-2026-11-04.md)* · FR69 · go-live
+
+As a cashier,
+I want to print the bill the guest pays from,
+So that the guest can check it and keep it.
+
+**Acceptance Criteria:**
+
+**Given** a generated bill
+**When** staff tap Print bill
+**Then** a receipt job is queued on the print queue (Story 5.0) to the receipt printer — the same queue, retries and dead-lettering as tickets
+
+**Given** the receipt
+**When** it prints
+**Then** it shows restaurant name, `#042` and `Order 20261102-042`, table(s) or tab, date and time, each line with options and note, comps, subtotal, service charge, tax and total
+
+**Given** a settled bill
+**When** its receipt prints
+**Then** it also shows payment method(s), amount tendered and change
+
+**Given** a bill already printed
+**When** it is printed again
+**Then** the receipt is marked `COPY`
+
+**Given** a split bill
+**When** the bills are printed
+**Then** each person's or seat's bill prints on its own receipt
+
+---
+
 ## Epic 7: Audit Trail & Dispute Resolution
 
 > **Waiving a service charge is a discount, not a configuration change (decided 2026-10-02, Teran).**
@@ -2179,6 +2227,9 @@ So that concurrent orders from multiple waiters never oversell a depleted item.
 
 ### Story 8.3: Implement Manual Availability Toggle (86 an Item)
 
+> **Amended 2026-11-04:** go-live. Lives in Manage → Sold out, the one Manage screen a manager can
+> open without the password. Sync-ready like 10.4.
+
 As an owner or manager,
 I want to manually toggle a menu item's availability on or off at any time regardless of its portion count,
 So that I can immediately 86 an item that has run out, is not ready, or should not be ordered for any operational reason.
@@ -2361,11 +2412,75 @@ So that I have a concise end-of-shift picture of financial performance without o
 
 ---
 
+### Story 9.5: End-of-Day Takings
+
+> **Added 2026-11-04** *(sprint-change-proposal-2026-11-04.md)* · FR50, FR54 (subset) · go-live — a plain Manage screen, not the Epic 9 charts
+
+As an owner,
+I want the day's takings at close,
+So that I can count the drawer against them.
+
+**Acceptance Criteria:**
+
+**Given** the owner opens Manage → End of day
+**When** the screen loads
+**Then** for a business date (today by default, turning over at `business_day_start_hour`) it shows: number of orders, gross sales, comps, service charge, tax, cash, card, and orders still open
+
+**Given** orders are still open
+**When** the figures are shown
+**Then** the open orders are listed by `#042` and table, so the day is not closed blind
+
+**Given** a past business date is chosen
+**When** the screen reloads
+**Then** the same figures are shown for that date
+
+**Given** the end-of-day screen
+**When** the owner taps Print
+**Then** the summary prints on the receipt printer
+
+---
+
 ## Epic 10: System Configuration & Staff Management
 
 **Goal:** Implement all owner/manager configuration surfaces — staff account CRUD, zone and table layout, full menu management, per-station ticket output mode, tenant feature flags, and brand customization.
 
+### Story 10.0: Manage Area & Owner Password
+
+> **Added 2026-11-04** *(sprint-change-proposal-2026-11-04.md)* · FR70, NFR-S7 · go-live
+
+As an owner,
+I want one place for configuration that a PIN alone cannot open,
+So that I can manage the restaurant from the counter or from home safely.
+
+**Acceptance Criteria:**
+
+**Given** an owner session
+**When** the owner opens Manage (staff-badge menu, or `/manage`)
+**Then** the Manage password is asked once per Manage session; a wrong password is rate-limited (5 tries, then 5 minutes)
+
+**Given** no Manage password is set yet
+**When** the owner first enters Manage
+**Then** they set one
+
+**Given** the Manage area
+**When** it loads
+**Then** it lists Menu, Sold out, Staff and End of day (more sections later), laid out for a laptop and usable on a tablet
+
+**Given** a manager session
+**When** the manager opens Manage
+**Then** only Sold out is available, without the password
+
+**Given** 15 minutes without activity in Manage
+**When** the owner next acts there
+**Then** the Manage password is asked again; the POS session is unaffected
+
+---
+
 ### Story 10.1: Build HamburgerDrawer Component
+
+> **Amended 2026-11-04:** the drawer's management links collapse to one **Manage** link into the
+> Manage area (Story 10.0). The drawer itself is post-launch; at go-live the link sits in the owner's
+> staff-badge menu.
 
 As a developer,
 I want the HamburgerDrawer off-canvas navigation component built with all management section links,
@@ -2400,6 +2515,12 @@ So that every configuration screen in this epic has a consistent, accessible ent
 ---
 
 ### Story 10.2: Implement Staff Account Management
+
+> **Amended 2026-11-04 — sync-ready (FR71):** every create, edit and deactivate goes through the API
+> (never a direct DB write), bumps the row's `version` and `updated_at`, and appends a row to
+> `config_changes` (table, row id, version, field values, staff, time, origin `local`). Nothing reads
+> `config_changes` until Epic 13; writing it now means sync needs no rework. Reachable from the Manage
+> area (Story 10.0). Go-live.
 
 As an owner,
 I want to create, edit, and deactivate staff accounts with assigned roles and PINs,
@@ -2493,6 +2614,12 @@ So that the system accurately reflects the physical layout and production setup 
 ---
 
 ### Story 10.4: Implement Menu Management
+
+> **Amended 2026-11-04 — sync-ready (FR71):** every create, edit and deactivate goes through the API
+> (never a direct DB write), bumps the row's `version` and `updated_at`, and appends a row to
+> `config_changes` (table, row id, version, field values, staff, time, origin `local`). Nothing reads
+> `config_changes` until Epic 13; writing it now means sync needs no rework. Reachable from the Manage
+> area (Story 10.0). Go-live.
 
 > **Amended 2026-10-31** *(sprint-change-proposal-2026-10-31.md)* — also manages modifier groups and their
 > priced options (Story 4.8's data), and the bar categories seeded by
@@ -2664,6 +2791,10 @@ So that I can diagnose issues in real time and recover a stuck deployment withou
 
 ### Story 11.3: Implement Backup Automation & On-Demand Backup API
 
+> **Amended 2026-11-04:** a go-live subset is built first — `backup.sh` nightly at 03:00 (pg_dump,
+> 30-day retention, host volume) plus a copy to a second place (USB drive or a cloud folder), and a
+> one-page restore card. The on-demand vendor API remains post-launch.
+
 As the vendor platform,
 I want automated daily backups running on each CDRMS deployment and an API to trigger and download backups on demand,
 So that data is protected automatically and I can retrieve a backup for recovery or audit without SSH access.
@@ -2736,4 +2867,22 @@ So that I know about restaurant system problems proactively before the restauran
 **When** the vendor platform aggregates status across multiple restaurant deployments
 **Then** each deployment's Uptime Kuma operates independently; a failure in one deployment does not affect monitoring of other deployments
 
+---
 
+## Epic 13: Cloud Hub & Two-Way Config Sync (Post-launch)
+
+> **Added 2026-11-04** *(sprint-change-proposal-2026-11-04.md)* · FR71. Acceptance criteria are written
+> at story creation; the architecture's Post-MVP Cloud Sync section (amended 2026-11-04) is the design.
+
+**Goal:** A hosted hub that receives each restaurant's records one way, stores backups, gives the owner a
+cloud dashboard without Tailscale, and keeps menu and staff in step in both directions — with the sync
+state visible in the Manage area. The restaurant stays fully working when the hub is unreachable.
+
+- **Story 13.1: Cloud Hub** — API + hosted PostgreSQL, per-restaurant API keys.
+- **Story 13.2: Record Push** — orders, payments, comps and audit rows, local → cloud only, by cursor.
+- **Story 13.3: Off-site Backup Upload** — the nightly backup (11.3) also goes to the hub.
+- **Story 13.4: Owner Cloud Dashboard** — menu, staff and reports from anywhere, no Tailscale.
+- **Story 13.5: Two-Way Config Sync** — `config_changes` up; cloud edits down over the local syncer's
+  outbound connection, applied through the same service layer; later edit wins, the loser kept in the log.
+- **Story 13.6: Sync Status** — in the Manage area: ✓ Synced 7:42 PM / ⟳ 3 changes waiting /
+  ⚠ Offline since 7:40 PM.

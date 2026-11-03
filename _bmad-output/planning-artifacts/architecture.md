@@ -1127,7 +1127,7 @@ Restaurant C (local stack) ──┘         │
                                         └──► Push config / menu templates back
 ```
 
-Each restaurant remains the **source of truth**. The cloud hub is a read replica plus config distribution channel. No conflict resolution is needed because:
+Each restaurant remains the **source of truth**. The cloud hub is a read replica plus config distribution channel. No conflict resolution is needed for operational data (config conflicts: see Key Constraints) because:
 - The audit trail is append-only — sync is a one-way push of new rows tagged with `tenant_id`
 - Restaurants never receive data that overwrites their operational state — only config updates
 
@@ -1202,7 +1202,11 @@ CLOUD_API_KEY=                    # issued per restaurant by vendor onboarding
 
 ### Key Constraints
 
-- Syncer must be **additive only** — never modifies per-restaurant operational data
+- Syncer is **additive only for operational data** — orders, payments, comps and audit rows go up,
+  never down. **Configuration (menu, staff) is two-way (FR71, amended 2026-11-04):** `config_changes`
+  rows go up; cloud edits come down over the syncer's OUTBOUND connection and are applied through the
+  same service layer as a local edit (origin `cloud`). Conflict: higher `updated_at` wins; the losing
+  change stays in `config_changes`, so nothing is lost silently.
 - Cloud hub must be **stateless for operations** — restaurant continues fully if hub is unreachable
 - API keys must be **per-restaurant** — one restaurant's key cannot read another's data
 - All data in transit must be **encrypted in transit** (HTTPS to cloud hub, TLS on R2 uploads)
@@ -1277,3 +1281,26 @@ pnpm create next-app@latest carpe-diem-rms --typescript --tailwind --eslint --ap
 
 - `alsoFor?`, `dailyNumber?`, `businessDate?` on `TicketPayload`. Optional on purpose: jobs queued
   before the change still print, just without the new lines.
+
+---
+
+## Amendments — Go-live & config sync, 2026-11-04
+
+*(sprint-change-proposal-2026-11-04.md)*
+
+### Manage area auth (FR70, NFR-S7)
+
+- `/manage/*` pages and `/api/manage/*` routes require an owner session AND a Manage session cookie,
+  issued after `tenants.manage_password_hash` (bcrypt) matches; 15-minute idle expiry; 5 failures →
+  5-minute lockout. Managers reach `/manage/sold-out` only.
+
+### Sync-ready config writes (FR71 groundwork)
+
+- `version int` + `updated_at` on `menu_categories`, `menu_items`, modifier groups/options, `staff`.
+- `config_changes` (append-only): id, tenant_id, table_name, row_id, version, payload jsonb, staff_id,
+  origin (`local` | `cloud`), created_at, synced_at null.
+- Written in the same transaction as the config change, by the service layer — the only writer.
+
+### Bill printing (FR69)
+
+- A `receipt` job kind on the existing print queue; layout in `escpos.ts` beside tickets.

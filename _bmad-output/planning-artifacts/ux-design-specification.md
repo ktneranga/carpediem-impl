@@ -1281,3 +1281,12 @@ Order 20261102-042
 ```
 
 SERVE WITH names the other stations only, never their items, to save paper (Teran). The stations match plates by the `#042`.
+
+## Manage area (2026-11-04)
+
+*(sprint-change-proposal-2026-11-04.md)* FR70.
+
+- Entered from the owner's staff-badge menu → **Manage**; password prompt once per Manage session.
+- Laptop-first layout: a left list of sections (Menu · Sold out · Staff · End of day), content on the right; on a tablet the list becomes a top row. Light theme; waiter touch sizes not required.
+- **Sold out**: one list of today's dishes with a large toggle each — the manager's screen, used mid-service.
+- **Sync status** (Epic 13): one small line under the section list — ✓ Synced 7:42 PM / ⟳ 3 changes waiting / ⚠ Offline since 7:40 PM. Owner-only; never shown on the POS floor.
