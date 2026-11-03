@@ -314,3 +314,13 @@ are resolved as in Key Constraints."
 **Success criteria:** every go-live item works on the restaurant's own hardware for one full service; a
 restore from last night's backup succeeds on a spare machine; menu and staff changes write
 `config_changes` rows.
+
+---
+
+## Addendum (2026-11-04, after approval)
+
+**Cash drawer** — missed in the analysis above; nothing in the PRD, epics or architecture covered it.
+Added directly at Teran's request: **FR72** and **Story 6.7** (go-live, after 6.6). The drawer plugs into
+the XP-Q80B's DK port and opens by an ESC/POS kick sent through the existing print queue; no-sale
+openings need a reason, are audited, and appear on end-of-day takings (9.5). Teran has the drawer; it is
+not connected yet.

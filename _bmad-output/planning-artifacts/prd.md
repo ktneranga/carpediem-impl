@@ -394,7 +394,7 @@ All 9 capabilities defined in the Product Scope MVP section are load-bearing —
 
 1. Order entry, routing and printed tickets (built) — reviews of 4.8/4.9 closed.
 2. Void / comp a sent item with a reason (FR47, FR48, Story 7.3).
-3. Customer bill printed (FR69, Story 6.6).
+3. Customer bill printed (FR69, Story 6.6); cash drawer opens on cash payments, no-sale openings audited (FR72, Story 6.7).
 4. Manage area (FR70): menu with prices, options and sold-out (FR56, FR36); staff and PINs (FR58); end-of-day takings by business date (FR50, FR54 subset).
 5. Nightly backup, local plus an off-site copy (NFR-R4).
 6. Installed on site: starts on boot, survives a power cut, Tailscale for the owner, printer and tablets tested at the furthest table (NFR-R6).
@@ -513,6 +513,7 @@ Printer integration and mid-settlement drag-and-drop are the two highest-effort 
 - **FR69:** Staff can print the customer bill for any generated bill on the receipt printer: restaurant name, order number (FR68), table(s) or tab, business date and time, itemised lines with options and notes, comps, subtotal, service charge, tax, total, and — once settled — the payment method(s) and any change given. A reprint is marked `COPY`. *(Added 2026-11-04 — sprint-change-proposal-2026-11-04.md. The bill screen could settle a bill but not hand the guest one.)*
 - **FR70:** All owner configuration (menu, sold-out, staff, end-of-day takings, later tables and settings) lives in one **Manage** area of the same app. Entering it requires an owner PIN session **and** the Manage password; managers enter only the sold-out screen. It is laid out for a laptop as well as a tablet, and is reachable remotely over Tailscale. *(Added 2026-11-04.)*
 - **FR71 (Post-MVP):** Menu and staff configuration is kept in step between the local POS and a cloud dashboard in both directions. A change made locally is saved locally at once and sent to the cloud when the internet is available; a change made in the cloud dashboard is applied to the local POS on its next connection. When the same record was changed on both sides while apart, the later edit wins and the overwritten one is kept in the change log. The Manage area shows the sync state: synced, changes waiting, or offline since a time. Orders, payments and audit records sync one way only (local → cloud). *(Added 2026-11-04 — Teran.)*
+- **FR72:** The cash drawer, connected to the receipt printer's drawer port, opens automatically when a payment with a cash part is recorded, and never for a card-only payment. Owner and Manager can open it without a sale only by giving a reason; every such opening is recorded in the append-only audit trail with the staff member and time, and counted on the end-of-day takings. *(Added 2026-11-04 — Teran. Unexplained drawer openings are a common route for missing cash.)*
 
 ### System Configuration & Tenant Management
 

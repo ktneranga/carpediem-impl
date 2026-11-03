@@ -1981,6 +1981,34 @@ So that the guest can check it and keep it.
 
 ---
 
+### Story 6.7: Cash Drawer
+
+> **Added 2026-11-04** · FR72 · go-live — right after 6.6; both need the receipt printer
+
+As an owner,
+I want the cash drawer to open only for cash payments or a recorded reason,
+So that every opening of the drawer can be accounted for.
+
+**Acceptance Criteria:**
+
+**Given** the drawer is connected to the receipt printer's DK (RJ11) port
+**When** a payment with a cash part is recorded (cash, or the cash part of a split)
+**Then** a drawer-kick job (ESC/POS `ESC p`) is queued to the receipt printer on the existing print queue; a card-only payment does not open it
+
+**Given** an owner or manager taps Open drawer
+**When** they give a reason (change, float, other + text)
+**Then** the drawer opens and a no-sale record is written to the append-only audit trail with staff, reason and time; a staff-role user does not see the control
+
+**Given** the end-of-day takings (Story 9.5)
+**When** the day's figures are shown
+**Then** the number of no-sale openings is shown, each listed with staff, reason and time
+
+**Given** the printer is unavailable
+**When** a drawer kick is queued
+**Then** it waits and retries like any print job; staff see the same queued/stopped state, and the payment itself is never blocked by the drawer
+
+---
+
 ## Epic 7: Audit Trail & Dispute Resolution
 
 > **Waiving a service charge is a discount, not a configuration change (decided 2026-10-02, Teran).**
@@ -2437,6 +2465,8 @@ So that I can count the drawer against them.
 **Given** the end-of-day screen
 **When** the owner taps Print
 **Then** the summary prints on the receipt printer
+
+> Includes the day's no-sale drawer openings (Story 6.7, FR72).
 
 ---
 
