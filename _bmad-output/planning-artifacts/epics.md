@@ -144,7 +144,7 @@ This document provides the complete epic and story breakdown for the Carpe Diem 
 - NFR-D4: Inventory portion counts are decremented atomically; concurrent orders cannot result in a count below zero without triggering the unavailable flag
 
 **Integration**
-- NFR-I1: ESC/POS printer integration uses TCP/IP. USB support and per-station printer selection are deferred to Story 10.3, which owns station configuration — `station_configs` has no rows, no `connection_mode` column, and no `pizza_kitchen` station type (amended 2026-10-02)
+- NFR-I1: ESC/POS printer integration supports TCP/IP (`PRINTER_IP`) and USB (`PRINTER_USB_NAME` — Windows RAW spooler or a `/dev` path; USB wins when both are set). Per-station printer selection remains with Story 10.3, which owns station configuration — `station_configs` has no rows, no `connection_mode` column, and no `pizza_kitchen` station type (amended 2026-10-02; USB added 2026-11-03)
 - NFR-I2: A printer timeout or connection failure is retried automatically. Staff see **queued and retrying** while it recovers and **stopped** once the attempts are exhausted; a dead-lettered job remains in the queue, recoverable. A failed ticket print is never silently dropped (amended 2026-10-02)
 - NFR-I3: Software updates are delivered via Watchtower image polling from GHCR and applied without interrupting active service
 - NFR-I4: Tailscale VPN integration allows Owner dashboard access from any internet-connected device without requiring firewall rule changes
@@ -352,7 +352,7 @@ _Actionable requirements from the UX Design Specification:_
 - FR20 (kitchen/bar staff mark ticket in-progress or completed on KDS)
 - UX-DR10 (KOTTicket component — table, seats, items, type label, in-progress/completed states)
 - NFR-P1 (submission answers within 1 second; ticket delivery measured separately as NFR-P1b)
-- NFR-I1 (TCP; USB deferred to Story 10.3 with the rest of station configuration)
+- NFR-I1 (TCP and USB, one printer for every station; per-station selection with Story 10.3)
 - NFR-I2 (a failed ticket is retried, then alerted on — never silently dropped)
 
 ---
@@ -1631,6 +1631,21 @@ Manual reprint is NOT the recovery mechanism
 > `printer:alert` meaning "reprint manually", and the USB path — deferred to Story 10.3 with the rest of
 > station configuration.
 
+> **Amended 2026-11-03** (`sprint-change-proposal-2026-11-03.md`). Built and verified with the
+> restaurant's XP-Q80B, outside a story; recorded here:
+> - **USB delivery** — `PRINTER_USB_NAME` (Windows printer name → RAW spooler document via
+>   `winspool`; or a `/dev/usb/lp*` path). Wins over `PRINTER_IP`. One attempt per delivery;
+>   the queue still owns retries. A resolve means the spooler accepted the ticket (NFR-I1).
+> - **Header** — `KOT #042` (type + daily order number, FR68) at double size; the round line
+>   carries the date as well as the time (`Round 2    02 Nov 2026  7:42 PM`).
+> - **SERVE WITH** — one bold line under the header naming the round's OTHER stations by type
+>   (`SERVE WITH: KOT-P + BOT`); absent when the round went to one station only. Never their items.
+> - **Foot** — `Order 20261102-042`, the permanent reference.
+> - Every new field is OPTIONAL on the stored payload: a job queued before this change prints
+>   in the old layout (Trap 6).
+>
+> Verified: `verify-escpos.ts` 53/53, `verify-order-number.ts` 15/15.
+
 ---
 
 ### Story 5.3: Implement KDS Display Screen & Ticket Status
@@ -1988,6 +2003,14 @@ So that I can show a customer exactly who entered each item, in which round, and
 **When** the order history is displayed
 **Then** round boundaries are visually indicated (e.g., a "Round 2" separator); items within each round are grouped together
 
+**Given** a staff member needs a past order (a dispute the next day, a ticket in hand)
+**When** they enter its number — the permanent reference `20261102-042`, or the daily `#042` plus a business date (today by default)
+**Then** the matching session's order history opens; a number that matches nothing says so plainly ("No order 20261102-042") rather than showing an empty timeline (FR68)
+
+**Given** the order history is displayed
+**When** it renders its header
+**Then** it shows the order number (`#042` and `20261102-042`), the table(s) or tab name, and the business date — the same number printed on every ticket for that order *(added 2026-11-03)*
+
 **Given** a comp has been applied to an item in the session
 **When** the order history is displayed
 **Then** the comp entry appears after the original order entry for that item; it shows the reason code and comping staff member's name; both entries are visible simultaneously
@@ -2191,6 +2214,12 @@ So that I can immediately 86 an item that has run out, is not ready, or should n
 ## Epic 9: Owner Dashboard & Reporting
 
 **Goal:** Implement the owner-facing analytics dashboard — real-time revenue chart, cash reconciliation gap, comp log, inventory alerts, long-open table warnings, and manager shift summary. Accessible remotely via Tailscale.
+
+> **Amended 2026-11-03** (FR68): wherever the dashboard or a report lists an order — long-open
+> tables (9.3), comp log, shift summary (9.4) — it shows the order number (`#042` on today's
+> views, `20261102-042` on anything spanning days) and groups days by BUSINESS date
+> (`order_sessions.business_date`, turning over at `tenants.business_day_start_hour`, default
+> 4 AM), not calendar date — so a night's takings past midnight stay one night.
 
 ### Story 9.1: Implement Owner Dashboard Shell & Dark Theme
 
@@ -2419,8 +2448,11 @@ So that I can control exactly who can access the system and what each person is 
 > **Inherited from Epic 5 (2026-10-02):** station configuration must add `output_mode`
 > (`print` / `kds`) and `connection_mode` (`tcp` / `usb`) to `station_configs`, add `pizza_kitchen` to
 > the station type enum so it can express every `production_destination`, and seed one station per
-> destination. Until it does, `resolveTransport` sends every destination to the single `PRINTER_IP`,
-> and the USB path from NFR-I1 does not exist.
+> destination. Until it does, `resolveTransport` sends every destination to the one configured printer —
+> `PRINTER_USB_NAME` if set, else `PRINTER_IP`. USB delivery itself exists since 2026-11-03
+> (`src/server/print/usb-transport.ts`); what this story adds is choosing it PER STATION
+> (`connection_mode`) and the owner screen for it. It should also expose
+> `tenants.business_day_start_hour` (FR68) on the restaurant settings screen.
 
 As an owner,
 I want to configure the restaurant's zone names, table layout, and per-station ticket output mode,

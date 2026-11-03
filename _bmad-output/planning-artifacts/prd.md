@@ -430,7 +430,7 @@ Printer integration and mid-settlement drag-and-drop are the two highest-effort 
 - **FR15:** System generates a KOT-P (Pizza Kitchen Order Ticket) for pizza kitchen-destined items on order submission
 - **FR16:** System generates a BOT (Bar Order Ticket) for bar-destined items on order submission
 - **FR17:** System prints generated tickets to a configured ESC/POS thermal printer
-- **FR18:** Each printed ticket includes **every table identifier in the session** (e.g. `BB1 + BB3` for a merged group) — **or the label `COUNTER` where the session has no table** — seat identifiers, item names, quantities, and the ticket type label (KOT / KOT-P / BOT) *(amended 2026-09-06 for FR62 — a merged party's ticket naming one table leaves the runner with two possible destinations; amended 2026-09-10 for FR64 — a blank destination line on a counter ticket sends the runner nowhere)*
+- **FR18:** Each printed ticket includes **every table identifier in the session** (e.g. `BB1 + BB3` for a merged group) — **or the label `COUNTER` where the session has no table** — seat identifiers, item names, quantities, and the ticket type label (KOT / KOT-P / BOT) *(amended 2026-09-06 for FR62 — a merged party's ticket naming one table leaves the runner with two possible destinations; amended 2026-09-10 for FR64 — a blank destination line on a counter ticket sends the runner nowhere)* Each ticket also carries the order number (`KOT #042` in the header, `Order 20261102-042` at the foot, FR68), the date as well as the time it was sent, and — when the same round went to more than one station — one line naming the others by type only (`SERVE WITH: KOT-P + BOT`), so stations know the table's food comes from several places and goes out together. Other stations' items are never printed (paper). *(amended 2026-11-03)*
 - **FR19:** System displays tickets on a KDS/BOT screen when display mode is enabled per station (configuration-driven)
 - **FR20:** Kitchen/Bar staff can mark a displayed ticket as in-progress or completed (when KDS mode is enabled)
 
@@ -496,6 +496,7 @@ Printer integration and mid-settlement drag-and-drop are the two highest-effort 
 - **FR65:** Staff can choose priced options for a menu item (e.g. no alcohol, single or double shot); the option's price change is applied to the item's price at the time it is ordered. *(Added 2026-10-31.)*
 - **FR66:** Staff holding the custom-charge permission can add a line with a name and price to an order; every such line is attributed and audited. *(Added 2026-10-31.)*
 - **FR67:** The owner can grant or revoke individual permissions for individual staff members, beyond their role. *(Added 2026-10-31.)*
+- **FR68:** Every order (table session or bar tab) receives an order number when it opens: a daily number (`#042`) that restarts each business day, and a permanent reference (`20261102-042`, business date + daily number) that is unique forever. The business day turns over at a configurable hour (default 4 AM, restaurant timezone), so service past midnight keeps one numbering. The number is assigned by the database, never by a client, and never changes after assignment. It is shown on every ticket, table card, bar tab, the order screen and the bill screen, and is the key staff and the dashboard use to find a past order. *(Added 2026-11-03 — sprint-change-proposal-2026-11-03.md. Teran: "an order should have a unique number… when the user wants to check past orders")*
 
 ### System Configuration & Tenant Management
 
@@ -546,7 +547,7 @@ Printer integration and mid-settlement drag-and-drop are the two highest-effort 
 
 ### Integration
 
-- **NFR-I1:** ESC/POS printer integration uses TCP/IP. USB support and per-station printer selection are deferred to Story 10.3, which owns station configuration (amended 2026-10-02)
+- **NFR-I1:** ESC/POS printer integration supports TCP/IP (`PRINTER_IP:9100`) and USB (`PRINTER_USB_NAME`: an installed Windows printer, sent as a RAW spooler document, or a Linux device path such as `/dev/usb/lp0`); USB wins when both are set. Per-station printer selection remains with Story 10.3 — today every station prints to the one configured printer. Over USB, "printed" means the spooler accepted the whole ticket: a printer that is off or out of paper holds the job in the Windows queue rather than failing it. *(amended 2026-10-02; USB added 2026-11-03 — the restaurant's Xprinter XP-Q80B on a USB cable)*
 - **NFR-I2:** A printer timeout or connection failure is retried automatically. Staff see **queued and retrying** while it recovers and **stopped** once the attempts are exhausted; a dead-lettered job remains in the queue, recoverable. A failed ticket print is never silently dropped (amended 2026-10-02)
 - **NFR-I3:** Software updates are delivered via Watchtower image polling from GHCR and applied without interrupting active service (zero-downtime via docker-rollout + health check gate)
 - **NFR-I4:** Tailscale VPN integration allows Owner dashboard access from any internet-connected device without requiring firewall rule changes or public port exposure at the restaurant

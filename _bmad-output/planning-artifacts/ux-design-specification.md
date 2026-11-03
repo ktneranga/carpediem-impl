@@ -452,14 +452,14 @@ Full-screen green — *"Order Sent · Kitchen (2) · Bar (3)"* — persists 2 se
 3. Pre-send confirmation shows new items only + "Round 2" label
 4. On send: Round ticket dispatched, items added to existing bill
 
-*Kitchen ticket header:* `Table 7 · Round 2`
+*Kitchen ticket header:* `KOT #042 · Table 7`, then `Round 2 · 02 Nov 2026 7:42 PM` — see "Order numbers & tickets" below
 
 #### Flow B — Correct Order *(wrong item sent)*
 
 1. Tap active table → **"Correct Order"**
 2. See sent order — tap the wrong item to flag it, select the replacement
 3. Pre-send confirmation shows delta prominently, full updated order below
-4. On send: CORRECTION ticket dispatched with same order number
+4. On send: CORRECTION ticket dispatched with the same order number (`#042`, FR68 — a correction never takes a new number)
 
 *Kitchen ticket format:*
 ```
@@ -1253,3 +1253,31 @@ Screen reader testing (NVDA/JAWS) is not required for waiter and kitchen context
 - **Order screen** — the One bill / Separate bills segmented switch (22); bar tabs drop the switch and the seat row.
 - **Floor** — Bar zone after Rooftop with nicknamed tabs; Drinks pill on table menus.
 - **Login** — PIN pad on the grey, no card (37).
+
+## Order numbers & tickets (2026-11-03)
+
+*(sprint-change-proposal-2026-11-03.md)* Where the order number shows — always `#042` (today's number) unless noted:
+
+- **Table card** — under the elapsed time, top-right; small and muted, the timer stays primary. Screen readers hear "order #042".
+- **Bar tab row** — under the tab name: `#042`, or `#042 · Still open? Check`.
+- **Order screen** — first item in the context line.
+- **Bill screen** — subtitle: `#042 · 3 items`.
+- **Past orders / reports** (Epic 9, Story 7.2) — the permanent `20261102-042`, since `#042` repeats every day.
+
+**Date in the app** — staff badge, top bar: `Mon 2 Nov · 7:42 PM`. No separate date widget.
+
+**Ticket layout** (KOT / KOT-P / BOT — one ticket per station):
+
+```
+KOT #042                  ← double size
+Table 7
+Round 2    02 Nov 2026  7:42 PM
+SERVE WITH: KOT-P + BOT   ← bold; only when the round went to other stations
+--------------------------------
+Seat 1
+  1 x Fried Rice
+--------------------------------
+Order 20261102-042
+```
+
+SERVE WITH names the other stations only, never their items, to save paper (Teran). The stations match plates by the `#042`.

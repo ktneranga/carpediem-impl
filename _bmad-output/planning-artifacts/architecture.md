@@ -335,9 +335,9 @@ port 9100 acknowledges nothing about printing. A printer that accepts the bytes 
 indistinguishable from one that prints them. Logged in `deferred-work.md`; the answer, if it is ever
 needed, is `DLE EOT` real-time status.
 
-**Delivery is a seam.** `TicketTransport` has one implementation that writes ESC/POS over TCP and one
-that logs (used when no printer is configured — every development machine). Per-station printers and the
-USB path arrive with Story 10.3.
+**Delivery is a seam.** `TicketTransport` has three implementations: ESC/POS over TCP, USB (2026-11-03,
+see Amendments below), and one that logs (no printer configured — every development machine).
+Per-station printers and `connection_mode` arrive with Story 10.3.
 
 **Schema** (migrations 0016 and 0017):
 
@@ -1241,3 +1241,39 @@ pnpm create next-app@latest carpe-diem-rms --typescript --tailwind --eslint --ap
 - **Bar tabs** (0026): `order_sessions.tab_label`, staff-only. `kind` stays `counter`.
 - **Consolidated bills are identified by `bills.type`**, never by a null seat — a split bill has no seat either.
 - **Bill mode:** switching to One bill moves nothing (D2 of 2026-10-16 reversed); `setBillMode` only writes the column.
+
+---
+
+## Amendments — Order numbers & USB printing, 2026-11-03
+
+*(sprint-change-proposal-2026-11-03.md)*
+
+### Order numbers (FR68) — migration 0032
+
+- `order_sessions.business_date` (date) + `daily_number` (int), NOT NULL, unique on
+  (tenant_id, business_date, daily_number).
+- Assigned by the DATABASE, never the app: BEFORE INSERT trigger `assign_order_number()` takes the
+  next value from `order_number_counters` (PK tenant_id + business_date) via
+  `INSERT … ON CONFLICT DO UPDATE … RETURNING`. The counter row's lock serialises concurrent opens —
+  no gaps, no duplicates; a rolled-back open returns its number. Any value the caller sends is overwritten.
+- Business date = (opened_at in tenant timezone − `tenants.business_day_start_hour`)::date.
+  Default 4 (CHECK 0–23): 1 AM–3:59 AM belongs to last night's service.
+- Immutable: BEFORE UPDATE trigger `refuse_order_number_change()`.
+- Display lives in `src/lib/order-number.ts` only: `dailyOrderLabel` → `#042`,
+  `orderReference` → `20261102-042`. Nothing else formats them.
+- `TableStatusChangedPayload.dailyNumber: number | null` is REQUIRED — every emit site sends it
+  (null when the table has no session), because the grid patches its cache.
+
+### USB printing — `src/server/print/usb-transport.ts`
+
+- `resolveTransport` order, read at delivery time: `PRINTER_USB_NAME` → USB; else `PRINTER_IP` → TCP;
+  else null transport. If both are set, USB wins.
+- Windows: PowerShell + inline C# winspool (OpenPrinter / StartDocPrinter "RAW" / WritePrinter);
+  printer name and temp ticket file passed by env vars, never interpolated into the script; 20 s timeout.
+  Linux: a `/dev/...` path is written directly.
+- "Printed" for USB means the spooler accepted the job — weaker than TCP, same caveat as above.
+
+### Ticket payload — additive, all optional
+
+- `alsoFor?`, `dailyNumber?`, `businessDate?` on `TicketPayload`. Optional on purpose: jobs queued
+  before the change still print, just without the new lines.
