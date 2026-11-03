@@ -622,6 +622,7 @@ export function OrderScreen({
   const {
     lines,
     addLine,
+    editLine,
     removeLine,
     setQuantity,
     reassignLine,
@@ -638,8 +639,13 @@ export function OrderScreen({
    * retitled the open sheet to another guest — and "Add to Order" staged the
    * dish onto them. If the captured seat disappears now, the sheet closes,
    * because `sheetSeat` below is derived and becomes null.
+   *
+   * `lineId` is set when the sheet was opened from a NOT-SENT line to change
+   * it (Teran, 2026-11-03) rather than from the menu to add a dish.
    */
-  const [sheet, setSheet] = useState<{ item: MenuItemRow; seatId: string } | null>(null)
+  const [sheet, setSheet] = useState<{ item: MenuItemRow; seatId: string; lineId?: string } | null>(
+    null,
+  )
 
   /** Clear asks first when there is more than one line to lose. */
   const [confirmingClear, setConfirmingClear] = useState(false)
@@ -759,6 +765,26 @@ export function OrderScreen({
     }
   }
 
+  // The lines the options sheet can reopen: a dish still on the menu, on a
+  // live, unbilled seat. A changed price or option is fine — the sheet shows
+  // the live ones, and saving is the repair.
+  const editableLines = new Set(
+    lines
+      .filter((line) => {
+        if (isCustomStaged(line) || !menuItemsById.get(line.menuItemId)?.available) return false
+        const problem = stagedProblems.get(line.lineId)?.kind
+        return problem !== 'seat-gone' && problem !== 'seat-billed'
+      })
+      .map((line) => line.lineId),
+  )
+
+  function openLineEditor(lineId: string) {
+    const line = lines.find((candidate) => candidate.lineId === lineId)
+    const item = line ? menuItemsById.get(line.menuItemId) : undefined
+    if (!line || !item) return
+    setSheet({ item, seatId: line.seatSlotId, lineId })
+  }
+
   function seatName(seat: SeatSlot): string {
     return seat.seatNote ?? seat.seatLabel
   }
@@ -787,6 +813,9 @@ export function OrderScreen({
   }
 
   const sheetSeat = sheet ? (seats.find((seat) => seat.id === sheet.seatId) ?? null) : null
+  // The line being changed. If it was sent or removed (another tablet) while
+  // the sheet was up, the sheet closes rather than saving onto nothing.
+  const sheetLine = sheet?.lineId ? (lines.find((line) => line.lineId === sheet.lineId) ?? null) : null
 
   // ── The custom-charge sheet (Story 4.9) ───────────────────────────────────
   // Holds the SEAT it was opened for, like the options sheet, so a seat change
@@ -1672,6 +1701,8 @@ export function OrderScreen({
               onSetQuantity={setQuantity}
               onReassign={(lineId, seat) => reassignLine(lineId, seat.id, seatName(seat))}
               onAcceptPrice={acceptPrice}
+              editable={editableLines}
+              onEdit={openLineEditor}
             />
 
             {notice ? (
@@ -1738,17 +1769,30 @@ export function OrderScreen({
         </aside>
       </div>
 
-      {sheet && sheetSeat ? (
+      {sheet && sheetSeat && (!sheet.lineId || sheetLine) ? (
         <ModifierSheet
-          // Keyed so a different dish or seat is a fresh sheet, never a reused
-          // one with the previous quantity and note still in it.
-          key={`${sheet.item.id}:${sheetSeat.id}`}
+          // Keyed so a different dish, seat or line is a fresh sheet, never a
+          // reused one with the previous quantity and note still in it.
+          key={`${sheet.item.id}:${sheetSeat.id}:${sheet.lineId ?? 'new'}`}
           item={sheet.item}
           // Where the waiter never chose a seat, naming one is noise.
           seatLabel={usesSeats ? seatName(sheetSeat) : null}
+          editing={
+            sheetLine
+              ? {
+                  quantity: sheetLine.quantity,
+                  modifierText: sheetLine.modifierText,
+                  optionIds: sheetLine.optionIds,
+                }
+              : undefined
+          }
           onCancel={() => setSheet(null)}
           onAdd={({ quantity: lineQuantity, modifierText, optionIds }) => {
-            stageItem(sheet.item, sheetSeat, { quantity: lineQuantity, modifierText, optionIds })
+            if (sheetLine) {
+              editLine(sheetLine.lineId, sheet.item, { quantity: lineQuantity, modifierText, optionIds })
+            } else {
+              stageItem(sheet.item, sheetSeat, { quantity: lineQuantity, modifierText, optionIds })
+            }
             setSheet(null)
           }}
         />

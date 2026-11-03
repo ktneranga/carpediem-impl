@@ -49,6 +49,7 @@ import { MAX_MODIFIER_TEXT } from '@/types/orders'
 export function ModifierSheet({
   item,
   seatLabel,
+  editing,
   onCancel,
   onAdd,
 }: {
@@ -58,6 +59,12 @@ export function ModifierSheet({
    * cards. Null where seats are not used (outside the Tables zone).
    */
   seatLabel: string | null
+  /**
+   * A staged line being changed rather than a new dish (Teran, 2026-11-03):
+   * the sheet opens on its quantity, note and options, and the commit SAVES
+   * that line instead of adding another.
+   */
+  editing?: { quantity: number; modifierText: string; optionIds: string[] }
   onCancel: () => void
   onAdd: (input: { quantity: number; modifierText: string; optionIds: string[] }) => void
 }) {
@@ -66,14 +73,22 @@ export function ModifierSheet({
   /** Where the current pointer press began — see the backdrop click below. */
   const pressStartedOnBackdrop = useRef(false)
 
-  const [quantity, setQuantity] = useState(1)
-  const [modifierText, setModifierText] = useState('')
+  const [quantity, setQuantity] = useState(editing?.quantity ?? 1)
+  const [modifierText, setModifierText] = useState(editing?.modifierText ?? '')
 
   // Required groups first (`ux:427`), each keeping the owner's order within.
   const groups = [...(item.modifierGroups ?? [])].sort(
     (a, b) => Number(b.required) - Number(a.required),
   )
-  const [optionIds, setOptionIds] = useState<string[]>(() => defaultOptionIds(groups))
+  // An edited line keeps only the choices the menu still offers: one switched
+  // off since would sit invisibly in the selection and be refused on send.
+  const [optionIds, setOptionIds] = useState<string[]>(() => {
+    if (!editing) return defaultOptionIds(groups)
+    const live = new Set(
+      groups.flatMap((group) => group.options).filter((option) => option.available).map((option) => option.id),
+    )
+    return editing.optionIds.filter((id) => live.has(id))
+  })
   const chosen = chosenOptions(groups, optionIds)
   const unitPrice = unitPriceFor(item.pricePaisa, chosen)
   const problem = validateSelection(groups, optionIds)
@@ -156,7 +171,7 @@ export function ModifierSheet({
   return (
     <dialog
       ref={dialogRef}
-      aria-label={`Add ${item.name}`}
+      aria-label={`${editing ? 'Change' : 'Add'} ${item.name}`}
       // Escape. `preventDefault` keeps the browser from closing the element on
       // its own; the parent unmounts it instead, so state stays in one place.
       onCancel={(event) => {
@@ -223,7 +238,7 @@ export function ModifierSheet({
           <button
             type="button"
             onClick={onCancel}
-            aria-label="Close without adding"
+            aria-label={editing ? 'Close without saving' : 'Close without adding'}
             className={cn(
               'flex size-touch-waiter shrink-0 items-center justify-center rounded-waiter',
               'border border-slate-200 bg-white text-slate-600',
@@ -437,7 +452,7 @@ export function ModifierSheet({
           disabled={problem !== null}
           className={cn(commitButtonClass, 'w-full disabled:opacity-40')}
         >
-          Add to Order · {lineTotal}
+          {editing ? 'Save' : 'Add to Order'} · {lineTotal}
         </button>
       </form>
     </dialog>

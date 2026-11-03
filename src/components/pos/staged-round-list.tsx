@@ -1,6 +1,6 @@
 'use client'
 
-import { AlertTriangle, Minus, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, Minus, Pencil, Plus, Trash2 } from 'lucide-react'
 import type { SeatSlot } from '@/components/pos/seat-selector'
 import type { StagedLine } from '@/components/pos/use-staged-round'
 import { MAX_LINE_QUANTITY } from '@/types/orders'
@@ -64,6 +64,13 @@ export type StagedLineProblem =
  * A flat list, ordered by seat, each row naming its seat — Teran's design. The
  * seat cards above carry the per-seat counts a heading would have.
  *
+ * ── Tap the dish to change it ────────────────────────────────────────────────
+ * Teran, 2026-11-03: a note added after the dish was tapped went in as a
+ * second dish, because the only way to a note was the menu card. The name and
+ * its details now open the same sheet on THIS line; Save changes it in place.
+ * Only where the sheet can price it — not a custom charge, and not a line
+ * whose seat or dish is gone (those have their own repair below).
+ *
  * ── Nothing here has been written anywhere ───────────────────────────────────
  * Remove and the stepper are free, instant and local. Story 4.5's send is the
  * commit point.
@@ -77,6 +84,8 @@ export function StagedRoundList({
   onSetQuantity,
   onReassign,
   onAcceptPrice,
+  editable,
+  onEdit,
 }: {
   /** False outside the Tables zone: every line is on Seat 1, so naming it is noise. */
   showSeats?: boolean
@@ -93,6 +102,9 @@ export function StagedRoundList({
    * stamped one price on a plain and an extra-shot Mojito alike.
    */
   onAcceptPrice: (lineId: string, pricePaisa: number) => void
+  /** The lines `onEdit` can open — see "Tap the dish to change it". */
+  editable: Set<string>
+  onEdit: (lineId: string) => void
 }) {
   if (lines.length === 0) {
     return (
@@ -153,8 +165,40 @@ export function StagedRoundList({
               )}
             >
               <div className="flex items-center gap-sp-2">
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <p className="flex items-center gap-sp-2 text-fs-16 font-bold text-slate-900">
+                {/* Its own button, the stepper's size (Teran, 2026-11-03): a
+                    note added after the tap is an everyday action mid-service,
+                    and a faint pencil beside the name was missed. On the LEFT,
+                    away from the stepper — beside it, a near-miss landed on the
+                    bin and took the dish off. Tapping the name does the same. */}
+                {editable.has(line.lineId) ? (
+                  <button
+                    type="button"
+                    onClick={() => onEdit(line.lineId)}
+                    aria-label={`Change ${line.name}: note, options or quantity`}
+                    className={cn(
+                      stepperButton,
+                      'shrink-0 border border-slate-200 bg-white text-brand-800',
+                    )}
+                  >
+                    <Pencil aria-hidden="true" strokeWidth={2.5} className="size-4" />
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  disabled={!editable.has(line.lineId)}
+                  onClick={() => onEdit(line.lineId)}
+                  // The pencil beside the stepper is the named control; this
+                  // larger target repeats it, so it stays out of the tab order.
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  className={cn(
+                    'flex min-w-0 flex-1 flex-col rounded-control text-left',
+                    'transition-transform duration-80 ease-standard enabled:active:scale-[0.99]',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                  )}
+                >
+                  <span className="flex items-center gap-sp-2 text-fs-16 font-bold text-slate-900">
                     <span className="truncate">{line.name}</span>
                     {/* A typed charge, not a dish (Story 4.9) — it goes to no
                         station, so the waiter should not look for it on a
@@ -164,12 +208,12 @@ export function StagedRoundList({
                         Custom
                       </span>
                     ) : null}
-                  </p>
+                  </span>
                   {/* Seat, the kitchen note and the line total on one small
                       line. The note is here so it can be checked before it
                       goes; it wraps rather than truncates, because a clipped
                       "no nuts — sev…" is worse than a taller row. */}
-                  <p className="text-fs-12 font-semibold text-slate-600">
+                  <span className="text-fs-12 font-semibold text-slate-600">
                     {details.map((detail, index) => (
                       <span key={index}>
                         {index > 0 ? ' · ' : ''}
@@ -178,8 +222,8 @@ export function StagedRoundList({
                         </span>
                       </span>
                     ))}
-                  </p>
-                </div>
+                  </span>
+                </button>
 
                 <div className="flex shrink-0 items-center rounded-control border border-slate-200 bg-white">
                   <button

@@ -525,6 +525,76 @@ export function useStagedRound(sessionId: string) {
     )
   }
 
+  /**
+   * Re-opens a staged line in the options sheet and saves it IN PLACE (Teran,
+   * 2026-11-03). Adding "extra spicy" to a dish already in the round used to
+   * mean opening the sheet from the menu card, which staged a SECOND dish —
+   * the kitchen would have cooked two.
+   *
+   * Priced from the live menu, as the sheet showed it — so saving also clears
+   * a price-changed or options-changed flag. If the edit makes the line the
+   * same as another on its seat (same dish, note and options), the two become
+   * one line, exactly as `addLine` would have made them.
+   */
+  function editLine(
+    lineId: string,
+    item: MenuItemRow,
+    { quantity, modifierText, optionIds }: { quantity: number; modifierText: string; optionIds: string[] },
+  ): void {
+    const current = snapshot(sessionId)
+    const target = current.find((line) => line.lineId === lineId)
+    if (!target) return
+    const note = modifierText.trim()
+    const amount = Math.min(Math.max(1, Math.trunc(quantity)), MAX_LINE_QUANTITY)
+    const groups = item.modifierGroups ?? []
+    const ids = sortIds(optionIds)
+    const chosen = chosenOptions(groups, ids)
+    const twin = current.find(
+      (line) =>
+        line.lineId !== lineId &&
+        line.menuItemId === item.id &&
+        line.seatSlotId === target.seatSlotId &&
+        line.modifierText === note &&
+        line.optionIds.join(',') === ids.join(','),
+    )
+
+    if (twin) {
+      write(
+        sessionId,
+        current
+          .filter((line) => line.lineId !== lineId)
+          .map((line) =>
+            line.lineId === twin.lineId
+              ? { ...line, quantity: Math.min(line.quantity + amount, MAX_LINE_QUANTITY) }
+              : line,
+          ),
+      )
+      return
+    }
+
+    write(
+      sessionId,
+      current.map((line) =>
+        line.lineId === lineId
+          ? {
+              ...line,
+              name: item.name,
+              pricePaisa: unitPriceFor(item.pricePaisa, chosen),
+              quantity: amount,
+              modifierText: note,
+              optionIds: ids,
+              options: chosen.map(({ id, name, priceDeltaPaisa, count }) => ({
+                id,
+                name,
+                priceDeltaPaisa,
+                count,
+              })),
+            }
+          : line,
+      ),
+    )
+  }
+
   /** Moves a line to a live seat — the repair for AC-7's vanished-seat case. */
   function reassignLine(lineId: string, seatSlotId: string, seatLabel: string): void {
     write(
@@ -562,6 +632,7 @@ export function useStagedRound(sessionId: string) {
   return {
     lines,
     addLine,
+    editLine,
     removeLine,
     setQuantity,
     reassignLine,
