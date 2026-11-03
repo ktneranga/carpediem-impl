@@ -31,6 +31,7 @@ import { MAX_CUSTOM_CHARGE_PAISA, MAX_CUSTOM_NAME, MAX_LINE_QUANTITY } from '@/t
 export function CustomChargeSheet({
   seatLabel,
   busy = false,
+  locked = false,
   error = null,
   onCancel,
   onAdd,
@@ -39,6 +40,12 @@ export function CustomChargeSheet({
   seatLabel: string | null
   /** Saving: Add is disabled so a second tap cannot charge twice. */
   busy?: boolean
+  /**
+   * The last save may have committed (no response): the fields freeze so Add
+   * resends THIS charge under the same send id — a replay, never an edited
+   * charge answered with the first one's replay.
+   */
+  locked?: boolean
   /** Why the last save failed, in words — the sheet stays open to retry. */
   error?: string | null
   onCancel: () => void
@@ -56,6 +63,7 @@ export function CustomChargeSheet({
   const nameOk = trimmedName.length >= 1 && trimmedName.length <= MAX_CUSTOM_NAME
   const priceOk = pricePaisa !== null
   const ready = nameOk && priceOk
+  const frozen = busy || locked
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -72,7 +80,7 @@ export function CustomChargeSheet({
   const priceProblem =
     priceText.trim() === '' || priceOk
       ? null
-      : `Enter a price from LKR 1 to ${lkrFromPaisa(MAX_CUSTOM_CHARGE_PAISA)}.`
+      : `Enter a price above LKR 0, up to ${lkrFromPaisa(MAX_CUSTOM_CHARGE_PAISA)}.`
 
   const fieldClass = cn(
     'h-touch-waiter rounded-control border border-slate-200 bg-white px-sp-3',
@@ -94,7 +102,9 @@ export function CustomChargeSheet({
       aria-label="Add a custom charge"
       onCancel={(event) => {
         event.preventDefault()
-        onCancel()
+        // Not while saving: closing then hides a charge that still lands, and
+        // the owner adds it again.
+        if (!busy) onCancel()
       }}
       onPointerDown={(event) => {
         pressStartedOnBackdrop.current = event.target === event.currentTarget
@@ -102,7 +112,7 @@ export function CustomChargeSheet({
       onClick={(event) => {
         // Both ends of the press on the backdrop, so a drag that starts in a
         // field and ends past the edge does not throw the typing away.
-        if (event.target === event.currentTarget && pressStartedOnBackdrop.current) onCancel()
+        if (event.target === event.currentTarget && pressStartedOnBackdrop.current && !busy) onCancel()
         pressStartedOnBackdrop.current = false
       }}
       className={cn(
@@ -135,6 +145,7 @@ export function CustomChargeSheet({
           <button
             type="button"
             onClick={onCancel}
+            disabled={busy}
             aria-label="Close without adding"
             className={cn(
               'flex size-touch-waiter shrink-0 items-center justify-center rounded-waiter',
@@ -158,6 +169,7 @@ export function CustomChargeSheet({
             value={name}
             maxLength={MAX_CUSTOM_NAME}
             placeholder="Corkage, broken glass…"
+            readOnly={frozen}
             onChange={(event) => setName(event.target.value)}
             className={fieldClass}
           />
@@ -173,6 +185,7 @@ export function CustomChargeSheet({
             value={priceText}
             placeholder="1500"
             aria-invalid={priceProblem !== null}
+            readOnly={frozen}
             onChange={(event) => setPriceText(event.target.value)}
             className={cn(fieldClass, 'tabular-nums')}
           />
@@ -190,7 +203,7 @@ export function CustomChargeSheet({
           <div className="flex items-center gap-sp-3">
             <button
               type="button"
-              disabled={quantity <= 1}
+              disabled={frozen || quantity <= 1}
               onClick={() => setQuantity((current) => Math.max(1, current - 1))}
               aria-label="One fewer"
               className={stepperClass}
@@ -205,7 +218,7 @@ export function CustomChargeSheet({
             </output>
             <button
               type="button"
-              disabled={quantity >= MAX_LINE_QUANTITY}
+              disabled={frozen || quantity >= MAX_LINE_QUANTITY}
               onClick={() => setQuantity((current) => Math.min(MAX_LINE_QUANTITY, current + 1))}
               aria-label="One more"
               className={stepperClass}

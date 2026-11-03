@@ -57,8 +57,8 @@ export default async function OrderPage({
 
   const headersList = await headers()
   const staffId = headersList.get('x-staff-id')
-  // Set by the proxy from the session. Decides whether the More menu offers a
-  // custom charge (Story 4.9); the send route decides again.
+  // Set by the proxy from the session. Decides whether the + beside the total
+  // offers a custom charge (Story 4.9); the send route decides again.
   const staffRole = headersList.get('x-staff-role') as StaffRole | null
 
   // LEFT joins from the session outward. A counter sale returns exactly one row

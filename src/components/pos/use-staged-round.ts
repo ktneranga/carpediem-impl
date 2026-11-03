@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from 'react'
 import type { MenuItemRow } from '@/app/api/menu/route'
 import { chosenOptions, defaultOptionIds, sortIds, unitPriceFor } from '@/lib/options'
-import { MAX_LINE_QUANTITY } from '@/types/orders'
+import { MAX_CUSTOM_CHARGE_PAISA, MAX_CUSTOM_NAME, MAX_LINE_QUANTITY } from '@/types/orders'
 
 /**
  * One line in the staged round.
@@ -160,12 +160,17 @@ function readStorage(sessionId: string): StagedLine[] {
       const customName =
         c.customName === undefined
           ? undefined
-          : typeof c.customName === 'string' && c.customName.trim() !== ''
+          : typeof c.customName === 'string' &&
+              c.customName.trim() !== '' &&
+              c.customName.trim().length <= MAX_CUSTOM_NAME
             ? c.customName
             : null
       if (customName === null) continue
       if (customName !== undefined) {
-        if ((c.pricePaisa as number) < 1 || c.productionDestination !== null) continue
+        // The server's own limits: a line outside them would 400 the WHOLE
+        // round, naming no line, and hold every dish with it.
+        const price = c.pricePaisa as number
+        if (price < 1 || price > MAX_CUSTOM_CHARGE_PAISA || c.productionDestination !== null) continue
       } else if (
         typeof c.productionDestination !== 'string' ||
         !DESTINATIONS.includes(c.productionDestination)

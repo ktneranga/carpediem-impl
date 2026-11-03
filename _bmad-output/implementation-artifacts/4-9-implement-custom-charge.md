@@ -1,6 +1,6 @@
 # Story 4.9: Implement Custom Charge
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -174,16 +174,16 @@ so that charges the menu cannot express still reach the bill, with a record of w
 ### Review Findings
 
 - [x] [Review][Decision] A charge-only round takes a kitchen round number — a corkage between food rounds makes it Round 2, so the kitchen's tickets read Round 1 then Round 3. **Decided (Teran, 2026-11-03): keep it.** Charges are rare and usually come after the last food round; renumbering only printed rounds would make the paper disagree with the tablet's history; the order number (#042) ties tickets to an order.
-- [ ] [Review][Patch] (HIGH) "Only the owner can add a custom charge" never shows — `sendRound` throws `ForbiddenError` on any 403 before reading the code, so the sheet says "check the connection" and the staged send says "Your role cannot send orders" [src/components/pos/order-screen.tsx:270]
-- [ ] [Review][Patch] (MED) A retry after editing the price or name replays the FIRST charge — the send id is minted at open; if the first Add committed but the response was lost, the edited retry returns `replayed` and the sheet closes as if the new values were saved. Lock the fields after an uncertain failure (retry sends the same charge) [src/components/pos/order-screen.tsx:~800]
-- [ ] [Review][Patch] (MED) Cancel / Escape / backdrop still close the sheet while a save is in flight; reopening calls `chargeMutation.reset()` mid-flight (re-enables Add) and the first save's `onSuccess` then closes the new sheet — a double charge path [src/components/pos/custom-charge-sheet.tsx; order-screen.tsx openCustomCharge]
-- [ ] [Review][Patch] Wrong refusal wording in the sheet — `SEAT_ALREADY_BILLED` says the whole order is billed; `SEAT_NOT_FOUND` falls through to "A dish is on a seat…" [src/components/pos/order-screen.tsx:~840]
-- [ ] [Review][Patch] `SessionGoneError` in the sheet does not mark the order closed (`setClosedDuringSend`), so the screen stays live on a closed order [src/components/pos/order-screen.tsx:~847]
-- [ ] [Review][Patch] The + icon still shows on a fully billed order; the owner types a whole charge before being refused [src/components/pos/order-screen.tsx onAddCharge]
-- [ ] [Review][Patch] Price message says "from LKR 1" but LKR 0.01 is accepted (AC: > 0) — reword [src/components/pos/custom-charge-sheet.tsx:~72]
-- [ ] [Review][Patch] Legacy staged custom lines: `readStorage` does not check `MAX_CUSTOM_NAME` / `MAX_CUSTOM_CHARGE_PAISA`, so a bad stored line 400s the whole round with no line named [src/components/pos/use-staged-round.ts]
-- [ ] [Review][Patch] Verify case 9 passes on any non-2xx close (403/404/500); assert the walkout refusal code [src/server/services/verify-custom-charge.ts]
-- [ ] [Review][Patch] Stale "More menu" wording in comments (`orders/[sessionId]/page.tsx`, `OrderScreenProps.canAddCustomCharge`) and in this story's File List / Completion Notes (lists `order-action-strip.tsx`; omits `order-summary.tsx`, `round-history.tsx`)
+- [x] [Review][Patch] (HIGH) "Only the owner can add a custom charge" never shows — `sendRound` throws `ForbiddenError` on any 403 before reading the code, so the sheet says "check the connection" and the staged send says "Your role cannot send orders" [src/components/pos/order-screen.tsx:270]
+- [x] [Review][Patch] (MED) A retry after editing the price or name replays the FIRST charge — the send id is minted at open; if the first Add committed but the response was lost, the edited retry returns `replayed` and the sheet closes as if the new values were saved. Lock the fields after an uncertain failure (retry sends the same charge) [src/components/pos/order-screen.tsx:~800]
+- [x] [Review][Patch] (MED) Cancel / Escape / backdrop still close the sheet while a save is in flight; reopening calls `chargeMutation.reset()` mid-flight (re-enables Add) and the first save's `onSuccess` then closes the new sheet — a double charge path [src/components/pos/custom-charge-sheet.tsx; order-screen.tsx openCustomCharge]
+- [x] [Review][Patch] Wrong refusal wording in the sheet — `SEAT_ALREADY_BILLED` says the whole order is billed; `SEAT_NOT_FOUND` falls through to "A dish is on a seat…" [src/components/pos/order-screen.tsx:~840]
+- [x] [Review][Patch] `SessionGoneError` in the sheet does not mark the order closed (`setClosedDuringSend`), so the screen stays live on a closed order [src/components/pos/order-screen.tsx:~847]
+- [x] [Review][Patch] The + icon still shows on a fully billed order; the owner types a whole charge before being refused [src/components/pos/order-screen.tsx onAddCharge]
+- [x] [Review][Patch] Price message says "from LKR 1" but LKR 0.01 is accepted (AC: > 0) — reword [src/components/pos/custom-charge-sheet.tsx:~72]
+- [x] [Review][Patch] Legacy staged custom lines: `readStorage` does not check `MAX_CUSTOM_NAME` / `MAX_CUSTOM_CHARGE_PAISA`, so a bad stored line 400s the whole round with no line named [src/components/pos/use-staged-round.ts]
+- [x] [Review][Patch] Verify case 9 passes on any non-2xx close (403/404/500); assert the walkout refusal code [src/server/services/verify-custom-charge.ts]
+- [x] [Review][Patch] Stale "More menu" wording in comments (`orders/[sessionId]/page.tsx`, `OrderScreenProps.canAddCustomCharge`) and in this story's File List / Completion Notes (lists `order-action-strip.tsx`; omits `order-summary.tsx`, `round-history.tsx`)
 
 ## Dev Notes
 
@@ -328,11 +328,11 @@ Claude Opus 5.5 (claude-opus-5-5)
 - Ultimate context engine analysis completed - comprehensive developer guide created.
 - A custom charge is one `ITEM_ADDED` row with `menu_item_id NULL` and the new `custom_name` (migration 0031, plus CHECK `order_events_item_names_one_source`). The row is the audit: staff, time, price.
 - Wire: `SubmitRoundLine = SubmitMenuLine | SubmitCustomLine` (`isCustomLine`); the route parses `z.union` of two `.strict()` schemas; the custom name is sanitised (control characters) before being measured; price 1..10,000,000 paisa.
-- Permission: `canAddCustomCharge(role)` in `src/server/auth/permissions.ts` (owner until Story 10.6); the route returns 403 `CUSTOM_CHARGE_NOT_ALLOWED` before writing; the order page passes the same answer to hide the More-menu item.
+- Permission: `canAddCustomCharge(role)` in `src/server/auth/permissions.ts` (owner until Story 10.6); the route returns 403 `CUSTOM_CHARGE_NOT_ALLOWED` before writing; the order page passes the same answer to hide the + beside the total.
 - `submitRound`: menu read and options only for menu lines (no read at all for a custom-only round); custom lines priced at their typed value; skipped in tickets; print-job insert guarded for an empty list.
 - Readers: history and bill name a line `customName ?? itemName`; all other `ITEM_ADDED` readers only count and needed no change (checked each).
-- Tablet: `StagedLine.customName` (tolerant read, no key bump), `addCustomLine`, `isCustomStaged`; custom lines skip the menu stale check and the card badges; a "Custom" tag on the staged row; new `CustomChargeSheet` (name, LKR price with cents, quantity, live total) from the More menu; 403 shows "only the owner can add a custom charge".
-- Not checked in a browser: the sheet and the More-menu item were type-checked and linted, not clicked through.
+- Tablet: `StagedLine.customName` (tolerant read, no key bump), `addCustomLine`, `isCustomStaged`; custom lines skip the menu stale check and the card badges; a "Custom" tag on the staged row; new `CustomChargeSheet` (name, LKR price with cents, quantity, live total), opened from the + beside "Table total" (first shipped as a More-menu item, moved 2026-11-02); 403 shows "only the owner can add a custom charge".
+- Not checked in a browser at first: the sheet and the More-menu item were type-checked and linted, not clicked through.
 
 ### File List
 
@@ -350,7 +350,8 @@ Claude Opus 5.5 (claude-opus-5-5)
 - src/app/orders/[sessionId]/page.tsx
 - src/components/pos/use-staged-round.ts
 - src/components/pos/order-screen.tsx
-- src/components/pos/order-action-strip.tsx
+- src/components/pos/order-summary.tsx
+- src/components/pos/round-history.tsx
 - src/components/pos/staged-round-list.tsx
 - src/components/pos/custom-charge-sheet.tsx (new)
 - src/server/services/verify-custom-charge.ts (new)
@@ -360,3 +361,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-11-01: Story 4.9 implemented — custom charges (owner only until 10.6): schema + CHECK, send route and service, readers, staged round, sheet and More-menu item, verification (21/21). Status → review.
 - 2026-11-02: Placement changed (Teran): a "+ Custom charge" button in the order column above the totals (owner only) replaces the More-menu item. Add SAVES the charge immediately as its own small round (own send id, no staging, no Send, no ticket); errors stay in the sheet. History titles such a round "Custom charge · added <time>" (`SubmittedItemRow.custom`). Staging of custom lines removed; reading one already staged is kept. verify-custom-charge 22/22; owner sees the button, waiter does not (page render checked).
 - 2026-11-02: The full-width button became a small + icon beside "Table total" (`OrderSummary.onAddCharge`, 44px target, labelled "Add custom charge") — rare and owner-only, so it takes no row (Teran).
+- 2026-11-03: Code review — 1 decision (kept: charge-only rounds take a round number), 10 patches applied: 403 code reaches the screen, sheet locks after an uncertain save and cannot close mid-save, clearer seat refusals, closed-order handling, + hidden once billed, price wording, staged-read caps, strict walkout check, stale wording. verify-custom-charge 22/22; tsc and lint clean. Status → done.

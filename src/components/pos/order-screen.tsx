@@ -149,7 +149,7 @@ export type OrderScreenProps = {
   initialHasUnbilled: boolean
   /**
    * Whether this person may add a custom charge (Story 4.9) — decided on the
-   * server by `canAddCustomCharge` and passed down. Hides the More-menu item;
+   * server by `canAddCustomCharge` and passed down. Hides the + beside the total;
    * the send route decides again.
    */
   canAddCustomCharge?: boolean
@@ -267,9 +267,18 @@ async function sendRound(sessionId: string, body: SubmitRoundRequest): Promise<S
   })
 
   if (response.status === 401) throw new SessionExpiredError('Session expired')
-  if (response.status === 403) throw new ForbiddenError('Role not permitted')
 
   const payload = await response.json().catch(() => null)
+
+  // A 403 that names a custom charge is the route refusing the LINE, not the
+  // role sending orders (Story 4.9) — read the code before the generic 403, or
+  // "only the owner can add a custom charge" never reaches the screen.
+  if (response.status === 403) {
+    if (payload?.error?.code === 'CUSTOM_CHARGE_NOT_ALLOWED') {
+      throw new SendRefusedError(payload.error.code, payload.error.message, payload.error)
+    }
+    throw new ForbiddenError('Role not permitted')
+  }
 
   if (response.ok && payload?.success) return payload.data as SubmitRoundResponse
 
@@ -828,6 +837,10 @@ export function OrderScreen({
     : null
 
   function openCustomCharge() {
+    // A save still in flight owns the mutation: `reset()` would re-enable Add
+    // and its `onSuccess` would then close the NEW sheet. The sheet cannot be
+    // closed while saving, so this is belt and braces.
+    if (chargeMutation.isPending) return
     if (!activeSeat) {
       setSeatNotice('Add a seat before ordering.')
       return
@@ -865,21 +878,39 @@ export function OrderScreen({
     },
     onError: (error) => {
       if (error instanceof SessionExpiredError) window.location.assign(loginUrl())
+      if (error instanceof SessionGoneError) {
+        // Closed on another device — the screen says so, as after a Send.
+        setCustomSheet(null)
+        setClosedDuringSend(true)
+      }
     },
   })
+
+  // A refusal wrote nothing, so the owner may fix the charge and add it again
+  // under the same send id. Anything else — no response, a 500 — may have
+  // committed: the fields lock, so the retry replays THAT charge rather than
+  // silently answering an edited one with the first one's replay.
+  const chargeUncertain =
+    chargeMutation.isError &&
+    !(chargeMutation.error instanceof SendRefusedError) &&
+    !(chargeMutation.error instanceof SessionGoneError) &&
+    !(chargeMutation.error instanceof SessionExpiredError)
 
   const chargeError = !chargeMutation.error
     ? null
     : chargeMutation.error instanceof SendRefusedError
       ? chargeMutation.error.code === 'CUSTOM_CHARGE_NOT_ALLOWED'
         ? 'Only the owner can add a custom charge.'
-        : chargeMutation.error.code === 'SESSION_ALREADY_BILLED' ||
-            chargeMutation.error.code === 'SEAT_ALREADY_BILLED'
+        : chargeMutation.error.code === 'SESSION_ALREADY_BILLED'
           ? 'This order is already billed — nothing more can be added to it.'
-          : chargeMutation.error.message
-      : chargeMutation.error instanceof SessionGoneError
-        ? 'This order is closed.'
-        : 'Not added — check the connection and try again.'
+          : chargeMutation.error.code === 'SEAT_ALREADY_BILLED'
+            ? 'This person’s bill is already made. Close this, choose another seat and add it there.'
+            : chargeMutation.error.code === 'SEAT_NOT_FOUND'
+              ? 'This seat is no longer on the order. Close this, choose a seat and add it there.'
+              : chargeMutation.error.message
+      : chargeMutation.error instanceof ForbiddenError
+        ? 'Your role cannot add to orders.'
+        : 'Not sure it was added — check the connection and tap Add again. It will not be charged twice.'
 
   /**
    * What the bar says about the last send, when it did not go.
@@ -1764,7 +1795,9 @@ export function OrderScreen({
             taxRatePercent={taxRatePercent}
             // A custom charge straight onto the bill, never to a kitchen
             // (Story 4.9) — owner only until Story 10.6.
-            onAddCharge={canAddCustomCharge ? openCustomCharge : undefined}
+            // Not once the order is billed: the server would refuse it, after
+            // the owner had typed the whole charge.
+            onAddCharge={canAddCustomCharge && !hasConsolidatedBill ? openCustomCharge : undefined}
           />
         </aside>
       </div>
@@ -1803,6 +1836,7 @@ export function OrderScreen({
           key={customSheet.sendId}
           seatLabel={usesSeats ? seatName(customSheetSeat) : null}
           busy={chargeMutation.isPending}
+          locked={chargeUncertain}
           error={chargeError}
           onCancel={() => setCustomSheet(null)}
           onAdd={(input) => chargeMutation.mutate(input)}

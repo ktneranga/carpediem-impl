@@ -209,7 +209,9 @@ async function run() {
   const close = await api(owner, `/api/sessions/${sessionId}/close`, {
     method: 'POST', body: JSON.stringify({ reason: 'abandoned' }),
   })
-  check('9 an unpaid custom charge stops a plain close (money is owed)', close.status !== 200 && close.status !== 201,
+  // The walkout refusal itself, not any non-2xx — a 403 or 500 must not pass.
+  check('9 an unpaid custom charge stops a plain close (money is owed)',
+    close.status === 409 && close.body?.error?.code === 'SESSION_HAS_ITEMS',
     `${close.status} ${close.body?.error?.code}`)
 
   // 11 — seat guard: bill seat 2, then a custom line on it
