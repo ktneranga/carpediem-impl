@@ -2107,6 +2107,24 @@ So that I can show a customer exactly who entered each item, in which round, and
 
 ### Story 7.3: Implement Comp Recording & Item Reassignment
 
+> **Amended 2026-11-04 (Teran) — go-live.** These override the criteria below where they differ:
+> - **Where:** comp from the SENT items on the order screen and from the bill screen. The order-history
+>   view (7.1/7.2) is post-launch, so it is not the entry point.
+> - **Comp vs void — one action, told apart by reason.** "Not made" (entered or sent in error) is a
+>   **void**; "Customer complaint", "Quality issue", "Staff error", "Goodwill" are **comps**. Both are
+>   `comp_record` rows with a `kind` (`comp` | `void`); end-of-day (9.5) shows them separately.
+> - **Quantity:** a line of 2× can be comped 1 at a time; `amount` = unit price × quantity comped.
+> - **VOID ticket:** a void prints a short ticket to that item's station on the print queue —
+>   `VOID KOT #042 · Table 5 · 1 × Fried Rice` — so the kitchen stops making it. A comp prints nothing.
+> - **Who:** the check is a PERMISSION (`comp`), not a role. Manager and owner hold it by default. A
+>   waiter without it can still start a comp, and a manager approves it by entering their PIN on the
+>   same device; the record stores both the requesting and the approving staff. After Story 10.6 the
+>   owner can grant `comp` to a trusted waiter, who then needs no approval.
+> - **Paid items:** an item on a settled bill cannot be comped (that is a refund, not planned).
+> - **Mistakes:** a comp is never edited or deleted; it is undone by a reversing record, which needs the
+>   same permission and appears in the audit trail.
+> - **Reassignment** (FR47a, last criteria) is unchanged.
+
 As a manager or owner,
 I want to comp a specific order item with a mandatory reason code,
 So that losses are recorded transparently in the audit trail without altering the original order history.
