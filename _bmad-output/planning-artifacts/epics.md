@@ -2107,7 +2107,10 @@ So that I can show a customer exactly who entered each item, in which round, and
 
 ### Story 7.3: Implement Comp Recording & Item Reassignment
 
-> **Amended 2026-11-04 (Teran) — go-live.** These override the criteria below where they differ:
+> **Moved after launch 2026-11-06 (Teran):** too complex for now. The build is kept in `git stash`
+> ("Story 7.3 comp/void - reverted 2026-11-06"); it was never committed.
+>
+> **Amended 2026-11-04 (Teran).** These override the criteria below where they differ:
 > - **Where:** comp from the SENT items on the order screen and from the bill screen. The order-history
 >   view (7.1/7.2) is post-launch, so it is not the entry point.
 > - **Comp vs void — one action, told apart by reason.** "Not made" (entered or sent in error) is a

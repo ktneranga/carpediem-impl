@@ -393,13 +393,13 @@ All 9 capabilities defined in the Product Scope MVP section are load-bearing —
 *(sprint-change-proposal-2026-11-04.md)* The restaurant is handed the system when these work end to end on site; everything else follows launch.
 
 1. Order entry, routing and printed tickets (built) — reviews of 4.8/4.9 closed.
-2. Void / comp a sent item with a reason (FR47, FR48, Story 7.3).
+2. ~~Void / comp a sent item (FR47, FR48, Story 7.3)~~ — moved after launch 2026-11-06 (Teran). Until then a sent item stays on the bill.
 3. Customer bill printed (FR69, Story 6.6); cash drawer opens on cash payments, no-sale openings audited (FR72, Story 6.7).
 4. Manage area (FR70): menu with prices, options and sold-out (FR56, FR36); staff and PINs (FR58); end-of-day takings by business date (FR50, FR54 subset).
 5. Nightly backup, local plus an off-site copy (NFR-R4).
 6. Installed on site: starts on boot, survives a power cut, Tailscale for the owner, printer and tablets tested at the furthest table (NFR-R6).
 
-After launch: audit timeline views (7.1, 7.2, 7.4), KDS, portion counts, dashboard charts, table/zone editor, per-user permissions, branding, vendor APIs, then Epic 13 (cloud hub and FR71), then Epic 12 (cloud order relay) only if site Wi-Fi proves a problem.
+After launch: comp and void (7.3), audit timeline views (7.1, 7.2, 7.4), KDS, portion counts, dashboard charts, table/zone editor, per-user permissions, branding, vendor APIs, then Epic 13 (cloud hub and FR71), then Epic 12 (cloud order relay) only if site Wi-Fi proves a problem.
 
 ### Post-MVP Roadmap
 
