@@ -780,9 +780,14 @@ export function BillScreen({
         await postJson(`/api/sessions/${sessionId}/bill-print`, {
           items: shareItems(payable.lines),
           personLabel: payable.title,
+          expectedTotalPaisa: totalsOf(payable).totalPaisa,
         })
       } else {
-        await postJson(`/api/sessions/${sessionId}/bill-print`, {})
+        // The total on THIS screen: the server refuses a different one rather
+        // than print a bill the waiter never saw (Teran, 2026-11-11).
+        await postJson(`/api/sessions/${sessionId}/bill-print`, {
+          expectedTotalPaisa: totalsOf(payable).totalPaisa,
+        })
       }
       setPrinted(key)
     } catch (caught) {
@@ -794,6 +799,9 @@ export function BillScreen({
 
   /** The props a Print button needs for one payable. */
   function printProps(key: string, payable: Payable) {
+    // While the draft cannot be priced the screen cannot say what is owed, so
+    // it offers no Print for it either (Task 7). A recorded bill still can.
+    if (draftError && payable.kind !== 'bill') return {}
     return {
       onPrint: () => void printPayable(key, payable),
       printState: printing === key ? ('sending' as const) : printed === key ? ('sent' as const) : ('idle' as const),
@@ -1279,7 +1287,11 @@ export function BillScreen({
             }
             if (!billId) return
 
-            const paid = await postJson<{ allPaid: boolean }>(`/api/bills/${billId}/payments`, {
+            const paid = await postJson<{
+              allPaid: boolean
+              settled: boolean
+              receiptJobId: string | null
+            }>(`/api/bills/${billId}/payments`, {
               tenders,
               cashReceivedPaisa,
             })
@@ -1293,7 +1305,13 @@ export function BillScreen({
             // is paid the refreshed screen offers Close table in the bar.
             // That person is paid: their column goes, and their items are on a
             // bill now, so the draft the server sends back no longer has them.
-            setNotice(null)
+            // The receipt prints by itself. If it could not be queued the money is
+            // still recorded — say so, so nobody waits at the printer.
+            setNotice(
+              paid.settled && !paid.receiptJobId
+                ? 'Paid, but the receipt was not queued. Use the print icon on the paid bill to get one.'
+                : null,
+            )
             router.refresh()
           }}
         />

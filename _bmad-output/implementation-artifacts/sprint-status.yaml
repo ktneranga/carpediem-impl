@@ -115,7 +115,7 @@ development_status:
   6-3-implement-mid-settlement-person-split: done  # code-reviewed 2026-10-31 (server + UI), fixes applied
   6-4-implement-per-seat-slot-independent-billing: done
   6-5-implement-payment-recording-and-session-auto-close: done  # code-reviewed 2026-10-31 (server + UI), fixes applied
-  6-6-print-the-customer-bill: review  # added 2026-11-04 — go-live
+  6-6-print-the-customer-bill: done  # added 2026-11-04 — go-live
   6-7-cash-drawer: backlog  # added 2026-11-04 — go-live, after 6-6
   epic-6-retrospective: optional
 

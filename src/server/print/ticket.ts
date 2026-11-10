@@ -124,7 +124,9 @@ export function receiptTextLines(text: string | null): string[] {
 export function buildReceiptPayload(
   input: Omit<ReceiptPayload, 'kind' | 'destination'>,
 ): ReceiptPayload {
-  const clean = (text: string) => sanitizeTicketText(text) ?? text
+  // Never `?? text`: null means the string was blank or ALL control bytes,
+  // and falling back to it would send those bytes to the printer.
+  const clean = (text: string) => sanitizeTicketText(text) ?? '[name not printable]'
   return {
     kind: 'receipt',
     destination: 'cashier',

@@ -282,3 +282,12 @@
 - **`verify-queue` fails one case when `.env` sets `PRINTER_USB_NAME`** [`src/server/print/verify-queue.ts`] - "with PRINTER_IP set, a REAL transport is chosen" expects TCP, but USB wins since `49d1806`. `verify-escpos` already deletes the variable before its transport checks; `verify-queue` should do the same. Passes 24/24 with the variable unset.
 - **Bill header and footer are set by SQL** [`tenant_config.receipt_header` / `receipt_footer`] - one line per line break, printed centred. The Manage area (Story 10.0) should edit them.
 
+
+## Deferred from: code review of story-6-6-print-the-customer-bill (2026-11-11)
+
+- **Lost response on the final payment** [`bill-screen.tsx` `onPay`, payments route] - the payment commits but the response is lost; retry gets `BillAlreadySettledError`, the dialog shows an error and the Close prompt never appears. No idempotency key exists in the payment flow.
+- **New CHECK constraints are not in `schema.ts`** [`payment_records_cash_received_valid`, `print_jobs_round_matches_destination`] - hand-written in 0033; the next `drizzle-kit generate` may re-emit them.
+- **Migration 0033 locks `print_jobs`** - the enum swap rewrites the table under ACCESS EXCLUSIVE and there is no down path. Deploy off-hours. The cashier CHECK (`round_id` null iff cashier, `bill_id` only on cashier) also constrains Story 6.7's drawer kick.
+- **Close-after-payment dialog** [`bill-screen.tsx`] - no focus trap; `allPaid` is read at payment time, so a round added on another tablet before the tap gives a 409 on Close.
+- **Malformed receipt payloads** [`escpos.ts` `money`, `amountLines`] - non-number amounts print as LKR 0 and null `lines` entries throw and retry until dead, instead of failing the job with an alert.
+- **Zero-total (all-comped) bill gets no auto-receipt** [`payments/route.ts`, `printBill`] - the table shows ✓ Paid with no payment, so Settle never runs. Teran chose to keep it manual (reason: rare case).

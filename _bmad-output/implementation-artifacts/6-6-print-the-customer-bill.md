@@ -1,6 +1,6 @@
 # Story 6.6: Print the Customer Bill
 
-Status: review
+Status: done
 
 - **Epic:** 6 — Bill Settlement & Payment Recording
 - **Requirement:** FR69 (also FR27, FR68, NFR-I1, NFR-I2)
@@ -30,8 +30,9 @@ The epic's criteria say "a generated bill". The code has moved since: a bill row
    the stored `bills` and `bill_lines` for a recorded bill. Nothing the client sends is printed as money.
 5. **Paid receipt.** A bill with payments prints as `RECEIPT` and adds each tender (cash, card), plus for cash
    the amount received and the change. A part-paid bill prints as `BILL` and shows `Paid` and `Still to pay`.
-6. **Copy.** Printing a recorded bill that already has a live print job prints `COPY` under the title. A dead
-   job does not count, because it never reached paper. Drafts never print `COPY`: each is a fresh pricing.
+6. **Copy.** Printing a recorded bill that has already been PRINTED (a job with status `printed`, same title) prints
+   `COPY` under the title. A pending, retrying or dead job does not count, because it never reached paper
+   (amended 2026-11-11, review decision). Drafts never print `COPY`: each is a fresh pricing.
 7. **Splits.** Each person's or seat's bill prints on its own paper, from its own button.
 8. **Guest privacy.** Seat notes ("red shirt") and tab nicknames ("white shirt") never reach paper. See Trap 3.
 9. **Closed or stale.** A closed order refuses with 409. A share whose units were billed elsewhere refuses with
@@ -108,7 +109,7 @@ The epic's criteria say "a generated bill". The code has moved since: a bill row
 | Decision | Why |
 |---|---|
 | Print from the draft, write no bill | Story 6.5's rule: opening or reading a bill changes nothing. Writing a bill to print it would lock the units and stop the waiter adding a dessert. |
-| Printing is manual, never automatic on Settle | Teran: do not waste the roll. Many guests do not want a receipt. |
+| ~~Printing is manual, never automatic on Settle~~ | **Superseded 2026-11-10 (Teran):** the receipt prints by itself with the payment that settles a bill, and the Paid list keeps a reprint icon. Part payments and the draft BILL stay manual. |
 | One queue, a new `cashier` destination | The bill must not wait behind a stuck kitchen ticket, and head-of-line order works unchanged. 6.7's drawer kick uses the same destination. |
 | `COPY` only for recorded bills | A draft has no identity and may have changed since the last print. |
 | Tenders stay capped at the bill | Story 6.5: "change is the screen's arithmetic, not the restaurant's revenue". `cash_received_paisa` is a note on the row, never revenue. |
@@ -394,3 +395,32 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-11-10: Receipt prints automatically when the payment settles the bill (Teran).
 - 2026-11-10: Implemented: bill and receipt printing through the print queue, cash received recorded for the
   change, Print buttons on the bill screen. Status → review.
+
+### Review Findings
+
+Code review 2026-11-11 (Blind Hunter + Edge Case Hunter + Acceptance Auditor), commit 41802e6.
+
+- [x] [Review][Patch] Draft print is not checked against the quoted total — send the on-screen total with the print request and 409 "the bill changed" on mismatch, as Settle does (decided: Teran, 2026-11-11) [src/app/api/sessions/[sessionId]/bill-print/route.ts, receipt.service.ts `printDraft`, bill-screen.tsx `printPayable`]
+- [x] [Review][Patch] COPY must count only jobs that actually printed, not pending/claimed/retrying ones (decided: Teran, 2026-11-11) [src/server/services/receipt.service.ts `printBill`]
+- [x] [Review][Defer] Zero-total (all-comped) bill gets no auto-receipt — deferred: Teran chose manual Print; rare case
+- [x] [Review][Patch] Print is not hidden while `draftError` is set (Task 7) [src/components/pos/bill-screen.tsx:1101,1121 — `printProps`/`printDisabled`]
+- [x] [Review][Patch] A counter order that is not a tab prints `Bar tab`; `COUNTER` only appears for non-counter sessions with no tables (Task 4, Trap 3) [src/server/services/receipt.service.ts `readHeading`]
+- [x] [Review][Patch] `readHeading` dereferences `session!` (TypeError/500 instead of 404); a missing `tenant_config` prints "Bill" in `printBill` but throws in `printDraft` — make both throw the same [src/server/services/receipt.service.ts]
+- [x] [Review][Patch] `cashReceivedPaisa` has no `.max()`; a value above int4 passes zod and fails the whole payment with a 500 [src/app/api/bills/[billId]/payments/route.ts:24]
+- [x] [Review][Patch] Floor GETs (`/api/tables`, `/api/sessions`) 500 if a payment-state query fails, and run ~4 queries per open session; degrade to `'none'` on error and replace the per-session loop with grouped queries [src/server/services/payment.service.ts `sessionPaymentStates`]
+- [x] [Review][Patch] Merge resets the card to `none` (state kept only when sessionId is unchanged) and `session:payment_changed` arriving before the row's sessionId is set is dropped; refetch payment state on merge / unknown session [src/components/pos/table-grid.tsx]
+- [x] [Review][Dismissed] `session:payment_changed` broadcasts to every socket — every socket is an authenticated staff session and `table:status_changed` (same session ids) already broadcasts the same way; no floor room exists to scope it to
+- [x] [Review][Patch] `announcePayment` is copied into three routes (with the wrong `[payments]` log tag in the bill routes); move it to the service/events [src/app/api/bills/[billId]/payments/route.ts, sessions/[sessionId]/bills/route.ts, seats/[seatId]/bill/route.ts]
+- [x] [Review][Patch] Auto-receipt failure is silent: the savepoint swallows the error, returns `receiptJobId: null` and the UI ignores it; show "Paid — receipt not queued, tap Print" [src/app/api/bills/[billId]/payments/route.ts:61, bill-screen.tsx `onPay`]
+- [x] [Review][Patch] `percentFromBp` uses `toFixed(1)`: 12.25% prints "12.3%" on the legal bill, disagreeing with the tax amount; show two decimals when needed [src/lib/format.ts]
+- [x] [Review][Patch] `clean()` falls back to the raw string when `sanitizeTicketText` returns null; `headerLines`/`footerLines` skip it entirely — use a placeholder like the escpos layer [src/server/print/ticket.ts]
+- [x] [Review][Patch] "Print time" uses `now()` (transaction start, before lock wait); use `clock_timestamp()` [src/server/services/receipt.service.ts]
+- [x] [Review][Patch] `verify-receipt.ts` runs `ALTER TABLE … DISABLE TRIGGER immutable_*` against whatever `DATABASE_URL` is set, with no dev-database guard, and a crash leaves the append-only triggers off [src/server/print/verify-receipt.ts]
+- [x] [Review][Patch] Testing case 2: the part-quantity share assertion is `totalPaisa === 95000` and is never compared with what Settle records for that share [src/server/print/verify-receipt.ts]
+- [x] [Review][Patch] Spec was not amended for Teran's 2026-11-10 changes: Decisions table still says "manual, never automatic on Settle", and AC6 still defines COPY as "a live print job already exists" [this file]
+- [x] [Review][Defer] No reprint after the table is closed — already listed in the dev deferrals; the Edge Case Hunter found it again
+- [x] [Review][Defer] Lost response on the final payment: retry gets `BillAlreadySettledError` and the Close prompt never shows — no idempotency key exists anywhere in the payment flow (pre-existing design)
+- [x] [Review][Defer] Both new CHECK constraints are hand-written SQL, not declared in `schema.ts` — next `drizzle-kit generate` may re-emit them
+- [x] [Review][Defer] Migration 0033 rewrites `print_jobs` under ACCESS EXCLUSIVE and has no down path; the `cashier` CHECK also constrains Story 6.7's drawer-kick job — deploy off-hours, revisit in 6.7
+- [x] [Review][Defer] Close-after-payment dialog: no focus trap; `allPaid` is read at payment time so a round added on another tablet gives a 409 on Close
+- [x] [Review][Defer] Malformed jsonb amounts print as "LKR 0" instead of failing the job; null `lines` entries throw and retry until dead

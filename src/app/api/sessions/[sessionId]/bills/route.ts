@@ -3,8 +3,7 @@ import bcrypt from 'bcryptjs'
 import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/server/db'
-import { sessionPaymentState } from '@/server/services/payment.service'
-import { emitCounterSalesChanged, emitSessionPaymentChanged } from '@/server/socket/events'
+import { announcePayment } from '@/server/services/payment-announce'
 import { bills, orderSessions, staff, tenantConfig } from '@/server/db/schema'
 import { DUMMY_PIN_HASH } from '@/server/auth/dummy-pin-hash'
 import {
@@ -342,20 +341,5 @@ export async function GET(
   } catch (error) {
     console.error('[api/sessions/:sessionId/bills] Failed to read bill:', error)
     return fail('INTERNAL_ERROR', 'Could not load the bill', 500)
-  }
-}
-
-/**
- * Tells the floor where this order now stands with its money, after the
- * commit. A failure here never fails the request: the write already happened,
- * and the floor refetches on its next load.
- */
-async function announcePayment(sessionId: string): Promise<void> {
-  try {
-    emitSessionPaymentChanged({ sessionId, paymentState: await sessionPaymentState(db, sessionId) })
-    // Bar tabs are a list query, refreshed by this event (payload-free).
-    emitCounterSalesChanged()
-  } catch (error) {
-    console.error('[payments] Could not announce the payment state:', error)
   }
 }

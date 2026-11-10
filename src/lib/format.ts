@@ -86,7 +86,9 @@ export function lkrFromPaisa(paisa: number): string {
  * the screen cannot word the same rate two ways.
  */
 export function percentFromBp(bp: number): string {
-  return (bp / 100).toFixed(bp % 100 === 0 ? 0 : 1).replace(/\.0$/, '')
+  // Two decimals, trailing zeros dropped: 1225 bp is "12.25", not "12.3" —
+  // a rate printed on a legal bill must agree with the tax beside it.
+  return (bp / 100).toFixed(2).replace(/\.?0+$/, '')
 }
 
 /**

@@ -1,7 +1,7 @@
 import 'server-only'
-import { asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '@/server/db'
-import { bills, paymentRecords } from '@/server/db/schema'
+import { billLines, bills, orderEvents, paymentRecords } from '@/server/db/schema'
 import { hasUnbilledItems } from '@/server/services/bill.service'
 import { lockOpenSession } from '@/server/services/table-session.service'
 import type { PaymentState } from '@/types/tables'
@@ -253,13 +253,74 @@ export async function sessionPaymentState(
   return payment ? 'part' : 'none'
 }
 
-/** The same, for several open orders at once — the floor's list endpoints. */
+/**
+ * The same, for several open orders at once — the floor's list endpoints.
+ *
+ * Three grouped queries however many orders there are (code review,
+ * 2026-11-11): the floor refetches on every socket event, and one query set per
+ * open table was ~4N round trips on the hottest endpoint. The rule is
+ * `isFullyPaid`'s, restated per session: nothing unbilled, at least one bill,
+ * every bill's payments covering its total.
+ *
+ * Never throws. The badge is decoration: if these reads fail the floor still
+ * loads, every order showing no payment state (callers read `?? 'none'`).
+ */
 export async function sessionPaymentStates(
   executor: Tx | typeof db,
   sessionIds: string[],
 ): Promise<Map<string, PaymentState>> {
-  const states = await Promise.all(
-    [...new Set(sessionIds)].map(async (id) => [id, await sessionPaymentState(executor, id)] as const),
-  )
-  return new Map(states)
+  const ids = [...new Set(sessionIds)]
+  const states = new Map<string, PaymentState>()
+  if (ids.length === 0) return states
+
+  try {
+    const [unbilledRows, billRows, paymentRows] = await Promise.all([
+      executor
+        .selectDistinct({ sessionId: orderEvents.sessionId })
+        .from(orderEvents)
+        .where(
+          and(
+            inArray(orderEvents.sessionId, ids),
+            eq(orderEvents.eventType, 'ITEM_ADDED'),
+            sql`${orderEvents.quantity} > coalesce((select sum(${billLines.quantity}) from ${billLines} where ${billLines.orderEventId} = ${orderEvents.id}), 0)`,
+          ),
+        ),
+      executor
+        .select({ id: bills.id, sessionId: bills.sessionId, totalPaisa: bills.totalPaisa })
+        .from(bills)
+        .where(inArray(bills.sessionId, ids)),
+      executor
+        .select({
+          sessionId: paymentRecords.sessionId,
+          billId: paymentRecords.billId,
+          paid: sql<number>`sum(${paymentRecords.amountPaisa})::int`,
+        })
+        .from(paymentRecords)
+        .where(inArray(paymentRecords.sessionId, ids))
+        .groupBy(paymentRecords.sessionId, paymentRecords.billId),
+    ])
+
+    const unbilled = new Set(unbilledRows.map((row) => row.sessionId))
+    const paidByBill = new Map(paymentRows.map((row) => [row.billId, row.paid]))
+    const hasPayment = new Set(paymentRows.map((row) => row.sessionId))
+    const billsBySession = new Map<string, { id: string; totalPaisa: number }[]>()
+    for (const row of billRows) {
+      const list = billsBySession.get(row.sessionId)
+      if (list) list.push(row)
+      else billsBySession.set(row.sessionId, [row])
+    }
+
+    for (const id of ids) {
+      const sessionBills = billsBySession.get(id) ?? []
+      const paid =
+        !unbilled.has(id) &&
+        sessionBills.length > 0 &&
+        sessionBills.every((bill) => (paidByBill.get(bill.id) ?? 0) >= bill.totalPaisa)
+      states.set(id, paid ? 'paid' : hasPayment.has(id) ? 'part' : 'none')
+    }
+  } catch (error) {
+    console.error('[payment.service] Could not read payment states for the floor:', error)
+    return new Map()
+  }
+  return states
 }

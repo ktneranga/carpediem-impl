@@ -8,8 +8,7 @@ import {
   recordPayments,
 } from '@/server/services/payment.service'
 import { printBill } from '@/server/services/receipt.service'
-import { sessionPaymentState } from '@/server/services/payment.service'
-import { emitCounterSalesChanged, emitSessionPaymentChanged } from '@/server/socket/events'
+import { announcePayment } from '@/server/services/payment-announce'
 import { SessionAlreadyClosedError } from '@/server/services/table-session.service'
 
 const billIdSchema = z.string().uuid()
@@ -39,7 +38,10 @@ const bodySchema = z.object({
    * The cash the guest handed over (Story 6.6) — for the receipt's change,
    * never revenue. Only with a cash tender, and never less than it.
    */
-  cashReceivedPaisa: z.number().int().positive().optional(),
+  // Capped below int4: the column is `integer`, so a bigger number would pass
+  // validation and then fail the whole payment as a 500. The pad stops at
+  // LKR 9,999,999 (999,999,900 paisa).
+  cashReceivedPaisa: z.number().int().positive().max(2_000_000_000).optional(),
 }).refine(
   (body) => {
     if (body.cashReceivedPaisa === undefined) return true
@@ -135,20 +137,5 @@ export async function POST(
     }
     console.error('[api/bills/:billId/payments] Failed to record payment:', error)
     return fail('INTERNAL_ERROR', 'Could not record the payment', 500)
-  }
-}
-
-/**
- * Tells the floor where this order now stands with its money, after the
- * commit. A failure here never fails the request: the write already happened,
- * and the floor refetches on its next load.
- */
-async function announcePayment(sessionId: string): Promise<void> {
-  try {
-    emitSessionPaymentChanged({ sessionId, paymentState: await sessionPaymentState(db, sessionId) })
-    // Bar tabs are a list query, refreshed by this event (payload-free).
-    emitCounterSalesChanged()
-  } catch (error) {
-    console.error('[payments] Could not announce the payment state:', error)
   }
 }

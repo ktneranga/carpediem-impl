@@ -729,13 +729,19 @@ export function TableGrid({
         // remove. Un-merge was the mirror: survivors kept labels naming a table
         // already back on the floor as a free card in the same grid.
         groupTableLabels: payload.groupTableLabels,
-        // Kept only while the row still shows the SAME order. A new party, a
-        // close or a merge onto another session starts from "nothing paid";
+        // Kept while the row still shows the SAME order. A table merged onto an
+        // order other rows already show takes THEIR state (a merge sends no
+        // `session:payment_changed`, so "nothing paid" would be wrong until the
+        // next refetch). A new party or a close starts from "nothing paid";
         // `session:payment_changed` below moves it from there.
         paymentState:
-          payload.sessionId !== null && payload.sessionId === next[index].sessionId
-            ? next[index].paymentState
-            : 'none',
+          payload.sessionId === null
+            ? 'none'
+            : payload.sessionId === next[index].sessionId
+              ? next[index].paymentState
+              : (current.find(
+                  (row, rowIndex) => rowIndex !== index && row.sessionId === payload.sessionId,
+                )?.paymentState ?? 'none'),
       }
       return next
     })

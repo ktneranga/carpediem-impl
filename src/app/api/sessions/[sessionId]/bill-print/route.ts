@@ -8,7 +8,7 @@ import {
   NothingToBillError,
   UnpricedItemError,
 } from '@/server/services/bill.service'
-import { printDraft } from '@/server/services/receipt.service'
+import { BillTotalChangedError, printDraft } from '@/server/services/receipt.service'
 import { SessionAlreadyClosedError } from '@/server/services/table-session.service'
 
 const sessionIdSchema = z.string().uuid()
@@ -31,6 +31,8 @@ const bodySchema = z.object({
     })
     .optional(),
   personLabel: z.string().max(60).nullable().optional(),
+  /** What the waiter's screen showed; a different total is refused (409). */
+  expectedTotalPaisa: z.number().int().nonnegative().optional(),
 })
 
 function fail(code: string, message: string, status: number) {
@@ -72,6 +74,7 @@ export async function POST(
         sessionId: parsedId.data,
         items: parsedBody.data.items,
         personLabel: parsedBody.data.personLabel,
+        expectedTotalPaisa: parsedBody.data.expectedTotalPaisa,
       }),
     )
     return NextResponse.json({ success: true, data: result }, { status: 202 })
@@ -81,6 +84,9 @@ export async function POST(
     }
     if (error instanceof ItemsNotBillableError) {
       return fail('ITEMS_NOT_BILLABLE', 'Some of these items are already on another bill. Refresh and try again.', 409)
+    }
+    if (error instanceof BillTotalChangedError) {
+      return fail('BILL_CHANGED', 'The bill changed since this screen loaded. Refresh and print again.', 409)
     }
     if (error instanceof NothingToBillError) {
       return fail('NOTHING_TO_BILL', 'There is nothing left to bill on this order', 422)

@@ -162,6 +162,38 @@ const sql = async (text: string, params: unknown[] = []) => (await pool.query(te
 /** Every session this run opens; cleanup deletes by these and nothing else. */
 const mine: string[] = []
 
+/** The append-only guards this script switches off while it cleans up. */
+const GUARDS = [
+  ['payment_records', 'immutable_payment_records'],
+  ['bill_lines', 'immutable_bill_lines'],
+  ['bills', 'immutable_bills'],
+  ['order_events', 'immutable_order_events'],
+  ['order_rounds', 'immutable_order_rounds'],
+] as const
+
+/**
+ * Parts 2 and 3 DISABLE append-only triggers (under ACCESS EXCLUSIVE locks) to
+ * delete their own rows. Never against a database that is not on this machine,
+ * and every guard is switched back on first: a run killed mid-cleanup would
+ * otherwise leave the immutability guarantees off (code review, 2026-11-11).
+ */
+async function prepareDatabase() {
+  const url = process.env.DATABASE_URL ?? ''
+  const host = (() => {
+    try {
+      return new URL(url).hostname
+    } catch {
+      return ''
+    }
+  })()
+  if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(host) && process.env.VERIFY_ALLOW_REMOTE_DB !== '1') {
+    throw new Error(
+      `verify-receipt disables append-only triggers; DATABASE_URL host "${host}" is not local. Set VERIFY_ALLOW_REMOTE_DB=1 only for a throwaway database.`,
+    )
+  }
+  for (const [table, trigger] of GUARDS) await sql(`ALTER TABLE ${table} ENABLE TRIGGER ${trigger}`)
+}
+
 async function login(pin: string): Promise<string> {
   const response = await fetch(`${BASE}/api/auth/login`, {
     method: 'POST',
@@ -224,6 +256,7 @@ async function tabState(cookie: string, sessionId: string): Promise<string | und
 
 async function part2() {
   console.log('\n── Part 2: the routes ──')
+  await prepareDatabase()
   const owner = await login('5678')
   const tab = await makeTab('white shirt')
 
@@ -281,6 +314,28 @@ async function part2() {
   const malformed = await api(owner, `/api/sessions/${tab.sessionId}/bill-print`, { items: [{ eventId: 'x', quantity: 1 }] })
   check('a malformed share is refused (400)', malformed.status === 400)
 
+  // ── The total on the waiter's screen (Teran, 2026-11-11) ──────────────────
+  const stale = await api(owner, `/api/sessions/${tab.sessionId}/bill-print`, {
+    expectedTotalPaisa: draftJob.ticket.totalPaisa + 100,
+  })
+  check('a bill whose total changed since the screen loaded is refused (409), no job',
+    stale.status === 409 && stale.body?.error?.code === 'BILL_CHANGED', String(stale.status))
+  const fresh = await api(owner, `/api/sessions/${tab.sessionId}/bill-print`, {
+    expectedTotalPaisa: draftJob.ticket.totalPaisa,
+  })
+  check('the same bill with the total the screen showed prints (202)', fresh.status === 202, String(fresh.status))
+
+  // ── A share equals what Settle then records for it (Testing case 2) ────────
+  const splitTab = await makeTab('green shirt')
+  const shareItems = [{ eventId: splitTab.cashew, quantity: 1 }]
+  const splitShare = await jobOf((await api(owner, `/api/sessions/${splitTab.sessionId}/bill-print`, { items: shareItems, personLabel: 'Person 2' })).body?.data?.jobId)
+  const splitBill = await api(owner, `/api/sessions/${splitTab.sessionId}/bills`, { type: 'split', items: shareItems, personLabel: 'Person 2' })
+  check('a printed share agrees to the paisa with the split bill Settle records',
+    splitBill.status === 201 &&
+      splitBill.body?.data?.totalPaisa === splitShare.ticket.totalPaisa &&
+      splitBill.body?.data?.subtotalPaisa === splitShare.ticket.subtotalPaisa,
+    `${splitBill.body?.data?.totalPaisa} vs ${splitShare.ticket.totalPaisa}`)
+
   // ── A recorded bill: first print, copy, dead job ───────────────────────────
   const settle = await api(owner, `/api/sessions/${tab.sessionId}/bills`, { type: 'consolidated' })
   const billId = settle.body?.data?.billId as string
@@ -291,8 +346,13 @@ async function part2() {
     `${settle.body?.data?.totalPaisa} vs ${draftJob.ticket.totalPaisa}`)
   const first = await jobOf((await api(owner, `/api/bills/${billId}/print`)).body?.data?.jobId)
   check('a recorded bill names itself on the job', first.bill_id === billId && first.ticket.copy === false)
+  // A COPY is the same document printed AGAIN — the first must have reached
+  // paper (Teran, 2026-11-11). Still waiting in the queue, it has not.
   const second = await jobOf((await api(owner, `/api/bills/${billId}/print`)).body?.data?.jobId)
-  check('printed again, it is a COPY', second.ticket.copy === true)
+  check('printed again while the first is still waiting, it is NOT a COPY', second.ticket.copy === false)
+  await sql(`UPDATE print_jobs SET status = 'printed' WHERE bill_id = $1`, [billId])
+  const third = await jobOf((await api(owner, `/api/bills/${billId}/print`)).body?.data?.jobId)
+  check('printed again after the first reached paper, it is a COPY', third.ticket.copy === true)
   await sql(`UPDATE print_jobs SET status = 'dead' WHERE bill_id = $1`, [billId])
   const afterDead = await jobOf((await api(owner, `/api/bills/${billId}/print`)).body?.data?.jobId)
   check('jobs that never printed do not make a COPY', afterDead.ticket.copy === false)
@@ -331,6 +391,7 @@ async function part2() {
   check('the receipt is not a COPY of the bill printed before paying', receiptJob.ticket.copy === false)
   const receiptPaper = paperLines(buildReceipt(receiptJob.ticket)).join('\n')
   check('and the paper shows the change', /Change\s+LKR 650$/m.test(receiptPaper))
+  await sql(`UPDATE print_jobs SET status = 'printed' WHERE bill_id = $1`, [billId])
   const again = await jobOf((await api(owner, `/api/bills/${billId}/print`)).body?.data?.jobId)
   check('Print receipt afterwards prints a COPY', again.ticket.title === 'RECEIPT' && again.ticket.copy === true)
 
@@ -409,6 +470,7 @@ async function part2() {
 
 async function part3() {
   console.log('\n── Part 3: the worker ──')
+  await prepareDatabase()
   const { drainPrintQueue } = await import('./worker')
   const tab = await makeTab('Test')
   const [tenant] = await sql(`SELECT tenant_id FROM order_sessions WHERE id = $1`, [tab.sessionId])
@@ -467,12 +529,7 @@ async function part3() {
 /** Deletes exactly what this run made, with every append-only guard back on after. */
 async function cleanup() {
   if (mine.length === 0) return
-  const guarded = [
-    ['payment_records', 'immutable_payment_records'],
-    ['bill_lines', 'immutable_bill_lines'],
-    ['bills', 'immutable_bills'],
-    ['order_events', 'immutable_order_events'],
-  ] as const
+  const guarded = GUARDS.filter(([table]) => table !== 'order_rounds')
   try {
     for (const [table, trigger] of guarded) await sql(`ALTER TABLE ${table} DISABLE TRIGGER ${trigger}`)
     await sql(`DELETE FROM print_jobs WHERE session_id = ANY($1::uuid[])`, [mine])
