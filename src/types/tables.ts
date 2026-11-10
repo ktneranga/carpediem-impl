@@ -61,3 +61,24 @@ export type TableStatusChangedPayload = {
    */
   groupTableLabels: string[]
 }
+
+/**
+ * Where an open order stands with its money (Teran, 2026-11-10).
+ *
+ * - `none` — nothing paid yet (or nothing ordered).
+ * - `part` — some bills paid, something still owed: a split part-way through.
+ * - `paid` — nothing left to pay. The guests may still be sitting there, so
+ *   the table stays occupied; the floor says ✓ Paid and offers Close table.
+ */
+export type PaymentState = 'none' | 'part' | 'paid'
+
+/**
+ * `session:payment_changed` — an order's payment state moved: a payment, a bill
+ * written for LKR 0, or a new round on a table that had paid. Keyed by SESSION,
+ * not table: a client applies it only to a row still showing that session, so
+ * it can never mark the next party at the same table as paid.
+ */
+export type SessionPaymentChangedPayload = {
+  sessionId: string
+  paymentState: PaymentState
+}

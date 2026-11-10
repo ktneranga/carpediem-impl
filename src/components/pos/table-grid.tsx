@@ -18,7 +18,7 @@ import { dailyOrderLabel } from '@/lib/order-number'
 import { zoneIcon } from '@/lib/design'
 import { cn } from '@/lib/utils'
 import type { TableGridRow } from '@/app/api/tables/route'
-import type { TableStatusChangedPayload } from '@/types/tables'
+import type { PaymentState, SessionPaymentChangedPayload, TableStatusChangedPayload } from '@/types/tables'
 import type { StaffRole } from '@/server/auth/permissions'
 
 const TABLES_QUERY_KEY = ['tables'] as const
@@ -47,6 +47,8 @@ export type CounterSession = {
   tabLabel: string | null
   /** The order's number for the day, `#042` (Teran, 2026-11-02). */
   dailyNumber: number
+  /** ✓ Paid on the row, Close tab in the bar (Teran, 2026-11-10). */
+  paymentState: PaymentState
 }
 
 /**
@@ -316,6 +318,21 @@ async function unmergeTable(tableId: string): Promise<void> {
  * No table is involved, so this cannot be a 409 — see the route's note on why
  * counter sessions are deliberately unconstrained.
  */
+/**
+ * Closes a fully paid order from the floor (Teran, 2026-11-10) — as `settled`,
+ * which the server accepts only when nothing is owed. If a round landed since
+ * the floor said ✓ Paid, the 409 comes back as a notice and the card is
+ * refetched.
+ */
+async function closeSettled(input: { sessionId: string; label: string }): Promise<void> {
+  const response = await fetch(`/api/sessions/${input.sessionId}/close`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason: 'settled' }),
+  })
+  if (!response.ok) await throwFromResponse(response, 'Could not close it')
+}
+
 async function startCounterSale(tabLabel: string): Promise<{ sessionId: string }> {
   const response = await fetch('/api/sessions', {
     method: 'POST',
@@ -631,6 +648,22 @@ export function TableGrid({
   const [namingTab, setNamingTab] = useState(false)
   const [tabNameDraft, setTabNameDraft] = useState('')
 
+  const closeSettledMutation = useMutation({
+    mutationFn: closeSettled,
+    onSuccess: (_data, variables) => {
+      // The card turns free on every device through the close route's own
+      // `table:status_changed`; this tablet also lets go of the selection.
+      setSelectedTableId(null)
+      setSelectedCounterId(null)
+      showNotice(`${variables.label} closed`)
+      void queryClient.invalidateQueries({ queryKey: TABLES_QUERY_KEY })
+      void queryClient.invalidateQueries({ queryKey: COUNTER_QUERY_KEY })
+    },
+    // A 409 (something was ordered since it said ✓ Paid) arrives as the
+    // server's own words, and the floor is refetched.
+    onError: (error) => handleTableActionError(error),
+  })
+
   const counterSale = useMutation({
     mutationFn: startCounterSale,
     onSuccess: (data) => {
@@ -696,6 +729,13 @@ export function TableGrid({
         // remove. Un-merge was the mirror: survivors kept labels naming a table
         // already back on the floor as a free card in the same grid.
         groupTableLabels: payload.groupTableLabels,
+        // Kept only while the row still shows the SAME order. A new party, a
+        // close or a merge onto another session starts from "nothing paid";
+        // `session:payment_changed` below moves it from there.
+        paymentState:
+          payload.sessionId !== null && payload.sessionId === next[index].sessionId
+            ? next[index].paymentState
+            : 'none',
       }
       return next
     })
@@ -726,6 +766,17 @@ export function TableGrid({
   // tappable for the rest of the shift.
   useSocketEvent('counter:changed', () => {
     void queryClient.invalidateQueries({ queryKey: COUNTER_QUERY_KEY })
+  })
+
+  // A payment, a LKR 0 bill, or a new round moved an order's payment state
+  // (Teran, 2026-11-10). Patched onto every row still showing THAT order —
+  // a merged group is several rows — and never onto a later party.
+  useSocketEvent<SessionPaymentChangedPayload>('session:payment_changed', (payload) => {
+    queryClient.setQueryData<TableGridRow[]>(TABLES_QUERY_KEY, (current) =>
+      current?.map((row) =>
+        row.sessionId === payload.sessionId ? { ...row, paymentState: payload.paymentState } : row,
+      ),
+    )
   })
 
   const socketConnected = useSocketStatus()
@@ -1109,6 +1160,7 @@ export function TableGrid({
       label: `${tabTitle(found)} · ${clockTime(found.openedAt)}`,
       elapsedMinutes: elapsedMinutesFrom(found.openedAt, minuteTick),
       itemCount: found.itemCount,
+      paymentState: found.paymentState,
     }
   }, [counterMode, selectedCounterId, counterSessions, minuteTick])
 
@@ -1416,7 +1468,13 @@ export function TableGrid({
                               than accuses. */}
                           {/* The order number, as on its tickets (Teran,
                               2026-11-02) — quieter than the name staff use. */}
-                          {isLate ? (
+                          {counter.paymentState === 'paid' ? (
+                            // Paid, guest still at the bar: the tab is done
+                            // and waiting to be closed (Teran, 2026-11-10).
+                            <span className="truncate text-fs-12 font-extrabold text-open-ink">
+                              {dailyOrderLabel(counter.dailyNumber)} · ✓ Paid
+                            </span>
+                          ) : isLate ? (
                             <span className="truncate text-fs-12 font-bold text-unavailable-band">
                               {dailyOrderLabel(counter.dailyNumber)} · Still open? Check
                             </span>
@@ -1582,6 +1640,7 @@ export function TableGrid({
                   // Session-level, so every member of a group carries the same
                   // figure; the unit's primary speaks for all of them.
                   totalPaisa={table.sessionId ? table.totalPaisa : undefined}
+                  paymentState={table.sessionId ? table.paymentState : 'none'}
                   unavailableReason={table.unavailableReason}
                   // Compared by UNIT, not by table id — otherwise selecting a
                   // group would light up only whichever member happened to be
@@ -1798,6 +1857,7 @@ export function TableGrid({
           unmergeMutation.isPending ||
           counterSale.isPending ||
           seatMutation.isPending ||
+          closeSettledMutation.isPending ||
           isNavigating
         }
         onStartOrder={(tableId) => {
@@ -1879,6 +1939,10 @@ export function TableGrid({
           if (isNavigating) return
           setIsNavigating(true)
           router.push(`/orders/${sessionId}/bill`)
+        }}
+        onCloseSettled={(sessionId, label) => {
+          if (closeSettledMutation.isPending || isNavigating) return
+          closeSettledMutation.mutate({ sessionId, label })
         }}
         seating={seating}
         onBeginSeating={(sessionId) => {

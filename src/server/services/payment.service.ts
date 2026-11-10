@@ -4,6 +4,7 @@ import { db } from '@/server/db'
 import { bills, paymentRecords } from '@/server/db/schema'
 import { hasUnbilledItems } from '@/server/services/bill.service'
 import { lockOpenSession } from '@/server/services/table-session.service'
+import type { PaymentState } from '@/types/tables'
 
 /** Drizzle transaction handle. */
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -12,7 +13,13 @@ export type Tender = { method: 'cash' | 'card'; amountPaisa: number }
 
 export type BillPayments = {
   paidPaisa: number
-  tenders: { method: 'cash' | 'card' | 'transfer'; amountPaisa: number; createdAt: string }[]
+  tenders: {
+    method: 'cash' | 'card' | 'transfer'
+    amountPaisa: number
+    /** The cash handed over, on a cash tender recorded since Story 6.6. */
+    cashReceivedPaisa: number | null
+    createdAt: string
+  }[]
 }
 
 // ── Errors ───────────────────────────────────────────────────────────────────
@@ -42,6 +49,7 @@ export async function loadSessionPayments(
       billId: paymentRecords.billId,
       method: paymentRecords.method,
       amountPaisa: paymentRecords.amountPaisa,
+      cashReceivedPaisa: paymentRecords.cashReceivedPaisa,
       createdAt: paymentRecords.createdAt,
     })
     .from(paymentRecords)
@@ -55,6 +63,7 @@ export async function loadSessionPayments(
     entry.tenders.push({
       method: row.method,
       amountPaisa: row.amountPaisa,
+      cashReceivedPaisa: row.cashReceivedPaisa,
       createdAt: row.createdAt.toISOString(),
     })
     byBill.set(row.billId, entry)
@@ -88,9 +97,26 @@ export async function loadSessionPayments(
  */
 export async function recordPayments(
   tx: Tx,
-  { billId, staffId, tenders }: { billId: string; staffId: string; tenders: Tender[] },
+  {
+    billId,
+    staffId,
+    tenders,
+    cashReceivedPaisa = null,
+  }: {
+    billId: string
+    staffId: string
+    tenders: Tender[]
+    /**
+     * The cash the guest handed over (Story 6.6), kept beside the CASH tender
+     * so the receipt can print the change. A note, not revenue: the tender's
+     * amount is still what is applied, and still capped below. The route
+     * checks it is at least the cash tender; the database checks it again.
+     */
+    cashReceivedPaisa?: number | null
+  },
 ): Promise<{
   billId: string
+  sessionId: string
   paidPaisa: number
   outstandingPaisa: number
   settled: boolean
@@ -126,6 +152,7 @@ export async function recordPayments(
       staffId,
       amountPaisa: tender.amountPaisa,
       method: tender.method,
+      cashReceivedPaisa: tender.method === 'cash' ? cashReceivedPaisa : null,
     })),
   )
 
@@ -142,6 +169,7 @@ export async function recordPayments(
 
   return {
     billId,
+    sessionId: bill.sessionId,
     paidPaisa: paid + tendered,
     outstandingPaisa: outstanding - tendered,
     settled,
@@ -156,7 +184,7 @@ export async function recordPayments(
  * A bill of LKR 0 — free items, or comps covering everything — is paid by this
  * rule with no payment at all (code review P1): nothing is owed on it.
  */
-export async function isFullyPaid(tx: Tx, sessionId: string): Promise<boolean> {
+export async function isFullyPaid(tx: Tx | typeof db, sessionId: string): Promise<boolean> {
   if (await hasUnbilledItems(tx, sessionId)) return false
 
   const sessionBills = await tx
@@ -203,4 +231,35 @@ export async function assertCloseMatchesPayment(
   const paid = await isFullyPaid(tx, sessionId)
   if (reason === 'settled' && !paid) throw new OrderNotSettledError()
   if (reason !== 'settled' && paid) throw new OrderAlreadyPaidError()
+}
+
+/**
+ * Where an open order stands with its money, for the floor (Teran, 2026-11-10).
+ *
+ * `paid` is exactly `isFullyPaid` — the rule the close route enforces — so a
+ * card that says ✓ Paid offers a Close table the server will accept. `part`
+ * means a payment exists but something is still owed.
+ */
+export async function sessionPaymentState(
+  executor: Tx | typeof db,
+  sessionId: string,
+): Promise<PaymentState> {
+  if (await isFullyPaid(executor, sessionId)) return 'paid'
+  const [payment] = await executor
+    .select({ id: paymentRecords.id })
+    .from(paymentRecords)
+    .where(eq(paymentRecords.sessionId, sessionId))
+    .limit(1)
+  return payment ? 'part' : 'none'
+}
+
+/** The same, for several open orders at once — the floor's list endpoints. */
+export async function sessionPaymentStates(
+  executor: Tx | typeof db,
+  sessionIds: string[],
+): Promise<Map<string, PaymentState>> {
+  const states = await Promise.all(
+    [...new Set(sessionIds)].map(async (id) => [id, await sessionPaymentState(executor, id)] as const),
+  )
+  return new Map(states)
 }

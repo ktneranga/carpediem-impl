@@ -38,9 +38,9 @@
  * that is a protocol conversation, not a flag.
  */
 import net from 'node:net'
-import { buildTicket } from './escpos'
+import { buildPrintBytes } from './escpos'
 import type { TicketTransport } from './transport'
-import type { TicketPayload } from '@/types/tickets'
+import type { PrintPayload } from '@/types/tickets'
 
 /**
  * Per-attempt budget.
@@ -157,6 +157,6 @@ function deliverOverTcp(host: string, port: number, bytes: Buffer): Promise<void
 export function escposTcpTransport(host: string, port: number): TicketTransport {
   return {
     name: `escpos:${host}:${port}`,
-    deliver: (ticket: TicketPayload) => deliverOverTcp(host, port, buildTicket(ticket)),
+    deliver: (ticket: PrintPayload) => deliverOverTcp(host, port, buildPrintBytes(ticket)),
   }
 }

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { dishCount, dishTotalPaisa } from '@/server/orders/item-count'
+import { sessionPaymentStates } from '@/server/services/payment.service'
+import type { PaymentState } from '@/types/tables'
 import { db } from '@/server/db'
 import {
   orderEvents,
@@ -48,6 +50,11 @@ export type TableGridRow = {
    * it so a second occupied table is never unexplained. Empty when no session.
    */
   groupTableLabels: string[]
+  /**
+   * Where the open order stands with its money — ✓ Paid on the card, Close
+   * table in the bar (Teran, 2026-11-10). `none` with no session.
+   */
+  paymentState: PaymentState
   /** Why the table is out of service. Null unless status is `unavailable`. */
   unavailableReason: string | null
 }
@@ -201,6 +208,8 @@ export async function GET() {
       }
     }
 
+    const paymentStates = await sessionPaymentStates(db, openSessionIds)
+
     const data: TableGridRow[] = rows.map((row) => ({
       id: row.id,
       label: row.label,
@@ -227,6 +236,7 @@ export async function GET() {
       coverCount: row.sessionId ? row.coverCount : null,
       totalPaisa: row.sessionId ? (sessionTotals.get(row.sessionId) ?? 0) : 0,
       groupTableLabels: row.sessionId ? (groupLabels.get(row.sessionId) ?? []) : [],
+      paymentState: row.sessionId ? (paymentStates.get(row.sessionId) ?? 'none') : 'none',
     }))
 
     return NextResponse.json({ success: true, data }, { status: 200 })

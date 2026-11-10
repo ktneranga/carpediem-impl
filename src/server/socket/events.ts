@@ -1,6 +1,6 @@
 import 'server-only'
 import type { OrderConfirmedPayload, OrderSubmittedPayload } from '@/types/orders'
-import type { TableStatusChangedPayload } from '@/types/tables'
+import type { SessionPaymentChangedPayload, TableStatusChangedPayload } from '@/types/tables'
 import type { PrinterAlertPayload } from '@/types/tickets'
 import { productionRoom, sessionRoom } from './rooms'
 import { getIO } from './index'
@@ -172,3 +172,17 @@ export function emitPrinterAlert(payload: PrinterAlertPayload): void {
   }
 }
 
+/**
+ * An order's payment state changed (Teran, 2026-11-10) — the floor's ✓ Paid.
+ *
+ * Its own small event rather than a field on `table:status_changed`: that
+ * payload is a whole-row patch sent from nine places, none of which move money.
+ * Wrapped like the others: called after a commit, so it must never fail it.
+ */
+export function emitSessionPaymentChanged(payload: SessionPaymentChangedPayload): void {
+  try {
+    getIO().emit('session:payment_changed', payload)
+  } catch (error) {
+    console.error('[socket] Failed to emit session:payment_changed:', error)
+  }
+}

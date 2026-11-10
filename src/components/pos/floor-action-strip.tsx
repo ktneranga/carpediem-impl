@@ -82,7 +82,13 @@ export type FloorActionStripProps = {
    * is a `TableGridRow`. Passing them separately keeps the table props honestly
    * table-shaped instead of turning every field nullable.
    */
-  counter: { sessionId: string; label: string; elapsedMinutes?: number; itemCount: number } | null
+  counter: {
+    sessionId: string
+    label: string
+    elapsedMinutes?: number
+    itemCount: number
+    paymentState: 'none' | 'part' | 'paid'
+  } | null
   onOpenCounter: (sessionId: string) => void
   /**
    * Straight to the bill screen for a session (Story 6.5) — where an order is
@@ -90,6 +96,13 @@ export type FloorActionStripProps = {
    * tab, so neither has to go through the order screen first.
    */
   onOpenBill: (sessionId: string) => void
+  /**
+   * Closes a fully paid order (Teran, 2026-11-10). Offered only when the
+   * selected table or tab is ✓ Paid — the guests have paid and may still be
+   * sitting; this is how the waiter frees it once they leave. The label names
+   * it in the confirmation notice.
+   */
+  onCloseSettled: (sessionId: string, label: string) => void
   /**
    * The counter sale being seated, with the tables staged so far (AC-5).
    *
@@ -123,6 +136,7 @@ export function FloorActionStrip({
   counter,
   onOpenCounter,
   onOpenBill,
+  onCloseSettled,
   seating,
   onBeginSeating,
   onCancelSeating,
@@ -372,9 +386,11 @@ export function FloorActionStrip({
   // out of service, or seated from here. Closing lives on the order screen with
   // the walkout confirmation, exactly as it does for a table.
   if (counter) {
+    const tabPaid = counter.paymentState === 'paid'
     const detail = [
       counter.elapsedMinutes !== undefined ? elapsed(counter.elapsedMinutes) : null,
       `${counter.itemCount} item${counter.itemCount === 1 ? '' : 's'}`,
+      tabPaid ? '✓ Paid' : counter.paymentState === 'part' ? 'Part paid' : null,
     ]
       .filter(Boolean)
       .join(' · ')
@@ -398,7 +414,7 @@ export function FloorActionStrip({
                 offer only "Add items", so paying meant opening the order and
                 finding Bill & split there. Only once something has been
                 ordered: an empty tab has nothing to bill. */}
-            {counter.itemCount > 0 ? (
+            {counter.itemCount > 0 && !tabPaid ? (
               <button
                 type="button"
                 disabled={busy}
@@ -413,10 +429,22 @@ export function FloorActionStrip({
               type="button"
               disabled={busy}
               onClick={() => onOpenCounter(counter.sessionId)}
-              className={primary}
+              className={tabPaid ? secondary : primary}
             >
               Open tab
             </button>
+            {/* Paid and still at the bar: closing it is the next thing to do
+                (Teran, 2026-11-10). The server refuses if anything is owed. */}
+            {tabPaid ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onCloseSettled(counter.sessionId, counter.label)}
+                className={primary}
+              >
+                Close tab
+              </button>
+            ) : null}
           </>
         ) : (
           <p className="text-fs-14 text-slate-600">Kitchen staff cannot open the order screen.</p>
@@ -477,10 +505,15 @@ export function FloorActionStrip({
       elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : null,
       // Absent rather than "LKR 0" — an order with nothing on it has no total,
       // and a zero reads as a party who have ordered nothing in an hour.
-      table.totalPaisa ? lkrFromPaisa(table.totalPaisa) : null,
+      table.paymentState === 'paid'
+        ? '✓ Paid'
+        : table.totalPaisa
+          ? `${lkrFromPaisa(table.totalPaisa)}${table.paymentState === 'part' ? ' · Part paid' : ''}`
+          : null,
     ]
       .filter(Boolean)
       .join(' · ')
+    const tablePaid = table.paymentState === 'paid'
 
     return (
       <Shell
@@ -518,7 +551,7 @@ export function FloorActionStrip({
                 Only once something has been sent (code review UI-P10, the 6.5
                 amendment) — a freshly seated table has nothing to bill, and the
                 order screen and the bar tab already gate it the same way. */}
-            {table.itemCount > 0 ? (
+            {table.itemCount > 0 && !tablePaid ? (
               <button
                 type="button"
                 disabled={busy || !table.sessionId}
@@ -529,14 +562,29 @@ export function FloorActionStrip({
                 Bill &amp; split
               </button>
             ) : null}
+            {/* Open order stays — the guests may want one more drink — but
+                once they have paid, the main action is to free the table
+                (Teran, 2026-11-10). Never on the card itself. */}
             <button
               type="button"
               disabled={busy}
               onClick={() => onOpenOrder(table.id)}
-              className={primary}
+              className={tablePaid ? secondary : primary}
             >
               Open order
             </button>
+            {tablePaid && table.sessionId ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  onCloseSettled(table.sessionId!, isMerged ? mergedTitle(groupLabels) : table.label)
+                }
+                className={primary}
+              >
+                {isMerged ? 'Close tables' : 'Close table'}
+              </button>
+            ) : null}
           </>
         ) : (
           <p className="text-fs-14 text-slate-600">Kitchen staff cannot open the order screen.</p>

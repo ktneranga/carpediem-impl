@@ -15,7 +15,7 @@
  */
 import { resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { buildTicket, clockTime, foldToAscii, PAPER_COLUMNS, wrapLine } from './escpos'
+import { buildPrintBytes, buildTicket, clockTime, foldToAscii, PAPER_COLUMNS, wrapLine } from './escpos'
 import { escposTcpTransport } from './escpos-transport'
 import { closedPort, startFakePrinter } from './fake-printer'
 import { renderTicketText } from './transport'
@@ -284,6 +284,12 @@ async function main() {
   delete process.env.PRINTER_USB_NAME
   delete process.env.PRINTER_IP
 
+  // ── A stored job with no `kind` is a ticket (Story 6.6, Trap 6) ──────────
+  // Every job written before bills could print has no `kind`; the transports
+  // now dispatch on it, and none of those may start printing as a bill.
+  check('a stored job with no kind prints the same bytes as a ticket',
+    buildPrintBytes(JSON.parse(JSON.stringify(ticket()))).equals(buildTicket(ticket())))
+
   // ── SERVE WITH: the round's other stations, names only ────────────────────
   const withText = (over: Partial<TicketPayload>) => buildTicket(ticket(over)).toString('latin1')
   check('a ticket names the round\'s other stations',
@@ -310,7 +316,7 @@ async function main() {
   const seed = async (destination: string, roundNumber: number) => {
     const [row] = await sql(
       `INSERT INTO print_jobs (tenant_id, session_id, round_id, destination, ticket)
-       SELECT s.tenant_id, s.id, o.id, $1::production_destination, $2::jsonb
+       SELECT s.tenant_id, s.id, o.id, $1::print_destination, $2::jsonb
          FROM order_rounds o JOIN order_sessions s ON s.id = o.session_id
         ORDER BY o.submitted_at DESC LIMIT 1
        RETURNING id`,

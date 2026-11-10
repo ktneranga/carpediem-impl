@@ -66,6 +66,85 @@ export type TicketPayload = {
 }
 
 /**
+ * Where a print job goes (Story 6.6): a production station, or `cashier` — the
+ * receipt printer, for bills. Mirrors `print_destination` in the schema.
+ */
+export type PrintDestination = ProductionDestination | 'cashier'
+
+/** One line on a guest's bill, as printed. */
+export type ReceiptLine = {
+  quantity: number
+  name: string
+  /** quantity × unit price, integer paisa. */
+  amountPaisa: number
+  /** "Extra shot ×2, No ice" — the options it was sent with. */
+  optionText: string | null
+  /** The waiter's note — "extra spicy". FR69 prints it. */
+  modifierText: string | null
+}
+
+/**
+ * A guest's bill or receipt, as the queue stores it (Story 6.6, FR69).
+ *
+ * Self-contained for the same reason as `TicketPayload`: everything the paper
+ * shows is COPIED in when the waiter taps Print, so a job printed late shows
+ * the bill as it was, not as the session has become. Every amount was priced
+ * by the server (`priceBillable`, or the stored bill) — never by the client.
+ *
+ * Carries `destination` and `tableLabels` because the worker reads both from
+ * any job to raise `printer:alert`.
+ *
+ * Guest-facing: no seat note and no tab nickname ever reach this payload.
+ */
+export type ReceiptPayload = {
+  kind: 'receipt'
+  destination: 'cashier'
+  /** BILL until fully paid, RECEIPT once it is. */
+  title: 'BILL' | 'RECEIPT'
+  /** A recorded bill printed again — "COPY" under the title. */
+  copy: boolean
+  restaurantName: string
+  /**
+   * `tenant_config.receipt_header` / `receipt_footer`, one entry per line
+   * (an address and a phone number are two lines). Empty prints nothing.
+   */
+  headerLines: string[]
+  footerLines: string[]
+  /** Every table on the order, or `['Bar tab']` / `['COUNTER']`. */
+  tableLabels: string[]
+  /** "Seat 1", "Person 2" or "Split bill" when the bill covers part of the table. */
+  billLabel: string | null
+  /** ISO. The database clock when Print was tapped. */
+  printedAt: string
+  timeZone?: string
+  dailyNumber: number
+  /** `YYYY-MM-DD`. */
+  businessDate: string
+  lines: ReceiptLine[]
+  /** Negative paisa each. Nothing writes comps before Story 7.3. */
+  comps: { reason: string; amountPaisa: number }[]
+  subtotalPaisa: number
+  serviceChargePaisa: number
+  serviceChargeBp: number
+  taxPaisa: number
+  taxBp: number
+  totalPaisa: number
+  /** What has been paid, oldest first. Empty on an unpaid bill. */
+  tenders: { method: 'cash' | 'card' | 'transfer'; amountPaisa: number; cashReceivedPaisa: number | null }[]
+}
+
+/**
+ * Anything on the print queue. A stored job with no `kind` is a ticket — every
+ * job written before Story 6.6 — and must keep printing as one.
+ */
+export type PrintPayload = TicketPayload | ReceiptPayload
+
+/** Whether a stored payload is a receipt. A job with no `kind` is a ticket. */
+export function isReceiptPayload(payload: PrintPayload): payload is ReceiptPayload {
+  return (payload as { kind?: unknown }).kind === 'receipt'
+}
+
+/**
  * `printer:alert` — a ticket is having trouble reaching its printer.
  *
  * ── Two kinds, and the difference is the whole point (Change U3) ─────────────
@@ -93,7 +172,8 @@ export type PrinterAlertPayload = {
    */
   kind: 'retrying' | 'dead' | 'recovered'
   jobId: string
-  destination: ProductionDestination
+  /** `cashier` is the bill printer (Story 6.6). */
+  destination: PrintDestination
   tableLabels: string[]
   attempts: number
   lastError: string

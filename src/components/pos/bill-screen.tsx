@@ -9,12 +9,13 @@ import {
   Delete,
   GripVertical,
   Plus,
+  Printer,
   Receipt,
   Split,
   Users,
   X,
 } from 'lucide-react'
-import { lkrFromPaisa } from '@/lib/format'
+import { lkrFromPaisa, percentFromBp } from '@/lib/format'
 import { loginUrl } from '@/lib/return-to'
 import { routeForDestination } from '@/lib/design'
 import { cn } from '@/lib/utils'
@@ -683,6 +684,21 @@ export function BillScreen({
    * landed, or another tablet billed one of these items — it stops rather than
    * charge the guest a figure they were not quoted, and returns null.
    */
+  /**
+   * A person's units, as the server takes them. A card may hold several
+   * events; each is taken for exactly this person's units of it. Shared by
+   * Settle and Print, so the bill printed and the bill recorded cover the same
+   * units.
+   */
+  function shareItems(lines: BillScreenLine[]) {
+    return lines.flatMap((line) =>
+      (members.get(line.orderEventId) ?? []).map((part) => ({
+        eventId: part.eventId,
+        quantity: part.qty,
+      })),
+    )
+  }
+
   async function createBillFor(
     payable: Extract<Payable, { kind: 'draft' | 'person' }>,
   ): Promise<string | null> {
@@ -691,18 +707,7 @@ export function BillScreen({
       `/api/sessions/${sessionId}/bills`,
       payable.kind === 'draft'
         ? { type: 'consolidated' }
-        : {
-            type: 'split',
-            personLabel: payable.title,
-            // A card may hold several events; the bill takes each event for
-            // exactly this person's units of it.
-            items: payable.lines.flatMap((line) =>
-              (members.get(line.orderEventId) ?? []).map((part) => ({
-                eventId: part.eventId,
-                quantity: part.qty,
-              })),
-            ),
-          },
+        : { type: 'split', personLabel: payable.title, items: shareItems(payable.lines) },
     )
     if (bill.totalPaisa !== expected) {
       setPaying(null)
@@ -743,7 +748,62 @@ export function BillScreen({
     }
   }
 
+  // ── Print (Story 6.6) ─────────────────────────────────────────────────────
+  // Which payable is being sent to the printer, and which was just sent — the
+  // button says "Sent to printer" for a moment, because nothing else on this
+  // screen changes when a bill prints.
+  const [printing, setPrinting] = useState<string | null>(null)
+  const [printed, setPrinted] = useState<string | null>(null)
+  useEffect(() => {
+    if (!printed) return
+    const timer = setTimeout(() => setPrinted(null), 2000)
+    return () => clearTimeout(timer)
+  }, [printed])
+
+  /**
+   * Sends a bill to the receipt printer. Nothing is recorded: a draft or a
+   * person's share prints as it stands, priced by the server, and the waiter
+   * can still change the order afterwards. A bill already written — paid,
+   * part-paid, or written by a Settle whose payment failed — prints from what
+   * was recorded.
+   */
+  async function printPayable(key: string, payable: Payable) {
+    // Disabled while in flight: a double tap would print the bill twice.
+    if (printing) return
+    setPrinting(key)
+    setNotice(null)
+    try {
+      const recorded = payable.kind === 'bill' ? payable.bill.billId : (payable.billId ?? null)
+      if (recorded) {
+        await postJson(`/api/bills/${recorded}/print`, {})
+      } else if (payable.kind === 'person') {
+        await postJson(`/api/sessions/${sessionId}/bill-print`, {
+          items: shareItems(payable.lines),
+          personLabel: payable.title,
+        })
+      } else {
+        await postJson(`/api/sessions/${sessionId}/bill-print`, {})
+      }
+      setPrinted(key)
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : 'Could not send the bill to the printer.')
+    } finally {
+      setPrinting(null)
+    }
+  }
+
+  /** The props a Print button needs for one payable. */
+  function printProps(key: string, payable: Payable) {
+    return {
+      onPrint: () => void printPayable(key, payable),
+      printState: printing === key ? ('sending' as const) : printed === key ? ('sent' as const) : ('idle' as const),
+      printDisabled: printing !== null && printing !== key,
+    }
+  }
+
   const [closing, setClosing] = useState(false)
+  /** "All paid. Close Table 5?" — shown once, after the payment that settles everything. */
+  const [askClose, setAskClose] = useState(false)
   /** Close the table once everything is paid (code review D1). */
   async function closeTable() {
     setClosing(true)
@@ -901,6 +961,7 @@ export function BillScreen({
                   totals={bill}
                   onSettle={() => settle({ kind: 'bill', key: bill.billId, title: bill.label, bill })}
                   due={bill.totalPaisa - bill.paidPaisa}
+                  {...printProps(bill.billId, { kind: 'bill', key: bill.billId, title: bill.label, bill })}
                 />
               </Column>
             ))}
@@ -975,6 +1036,7 @@ export function BillScreen({
                       onSettle={() =>
                         settle({ kind: 'person', key: person.id, title: person.label, lines, totals })
                       }
+                      {...printProps(person.id, { kind: 'person', key: person.id, title: person.label, lines, totals })}
                     />
                   ) : (
                     <div className="shrink-0 border-t border-slate-200 p-sp-3">
@@ -1036,6 +1098,7 @@ export function BillScreen({
                 totals={totalsOf(wholePayables[0]!)}
                 paidPaisa={wholePayables[0]!.kind === 'bill' ? wholePayables[0]!.bill.paidPaisa : 0}
                 onSettle={() => settle(wholePayables[0]!)}
+                {...printProps(wholePayables[0]!.key, wholePayables[0]!)}
               />
               {/* Offered from two DRINKS, not two lines: "2× Lion Lager" is one
                   line, and since migration 0025 the split gives one to each
@@ -1055,6 +1118,7 @@ export function BillScreen({
                   totals={totalsOf(payable)}
                   paidPaisa={payable.kind === 'bill' ? payable.bill.paidPaisa : 0}
                   onSettle={() => settle(payable)}
+                  {...printProps(payable.key, payable)}
                 />
                 {payable.kind === 'draft' && itemCount(draftLines) >= 2 ? (
                   <SplitCard onSplit={startSplit} />
@@ -1068,14 +1132,43 @@ export function BillScreen({
           <section className="flex shrink-0 flex-col gap-sp-2">
             <h2 className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">Paid</h2>
             <ul className="flex flex-wrap gap-sp-2">
-              {paidBills.map((bill) => (
-                <li
-                  key={bill.billId}
-                  className="rounded-control bg-open-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-open-ink"
-                >
-                  {bill.label} · {lkrFromPaisa(bill.totalPaisa)}
-                </li>
-              ))}
+              {paidBills.map((bill) => {
+                const key = `receipt:${bill.billId}`
+                const state = printing === key ? 'sending' : printed === key ? 'sent' : 'idle'
+                return (
+                  <li
+                    key={bill.billId}
+                    className="flex items-center gap-sp-3 rounded-control bg-open-chip py-sp-1 pr-sp-1 pl-sp-3 text-fs-14 font-semibold text-open-ink"
+                  >
+                    <span>
+                      {bill.label} · {lkrFromPaisa(bill.totalPaisa)}
+                    </span>
+                    {/* The receipt already printed at payment (Teran,
+                        2026-11-10), so this is a rare reprint, marked COPY —
+                        a small icon beside what it reprints, with a full
+                        44px target. It says so when it has been sent. */}
+                    {state === 'sent' ? (
+                      <span className="pr-sp-2 text-fs-12 font-bold">Sent</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={printing !== null}
+                      onClick={() =>
+                        void printPayable(key, { kind: 'bill', key: bill.billId, title: bill.label, bill })
+                      }
+                      aria-label={`Print another receipt for ${bill.label}`}
+                      title="Print another receipt"
+                      className={cn(
+                        'flex size-touch-standard items-center justify-center rounded-control text-open-ink',
+                        'hover:bg-white/60 active:scale-[0.95] disabled:opacity-60',
+                        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                      )}
+                    >
+                      <Printer aria-hidden="true" strokeWidth={2} className="size-4" />
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           </section>
         ) : null}
@@ -1147,6 +1240,18 @@ export function BillScreen({
         </button>
       </ActionStripShell>
 
+      {askClose ? (
+        <CloseAfterPaymentDialog
+          tableLabel={tableLabel}
+          closing={closing}
+          onClose={() => {
+            setAskClose(false)
+            void closeTable()
+          }}
+          onKeepOpen={() => setAskClose(false)}
+        />
+      ) : null}
+
       {paying ? (
         <PaymentDialog
           title={`${paying.title} · ${tableLabel}`}
@@ -1158,7 +1263,7 @@ export function BillScreen({
             setPaying(null)
             if (wrote) router.refresh()
           }}
-          onPay={async (tenders) => {
+          onPay={async (tenders, cashReceivedPaisa) => {
             // A bill this dialog already wrote, on a retry after a failed
             // payment (code review UI-P1), is paid — never written again.
             let billId = paying.kind === 'bill' ? paying.bill.billId : (paying.billId ?? null)
@@ -1174,8 +1279,16 @@ export function BillScreen({
             }
             if (!billId) return
 
-            await postJson<{ allPaid: boolean }>(`/api/bills/${billId}/payments`, { tenders })
+            const paid = await postJson<{ allPaid: boolean }>(`/api/bills/${billId}/payments`, {
+              tenders,
+              cashReceivedPaisa,
+            })
             setPaying(null)
+            // The last bill is paid: ask, once, whether the guests have gone
+            // (Teran, 2026-11-10). Asked, never done — a paid table can still
+            // have people at it, which is why closing stopped being automatic
+            // (code review D1).
+            if (paid.allPaid) setAskClose(true)
             // Paying never closes the table (code review D1). When everything
             // is paid the refreshed screen offers Close table in the bar.
             // That person is paid: their column goes, and their items are on a
@@ -1413,14 +1526,128 @@ function ItemList({
   )
 }
 
+/**
+ * Asked once, after the payment that settles everything (Teran, 2026-11-10).
+ *
+ * Paid is not the same as gone — guests linger over coffee — so the table is
+ * not closed for them (code review D1). This puts the question where the
+ * waiter already is, with Keep open as the safe answer. The floor offers
+ * Close table again later, from its bottom bar.
+ */
+function CloseAfterPaymentDialog({
+  tableLabel,
+  closing,
+  onClose,
+  onKeepOpen,
+}: {
+  tableLabel: string
+  closing: boolean
+  onClose: () => void
+  onKeepOpen: () => void
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="close-after-payment-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onKeepOpen()
+      }}
+    >
+      <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2">
+        <div className="flex flex-col gap-sp-1">
+          <span className="text-fs-12 font-bold tracking-micro text-open-ink uppercase">All paid</span>
+          <h2 id="close-after-payment-title" className="text-fs-24 font-extrabold text-slate-900">
+            Close {tableLabel}?
+          </h2>
+          <p className="text-fs-14 text-slate-600">
+            Keep it open if the guests are still at the table. You can close it later from the floor.
+          </p>
+        </div>
+        <div className="flex gap-sp-3">
+          <button
+            type="button"
+            autoFocus
+            onClick={onKeepOpen}
+            className={cn(
+              'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white text-fs-16 font-bold text-slate-900',
+              'active:scale-[0.98]',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+            )}
+          >
+            Keep open
+          </button>
+          <button
+            type="button"
+            disabled={closing}
+            onClick={onClose}
+            className={cn(
+              'h-touch-waiter flex-1 rounded-waiter bg-brand-800 text-fs-16 font-bold text-white shadow-el-2',
+              'active:scale-[0.98] disabled:opacity-60',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+            )}
+          >
+            {closing ? 'Closing…' : 'Close table'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+type PrintState = 'idle' | 'sending' | 'sent'
+
+/**
+ * Print the bill (Story 6.6) — secondary to Settle, never instead of it.
+ *
+ * A real button, not an icon: printing the bill for a guest who asks for it is
+ * an everyday action, so it gets the same height as Settle beside it. Disabled
+ * while it sends, because a double tap would print the bill twice.
+ */
+function PrintBillButton({
+  state,
+  disabled,
+  onPrint,
+  size,
+}: {
+  state: PrintState
+  disabled: boolean
+  onPrint: () => void
+  size: 'waiter' | 'kitchen'
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPrint}
+      disabled={disabled || state === 'sending'}
+      className={cn(
+        size === 'waiter' ? 'h-touch-waiter text-fs-16' : 'h-touch-kitchen text-fs-14',
+        'flex items-center justify-center gap-sp-2 rounded-waiter border border-slate-200 bg-white font-bold text-slate-900',
+        'active:scale-[0.98] disabled:opacity-60 disabled:active:scale-100',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+      )}
+    >
+      <Printer aria-hidden="true" strokeWidth={2} className="size-5" />
+      {state === 'sending' ? 'Sending…' : state === 'sent' ? 'Sent to printer' : 'Print bill'}
+    </button>
+  )
+}
+
 function ColumnFooter({
   totals,
   due,
   onSettle,
+  onPrint,
+  printState = 'idle',
+  printDisabled = false,
 }: {
   totals: Totals
   due: number
   onSettle: () => void
+  onPrint?: () => void
+  printState?: PrintState
+  printDisabled?: boolean
 }) {
   return (
     <div className="flex shrink-0 flex-col gap-sp-2 border-t border-slate-200 bg-slate-50 p-sp-3">
@@ -1429,6 +1656,9 @@ function ColumnFooter({
           <span>{lkrFromPaisa(totals.subtotalPaisa)} + service</span>
           <span className="tabular-nums">{lkrFromPaisa(totals.serviceChargePaisa)}</span>
         </div>
+      ) : null}
+      {onPrint ? (
+        <PrintBillButton state={printState} disabled={printDisabled} onPrint={onPrint} size="kitchen" />
       ) : null}
       <button
         type="button"
@@ -1525,28 +1755,30 @@ function LinesCard({ title, lines: ungrouped }: { title: string; lines: BillScre
   )
 }
 
-function percentLabel(bp: number): string {
-  return (bp / 100).toFixed(bp % 100 === 0 ? 0 : 1).replace(/\.0$/, '')
-}
-
 function TotalsCard({
   totals,
   paidPaisa,
   onSettle,
+  onPrint,
+  printState = 'idle',
+  printDisabled = false,
 }: {
   totals: Totals
   paidPaisa: number
   onSettle: () => void
+  onPrint?: () => void
+  printState?: PrintState
+  printDisabled?: boolean
 }) {
   const due = totals.totalPaisa - paidPaisa
   return (
     <section className="flex shrink-0 flex-col gap-sp-2 rounded-panel bg-white p-sp-4 shadow-el-1">
       <Row label="Subtotal" value={totals.subtotalPaisa} />
       {totals.serviceChargeBp > 0 ? (
-        <Row label={`Service ${percentLabel(totals.serviceChargeBp)}%`} value={totals.serviceChargePaisa} />
+        <Row label={`Service ${percentFromBp(totals.serviceChargeBp)}%`} value={totals.serviceChargePaisa} />
       ) : null}
       {totals.taxBp > 0 ? (
-        <Row label={`Tax ${percentLabel(totals.taxBp)}%`} value={totals.taxPaisa} />
+        <Row label={`Tax ${percentFromBp(totals.taxBp)}%`} value={totals.taxPaisa} />
       ) : null}
       <div className="mt-sp-1 flex items-baseline justify-between gap-sp-3 border-t border-slate-200 pt-sp-3">
         <span className="text-fs-16 font-bold text-slate-900">Total</span>
@@ -1559,6 +1791,11 @@ function TotalsCard({
           <Row label="Paid" value={paidPaisa} />
           <Row label="Still to pay" value={due} />
         </>
+      ) : null}
+      {onPrint ? (
+        <div className="mt-sp-2 flex flex-col">
+          <PrintBillButton state={printState} disabled={printDisabled} onPrint={onPrint} size="waiter" />
+        </div>
       ) : null}
       <button
         type="button"
@@ -1606,7 +1843,9 @@ function Row({ label, value }: { label: string; value: number }) {
  * Charge the total on the machine, then confirm.
  *
  * Not drawn yet, rather than drawn dead: TIP (nothing stores a tip — a payment
- * is capped at the bill) and PRINT RECEIPT (bill printing is not built).
+ * is capped at the bill). The receipt prints by itself when this records the
+ * payment that settles the bill (Teran, 2026-11-10); Print receipt in the Paid
+ * list prints another, marked COPY.
  */
 function PaymentDialog({
   title,
@@ -1617,7 +1856,15 @@ function PaymentDialog({
   title: string
   duePaisa: number
   onCancel: () => void
-  onPay: (tenders: { method: 'cash' | 'card'; amountPaisa: number }[]) => Promise<void>
+  /**
+   * `cashReceivedPaisa` is what the pad holds in Cash mode — the note the guest
+   * handed over — so the receipt can print the change (Story 6.6). Absent for
+   * card, and for Cash + card, where the pad types the exact cash part.
+   */
+  onPay: (
+    tenders: { method: 'cash' | 'card'; amountPaisa: number }[],
+    cashReceivedPaisa?: number,
+  ) => Promise<void>
 }) {
   const [method, setMethod] = useState<'cash' | 'card' | 'split'>('cash')
   // What the pad has typed, in WHOLE RUPEES as a digit string. "Exact" may set
@@ -1926,7 +2173,7 @@ function PaymentDialog({
                 setBusy(true)
                 setError(null)
                 try {
-                  await onPay(tenders)
+                  await onPay(tenders, method === 'cash' ? cash : undefined)
                 } catch (caught) {
                   setError(caught instanceof Error ? caught.message : 'Could not record the payment.')
                   setBusy(false)

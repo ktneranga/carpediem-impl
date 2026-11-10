@@ -18,7 +18,7 @@
  * missing one is a table waiting for food that nobody is cooking.
  */
 import { Pool } from 'pg'
-import type { PrinterAlertPayload, TicketPayload } from '@/types/tickets'
+import type { PrintDestination, PrintPayload, PrinterAlertPayload } from '@/types/tickets'
 import { resolveTransport, type TicketTransport } from './transport'
 
 /**
@@ -88,8 +88,8 @@ export async function closePrintPool(): Promise<void> {
 
 type ClaimedJob = {
   id: string
-  destination: TicketPayload['destination']
-  ticket: TicketPayload
+  destination: PrintDestination
+  ticket: PrintPayload
   attempts: number
 }
 
@@ -129,7 +129,7 @@ async function recoverStaleClaims(): Promise<{ recovered: number; dead: number }
 
   // Out of attempts and still stuck: the same end a repeated delivery failure
   // reaches, by the other road. The row stays, as always.
-  const buried = await getPool().query<{ id: string; destination: TicketPayload['destination']; ticket: TicketPayload; attempts: number }>(
+  const buried = await getPool().query<{ id: string; destination: PrintDestination; ticket: PrintPayload; attempts: number }>(
     `UPDATE print_jobs
         SET status = 'dead',
             claimed_at = NULL,
@@ -344,7 +344,7 @@ function alertStaff(payload: PrinterAlertPayload): void {
  * nothing and gets the real resolver.
  */
 export async function drainPrintQueue(
-  resolve: (destination: TicketPayload['destination']) => TicketTransport = resolveTransport,
+  resolve: (destination: PrintDestination) => TicketTransport = resolveTransport,
 ): Promise<{
   printed: number
   failed: number

@@ -80,6 +80,16 @@ export function lkrFromPaisa(paisa: number): string {
 }
 
 /**
+ * A rate in basis points as a percentage: 1000 → "10", 250 → "2.5".
+ *
+ * Shared by the bill screen and the printed bill (Story 6.6), so the paper and
+ * the screen cannot word the same rate two ways.
+ */
+export function percentFromBp(bp: number): string {
+  return (bp / 100).toFixed(bp % 100 === 0 ? 0 : 1).replace(/\.0$/, '')
+}
+
+/**
  * A price CHANGE, signed — "+LKR 1,000", "−LKR 1,000" (a true minus, U+2212),
  * and "" for no change (Story 4.8: an option's effect on the dish).
  *

@@ -26,9 +26,9 @@ import { randomUUID } from 'node:crypto'
 import { unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { buildTicket } from './escpos'
+import { buildPrintBytes } from './escpos'
 import type { TicketTransport } from './transport'
-import type { TicketPayload } from '@/types/tickets'
+import type { PrintPayload } from '@/types/tickets'
 
 /**
  * Longer than TCP's five seconds: PowerShell starts and compiles the spooler
@@ -115,8 +115,8 @@ export function usbTransport(printer: string): TicketTransport {
   const isDevicePath = printer.startsWith('/dev/')
   return {
     name: `usb:${printer}`,
-    deliver: async (ticket: TicketPayload) => {
-      const bytes = buildTicket(ticket)
+    deliver: async (ticket: PrintPayload) => {
+      const bytes = buildPrintBytes(ticket)
       if (isDevicePath) {
         await writeFile(printer, bytes).catch((error: Error) => {
           throw new Error(`USB printer ${printer}: ${error.message}`)

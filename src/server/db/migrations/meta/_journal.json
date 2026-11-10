@@ -232,6 +232,13 @@
       "when": 1793612119300,
       "tag": "0032_dusty_freak",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794328043734,
+      "tag": "0033_naive_ego",
+      "breakpoints": true
     }
   ]
 }

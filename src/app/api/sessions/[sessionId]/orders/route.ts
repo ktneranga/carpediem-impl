@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { SelectionProblem } from '@/lib/options'
 import { db } from '@/server/db'
+import { sessionPaymentState } from '@/server/services/payment.service'
 import { orderEvents, orderRounds, orderSessions } from '@/server/db/schema'
 import { isUniqueViolation } from '@/server/db/errors'
 import { canAddCustomCharge, type StaffRole } from '@/server/auth/permissions'
@@ -25,6 +26,7 @@ import { SessionAlreadyClosedError } from '@/server/services/table-session.servi
 import {
   emitCounterSalesChanged,
   emitOrderConfirmed,
+  emitSessionPaymentChanged,
   emitOrderSubmitted,
   emitTableStatusChanged,
 } from '@/server/socket/events'
@@ -447,6 +449,14 @@ export async function POST(
     // released — cannot happen: `releaseTable` refuses the last one.)
     if (announcement.isCounterSale) {
       emitCounterSalesChanged()
+    }
+
+    // A round sent to a table that had paid means it owes again (Teran,
+    // 2026-11-10): the floor's ✓ Paid must not survive another drink.
+    try {
+      emitSessionPaymentChanged({ sessionId, paymentState: await sessionPaymentState(db, sessionId) })
+    } catch (error) {
+      console.error('[orders] Could not announce the payment state:', error)
     }
 
     if (announcement.tableIds.length > 0) {

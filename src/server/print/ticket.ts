@@ -7,7 +7,7 @@
  * is only used by the enqueue side today, but keeping the whole folder free of
  * it means a later import from the worker cannot take the server down at boot.
  */
-import type { TicketPayload } from '@/types/tickets'
+import type { ReceiptPayload, TicketPayload } from '@/types/tickets'
 import type { ProductionDestination, TicketLine } from '@/types/orders'
 
 /**
@@ -99,4 +99,45 @@ export function buildTicketPayloads(input: {
     businessDate: input.businessDate,
     lines: lines.map(sanitizeLine),
   }))
+}
+
+/**
+ * Free text from `tenant_config` as printable lines: split on line breaks
+ * BEFORE cleaning, because `sanitizeTicketText` folds a newline to a space and
+ * "No 12, Galle Road" and "Tel 011 234 5678" are two lines on purpose.
+ */
+export function receiptTextLines(text: string | null): string[] {
+  if (text === null) return []
+  return text
+    .split(/\r?\n/)
+    .map((line) => sanitizeTicketText(line))
+    .filter((line): line is string => line !== null)
+}
+
+/**
+ * A guest's bill as the queue stores it (Story 6.6) — every string cleaned.
+ *
+ * Dish names, notes and options are owner- and waiter-typed text bound for a
+ * printer, exactly like a ticket's; the same rule applies for the same reason.
+ * Amounts are passed through untouched: the caller priced them on the server.
+ */
+export function buildReceiptPayload(
+  input: Omit<ReceiptPayload, 'kind' | 'destination'>,
+): ReceiptPayload {
+  const clean = (text: string) => sanitizeTicketText(text) ?? text
+  return {
+    kind: 'receipt',
+    destination: 'cashier',
+    ...input,
+    restaurantName: clean(input.restaurantName),
+    tableLabels: input.tableLabels.map(clean),
+    billLabel: input.billLabel === null ? null : clean(input.billLabel),
+    lines: input.lines.map((line) => ({
+      ...line,
+      name: clean(line.name),
+      optionText: sanitizeTicketText(line.optionText),
+      modifierText: sanitizeTicketText(line.modifierText),
+    })),
+    comps: input.comps.map((comp) => ({ ...comp, reason: clean(comp.reason) })),
+  }
 }

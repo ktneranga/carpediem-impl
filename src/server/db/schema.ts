@@ -16,7 +16,7 @@ import {
 // Type-only, and from a module that imports nothing. It types the `print_jobs`
 // ticket column so a malformed payload is a compile error rather than a
 // surprise at the printer.
-import type { TicketPayload } from '@/types/tickets'
+import type { PrintPayload } from '@/types/tickets'
 import type { OrderEventOption } from '@/types/orders'
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
@@ -92,6 +92,22 @@ export const productionDestinationEnum = pgEnum('production_destination', [
   'kitchen',
   'pizza_kitchen',
   'bar',
+])
+
+/**
+ * Where a print job goes (Story 6.6): the three production destinations plus
+ * `cashier`, the receipt printer.
+ *
+ * Its own enum, NOT `production_destination` with a fourth value: that enum
+ * also types `menu_items`, and a dish must never be routable to "cashier".
+ * Not nullable either — the worker's head-of-line rule compares destinations,
+ * and `NULL = NULL` is never true, so two bills could overtake each other.
+ */
+export const printDestinationEnum = pgEnum('print_destination', [
+  'kitchen',
+  'pizza_kitchen',
+  'bar',
+  'cashier',
 ])
 
 export const authModeEnum = pgEnum('auth_mode', [
@@ -860,6 +876,13 @@ export const paymentRecords = pgTable('payment_records', {
   /** Integer paisa. The key was `amountPaysa` until 6.5 started writing it. */
   amountPaisa:      integer('amount_paisa').notNull(),
   method:           paymentMethodEnum('method').notNull(),
+  /**
+   * The cash the guest handed over, on a cash tender (Story 6.6), so a receipt
+   * can print "Received" and "Change". NOT revenue: `amount_paisa` is what was
+   * applied to the bill and stays capped at it. Null on card tenders and on
+   * every payment recorded before 6.6.
+   */
+  cashReceivedPaisa: integer('cash_received_paisa'),
   coveredSeatSlots: text('covered_seat_slots'),
   createdAt:        timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -929,17 +952,28 @@ export const printJobs = pgTable('print_jobs', {
   id:        uuid('id').primaryKey().defaultRandom(),
   tenantId:  uuid('tenant_id').notNull().references(() => tenants.id),
   sessionId: uuid('session_id').notNull().references(() => orderSessions.id),
-  /** The round this ticket is for. One job per destination present in it. */
-  roundId:   uuid('round_id').notNull().references(() => orderRounds.id),
-  destination: productionDestinationEnum('destination').notNull(),
+  /**
+   * The round this ticket is for. One job per destination present in it.
+   * Null for a bill or receipt (Story 6.6): a bill has no round.
+   */
+  roundId:   uuid('round_id').references(() => orderRounds.id),
+  destination: printDestinationEnum('destination').notNull(),
+  /**
+   * The recorded bill a receipt job prints (Story 6.6) — how a reprint knows it
+   * is a COPY. Null for kitchen tickets and for a printed draft, which has no
+   * bill row yet.
+   */
+  billId:    uuid('bill_id').references(() => bills.id),
   /**
    * The ticket as DATA, not as ESC/POS bytes.
    *
    * Story 5.2 owns byte assembly; bytes stored here would have to be re-rendered
    * anyway after any formatting change, and could not be written at all until
-   * 5.2 exists. Shape: `TicketPayload` in `src/types/tickets.ts`.
+   * 5.2 exists. Shape: `PrintPayload` in `src/types/tickets.ts` — a ticket, or
+   * since Story 6.6 a receipt (`kind: 'receipt'`). A row with no `kind` is a
+   * ticket.
    */
-  ticket:    jsonb('ticket').$type<TicketPayload>().notNull(),
+  ticket:    jsonb('ticket').$type<PrintPayload>().notNull(),
   status:    printJobStatusEnum('status').notNull().default('pending'),
   attempts:  integer('attempts').notNull().default(0),
   lastError: text('last_error'),
@@ -976,6 +1010,7 @@ export const printJobs = pgTable('print_jobs', {
   index('idx_print_jobs_claim').on(t.status, t.nextAttemptAt, t.createdAt),
   index('idx_print_jobs_destination_order').on(t.destination, t.createdAt),
   index('idx_print_jobs_session_id').on(t.sessionId),
+  index('idx_print_jobs_bill_id').on(t.billId),
 ])
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -1006,6 +1041,13 @@ export const tenantConfig = pgTable('tenant_config', {
   id:             uuid('id').primaryKey().defaultRandom(),
   tenantId:       uuid('tenant_id').notNull().references(() => tenants.id),
   restaurantName: text('restaurant_name').notNull(),
+  /**
+   * Free text printed under the restaurant name on a bill, and above the order
+   * reference at its foot (Story 6.6) — address, phone, a thank-you line.
+   * Null prints nothing. Set by SQL until the Manage area (Story 10.0).
+   */
+  receiptHeader:  text('receipt_header'),
+  receiptFooter:  text('receipt_footer'),
   brandColor:     text('brand_color').notNull().default('#2288B4'),
   currencyCode:   text('currency_code').notNull().default('LKR'),
   taxRatePercent: integer('tax_rate_percent').notNull().default(0),

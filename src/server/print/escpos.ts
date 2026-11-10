@@ -18,8 +18,9 @@
  * Pure: no I/O, no configuration, no clock beyond the timestamp it is handed.
  * `escpos-transport.ts` owns the socket.
  */
+import { lkrFromPaisa, percentFromBp } from '@/lib/format'
 import { dailyOrderLabel, orderReference } from '@/lib/order-number'
-import type { TicketPayload } from '@/types/tickets'
+import { isReceiptPayload, type PrintPayload, type ReceiptPayload, type TicketPayload } from '@/types/tickets'
 import type { TicketLine } from '@/types/orders'
 
 // ── Commands ────────────────────────────────────────────────────────────────
@@ -37,6 +38,8 @@ const BOLD_OFF = [ESC, 0x45, 0]
 /** `GS ! n` — character size; the nibbles are width and height multipliers. */
 const SIZE_NORMAL = [GS, 0x21, 0x00]
 const SIZE_DOUBLE = [GS, 0x21, 0x11]
+/** Double HEIGHT only — keeps the 48-column width, so a right-aligned amount stays aligned. */
+const SIZE_TALL = [GS, 0x21, 0x01]
 /** `ESC d n` — feed n LINES. The subtask that asked for this was ticked before
  *  it was written; the cut below is why it is needed. */
 const feedLines = (lines: number) => [ESC, 0x64, lines]
@@ -81,6 +84,9 @@ const FOLD: Record<string, string> = {
   '×': 'x',
   '·': '-',
   '—': '-',
+  // U+2212, the true minus `deduction` and the signed formatters use. Without
+  // it the strip below deleted the sign, and a comp printed as a charge.
+  '−': '-',
   '–': '-',
   '‑': '-',
   '“': '"',
@@ -411,4 +417,171 @@ export function buildTicket(ticket: TicketPayload): Buffer {
   command(feedLines(4))
   command(CUT)
   return Buffer.from(parts)
+}
+
+// ── The guest's bill (Story 6.6, FR69) ───────────────────────────────────────
+
+/**
+ * Money as the paper shows it: `LKR 2,450`, `-LKR 500`.
+ *
+ * Signed here, not by `lkrFromPaisa`: that one loses the sign whenever the
+ * rupee part is zero (`-50` paisa reads `LKR 0.50`), and a bill is the one
+ * place a lost minus turns a discount into a charge.
+ */
+export function receiptMoney(paisa: number): string {
+  const amount = Number.isFinite(paisa) ? Math.trunc(paisa) : 0
+  return `${amount < 0 ? '-' : ''}${lkrFromPaisa(Math.abs(amount))}`
+}
+
+/**
+ * A left text and a right-aligned amount on one 48-column line.
+ *
+ * The left text wraps in the space the amount leaves, continuing under
+ * `indent + 2`; the amount sits on the FIRST line, beside the start of the
+ * name, where an eye running down the right-hand column expects it. Folded
+ * before it is measured, for the reason `emit` gives in `buildTicket`.
+ */
+export function amountLines(left: string, right: string, indent = 0, columns = PAPER_COLUMNS): string[] {
+  const amount = foldToAscii(right)
+  const room = Math.max(8, columns - amount.length - 1)
+  const words = foldToAscii(left).split(/\s+/).filter(Boolean)
+  const first: string[] = []
+  // Fill the first line up to `room`, then wrap what is left across the full width.
+  while (words.length > 0 && [...first, words[0]].join(' ').length + indent <= room) first.push(words.shift()!)
+  if (first.length === 0 && words.length > 0) {
+    // One word longer than the room: break it, as `wrapLine` would.
+    const word = words.shift()!
+    first.push(word.slice(0, room - indent))
+    words.unshift(word.slice(room - indent))
+  }
+  const head = `${' '.repeat(indent)}${first.join(' ')}`
+  const rest = words.length > 0 ? wrapLine(words.join(' '), indent + 2, columns) : []
+  return [`${head.padEnd(columns - amount.length)}${amount}`, ...rest]
+}
+
+const TENDER_NAMES: Record<string, string> = { cash: 'Cash', card: 'Card', transfer: 'Transfer' }
+
+/**
+ * A bill or receipt, as the bytes a printer will accept.
+ *
+ * Same discipline as `buildTicket`: reads the stored payload defensively (it
+ * is jsonb and may outlive this code), folds every string to ASCII, wraps at
+ * the paper width, and ends with the same feed-and-cut.
+ */
+export function buildReceipt(receipt: ReceiptPayload): Buffer {
+  const parts: number[] = []
+  const command = (bytes: number[]) => parts.push(...bytes)
+  const emit = (text: string) => {
+    parts.push(...Buffer.from(foldToAscii(text), 'ascii'))
+    parts.push(0x0a)
+  }
+  const divider = () => emit('-'.repeat(PAPER_COLUMNS))
+  const centred = (text: unknown) => {
+    const folded = foldToAscii(text)
+    if (folded.trim() === '') return
+    for (const line of wrapLine(folded)) emit(line.trim())
+  }
+  const strings = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
+  const money = (value: unknown) => receiptMoney(typeof value === 'number' ? value : 0)
+  const row = (left: string, amount: unknown) => {
+    for (const line of amountLines(left, money(amount))) emit(line)
+  }
+
+  command(INIT)
+
+  // ── Who, and what this paper is ───────────────────────────────────────────
+  command(ALIGN_CENTRE)
+  command(BOLD_ON)
+  centred(receipt.restaurantName || 'Bill')
+  command(BOLD_OFF)
+  for (const line of strings(receipt.headerLines)) centred(line)
+
+  command(SIZE_DOUBLE)
+  command(BOLD_ON)
+  const number =
+    Number.isInteger(receipt.dailyNumber) && receipt.dailyNumber > 0 ? receipt.dailyNumber : null
+  const title = receipt.title === 'RECEIPT' ? 'RECEIPT' : 'BILL'
+  emit(number ? `${title} ${dailyOrderLabel(number)}` : title)
+  command(SIZE_NORMAL)
+  if (receipt.copy === true) emit('COPY')
+  centred(strings(receipt.tableLabels).join(' + ') || 'COUNTER')
+  command(BOLD_OFF)
+  if (typeof receipt.billLabel === 'string') centred(receipt.billLabel)
+  command(ALIGN_LEFT)
+  emit(`${calendarDate(receipt.printedAt, receipt.timeZone)}  ${clockTime(receipt.printedAt, receipt.timeZone)}`)
+  divider()
+
+  // ── What was had ──────────────────────────────────────────────────────────
+  for (const line of Array.isArray(receipt.lines) ? receipt.lines : []) {
+    row(`${line.quantity} x ${printableName(line.name)}`, line.amountPaisa)
+    for (const extra of [line.optionText, line.modifierText]) {
+      const text = foldToAscii(extra)
+      if (text !== '') for (const wrapped of wrapLine(`- ${text}`, 3)) emit(wrapped)
+    }
+  }
+  for (const comp of Array.isArray(receipt.comps) ? receipt.comps : []) {
+    row(`Comp: ${foldToAscii(comp.reason) || 'comp'}`, comp.amountPaisa)
+  }
+  divider()
+
+  // ── The money ─────────────────────────────────────────────────────────────
+  row('Subtotal', receipt.subtotalPaisa)
+  if (receipt.serviceChargeBp > 0) row(`Service ${percentFromBp(receipt.serviceChargeBp)}%`, receipt.serviceChargePaisa)
+  if (receipt.taxBp > 0) row(`Tax ${percentFromBp(receipt.taxBp)}%`, receipt.taxPaisa)
+  command(SIZE_TALL)
+  command(BOLD_ON)
+  row('Total', receipt.totalPaisa)
+  command(BOLD_OFF)
+  command(SIZE_NORMAL)
+
+  // ── How it was paid ───────────────────────────────────────────────────────
+  const tenders = Array.isArray(receipt.tenders) ? receipt.tenders : []
+  if (tenders.length > 0) {
+    divider()
+    for (const tender of tenders) {
+      row(TENDER_NAMES[tender.method] ?? 'Paid', tender.amountPaisa)
+      // Only a cash tender with the note recorded: a payment from before
+      // Story 6.6 has none, and printing "Change LKR 0" would be invented.
+      const received = tender.cashReceivedPaisa
+      if (tender.method === 'cash' && typeof received === 'number' && received >= tender.amountPaisa) {
+        row('Received', received)
+        row('Change', received - tender.amountPaisa)
+      }
+    }
+    if (title === 'BILL') {
+      const paid = tenders.reduce((total, tender) => total + (tender.amountPaisa || 0), 0)
+      row('Paid', paid)
+      row('Still to pay', receipt.totalPaisa - paid)
+    }
+  }
+
+  // ── Foot ──────────────────────────────────────────────────────────────────
+  const footer = strings(receipt.footerLines)
+  if (footer.length > 0) {
+    divider()
+    command(ALIGN_CENTRE)
+    for (const line of footer) centred(line)
+    command(ALIGN_LEFT)
+  }
+  const businessDate =
+    typeof receipt.businessDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(receipt.businessDate)
+      ? receipt.businessDate
+      : null
+  if (number && businessDate) {
+    divider()
+    emit(`Order ${orderReference(businessDate, number)}`)
+  }
+
+  command(feedLines(4))
+  command(CUT)
+  return Buffer.from(parts)
+}
+
+/**
+ * The bytes for any queued job: a receipt, or — every job with no `kind`,
+ * including all those written before Story 6.6 — a kitchen ticket.
+ */
+export function buildPrintBytes(payload: PrintPayload): Buffer {
+  return isReceiptPayload(payload) ? buildReceipt(payload) : buildTicket(payload)
 }

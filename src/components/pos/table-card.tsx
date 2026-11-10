@@ -1,10 +1,11 @@
 'use client'
 
 import { createElement } from 'react'
-import { AlertTriangle, Ban, Split } from 'lucide-react'
+import { AlertTriangle, Ban, Check, Split } from 'lucide-react'
 import { STATUS_TONES, zoneIcon, type TableStatus } from '@/lib/design'
 import { elapsed, lkrCompact, lkrFromPaisa, mergedTitle } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import type { PaymentState } from '@/types/tables'
 
 export type { TableStatus }
 
@@ -37,6 +38,13 @@ export type TableCardProps = {
    * charge, tax and comps are Epic 6's, and none of them is in this number.
    */
   totalPaisa?: number
+  /**
+   * Where the order stands with its money (Teran, 2026-11-10). `paid` shows a
+   * green ✓ Paid in place of the total — the guests may still be sitting, so
+   * the card stays occupied — and `part` an amber "Part paid". Nothing on the
+   * card closes the table: that is the bottom bar's, once it is selected.
+   */
+  paymentState?: PaymentState
   /** Why the table is out of service. Shown under the label. */
   unavailableReason?: string | null
   /**
@@ -110,6 +118,7 @@ export function TableCard({
   orderLabel = null,
   itemCount,
   totalPaisa,
+  paymentState = 'none',
   unavailableReason,
   needsCheck = false,
   selected = false,
@@ -159,7 +168,12 @@ export function TableCard({
     status === 'occupied' && coverCount != null
       ? `${coverCount} of ${capacity ?? coverCount} guests`
       : null,
-    status === 'occupied' && totalPaisa ? lkrFromPaisa(totalPaisa) : null,
+    status === 'occupied' && paymentState === 'paid'
+      ? 'paid'
+      : status === 'occupied' && paymentState === 'part'
+        ? 'part paid'
+        : null,
+    status === 'occupied' && totalPaisa && paymentState !== 'paid' ? lkrFromPaisa(totalPaisa) : null,
     status === 'open' && capacity != null ? `${capacity} seats` : null,
     status === 'unavailable' && unavailableReason ? unavailableReason : null,
   ]
@@ -311,7 +325,18 @@ export function TableCard({
               {/* Absent rather than "LKR 0" before anything is sent: an order
                   with nothing on it has no total, and a zero reads as a table
                   that has been sitting an hour ordering nothing. */}
-              {totalPaisa ? (
+              {paymentState === 'paid' ? (
+                // Paid, guests still here: green on the amber card, the
+                // floor's own "free" colour, so it reads as "done" at a glance.
+                <span className="flex shrink-0 items-center gap-0.5 rounded-pill bg-open-chip px-sp-2 text-fs-12 font-extrabold text-open-ink">
+                  <Check aria-hidden="true" strokeWidth={3} className="size-3" />
+                  Paid
+                </span>
+              ) : paymentState === 'part' ? (
+                <span className="shrink-0 rounded-pill bg-occupied-chip px-sp-2 text-fs-12 font-extrabold text-occupied-ink">
+                  Part paid
+                </span>
+              ) : totalPaisa ? (
                 <span className="shrink-0 text-fs-12 font-extrabold tabular-nums text-occupied-ink">
                   {lkrCompact(totalPaisa)}
                 </span>

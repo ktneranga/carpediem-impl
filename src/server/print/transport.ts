@@ -16,8 +16,16 @@
  * No `server-only` anywhere in this folder: the worker is loaded from
  * `server.ts`, outside Next, where that module throws at import time.
  */
-import type { TicketPayload } from '@/types/tickets'
-import { calendarDate, clockTime, groupBySeat, serveWithLine, ticketTypeOf } from './escpos'
+import { isReceiptPayload, type PrintDestination, type PrintPayload, type ReceiptPayload, type TicketPayload } from '@/types/tickets'
+import { percentFromBp } from '@/lib/format'
+import {
+  calendarDate,
+  clockTime,
+  groupBySeat,
+  receiptMoney,
+  serveWithLine,
+  ticketTypeOf,
+} from './escpos'
 import { dailyOrderLabel } from '@/lib/order-number'
 import { escposTcpTransport } from './escpos-transport'
 import { usbTransport } from './usb-transport'
@@ -25,7 +33,8 @@ import { usbTransport } from './usb-transport'
 export type TicketTransport = {
   /** For the log line and for `last_error` context. */
   readonly name: string
-  deliver(ticket: TicketPayload): Promise<void>
+  /** A kitchen ticket or, since Story 6.6, a guest's bill. */
+  deliver(ticket: PrintPayload): Promise<void>
 }
 
 // `ticketTypeOf` moved to `escpos.ts` with the rest of the layout in Story 5.2,
@@ -53,7 +62,30 @@ function optionsOf(line: TicketPayload['lines'][number]): string[] {
   )
 }
 
-export function renderTicketText(ticket: TicketPayload): string {
+/** A guest's bill as plain text — the null transport's log of it (Story 6.6). */
+function renderReceiptText(receipt: ReceiptPayload): string {
+  const lines: string[] = []
+  const row = (label: string, paisa: number) => lines.push(`${label}  ${receiptMoney(paisa)}`)
+  lines.push(`${receipt.title}${receipt.copy ? ' (COPY)' : ''}  ·  ${receipt.tableLabels.join(' + ')}`)
+  if (receipt.billLabel) lines.push(receipt.billLabel)
+  lines.push('—'.repeat(32))
+  for (const line of receipt.lines) {
+    row(`${line.quantity} × ${line.name}`, line.amountPaisa)
+    if (line.optionText) lines.push(`   - ${line.optionText}`)
+    if (line.modifierText) lines.push(`   - ${line.modifierText}`)
+  }
+  for (const comp of receipt.comps) row(`Comp: ${comp.reason}`, comp.amountPaisa)
+  row('Subtotal', receipt.subtotalPaisa)
+  if (receipt.serviceChargeBp > 0) row(`Service ${percentFromBp(receipt.serviceChargeBp)}%`, receipt.serviceChargePaisa)
+  if (receipt.taxBp > 0) row(`Tax ${percentFromBp(receipt.taxBp)}%`, receipt.taxPaisa)
+  row('Total', receipt.totalPaisa)
+  for (const tender of receipt.tenders) row(tender.method, tender.amountPaisa)
+  return lines.join('\n')
+}
+
+export function renderTicketText(payload: PrintPayload): string {
+  if (isReceiptPayload(payload)) return renderReceiptText(payload)
+  const ticket: TicketPayload = payload
   const lines: string[] = []
   const number = Number.isInteger(ticket.dailyNumber) ? ` ${dailyOrderLabel(ticket.dailyNumber!)}` : ''
   lines.push(`${ticketTypeOf(ticket.destination)}${number}  ·  ${ticket.tableLabels.join(' + ')}`)
@@ -123,7 +155,7 @@ export const nullTransport: TicketTransport = {
  * does, a configured `PRINTER_IP` still resolves to the null transport rather
  * than pretending to print: this story has no byte builder to hand it.
  */
-export function resolveTransport(destination: TicketPayload['destination']): TicketTransport {
+export function resolveTransport(destination: PrintDestination): TicketTransport {
   // ── A configured printer gets the real transport (Story 5.2) ──────────────
   // Read HERE, at delivery time, never at module load or at enqueue: a printer
   // re-addressed at 7pm must not strand the jobs queued against its old address

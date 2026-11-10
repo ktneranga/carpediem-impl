@@ -97,8 +97,10 @@ export function PrinterAlertBanner() {
   const visible = showing.slice(0, MAX_VISIBLE)
   const hidden = showing.length - visible.length
 
+  // `cashier` is the bill printer (Story 6.6): staff call it "the bill
+  // printer", and what fails to print there is a bill, not a ticket.
   const station = (destination: PrinterAlertPayload['destination']) =>
-    destination === 'pizza_kitchen' ? 'pizza kitchen' : destination
+    destination === 'pizza_kitchen' ? 'pizza kitchen' : destination === 'cashier' ? 'bill' : destination
 
   return (
     // ── The container is ALWAYS rendered ──────────────────────────────────
@@ -150,7 +152,9 @@ export function PrinterAlertBanner() {
                 )}
               >
                 {stopped
-                  ? `The ${station(alert.destination)} ticket has not printed`
+                  ? alert.destination === 'cashier'
+                    ? 'The bill has not printed'
+                    : `The ${station(alert.destination)} ticket has not printed`
                   : `The ${station(alert.destination)} printer is not responding`}
               </span>
               <span

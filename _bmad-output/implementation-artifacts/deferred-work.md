@@ -275,3 +275,10 @@
 - A clamped line (unit price 0) no longer equals base + Σ(delta × count); Epic 7's audit reconstruction must apply the same clamp.
 - PRICE_CHANGED names only the first changed line per round trip (pre-existing, Story 4.5).
 - `submitRound` loads option groups without a tenant filter; safe while single-tenant because item ids are tenant-scoped.
+
+## Deferred from: dev of 6-6-print-the-customer-bill (2026-11-10)
+
+- **No reprint after the table is closed** [`src/app/orders/[sessionId]/bill/page.tsx`] - the bill screen redirects a closed order to the floor, and both print routes refuse a closed session (409). A guest who asks for a receipt after Close table cannot get one. Belongs with past orders (Story 7.2): find the order by `20261102-042`, print its bills, and allow printing a closed order's recorded bills there.
+- **`verify-queue` fails one case when `.env` sets `PRINTER_USB_NAME`** [`src/server/print/verify-queue.ts`] - "with PRINTER_IP set, a REAL transport is chosen" expects TCP, but USB wins since `49d1806`. `verify-escpos` already deletes the variable before its transport checks; `verify-queue` should do the same. Passes 24/24 with the variable unset.
+- **Bill header and footer are set by SQL** [`tenant_config.receipt_header` / `receipt_footer`] - one line per line break, printed centred. The Manage area (Story 10.0) should edit them.
+

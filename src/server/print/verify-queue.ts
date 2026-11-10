@@ -64,7 +64,7 @@ async function seedJob(
 ): Promise<string> {
   const [row] = await sql(
     `INSERT INTO print_jobs (tenant_id, session_id, round_id, destination, ticket)
-     SELECT s.tenant_id, s.id, o.id, $1::production_destination, $2::jsonb
+     SELECT s.tenant_id, s.id, o.id, $1::print_destination, $2::jsonb
        FROM order_rounds o
        JOIN order_sessions s ON s.id = o.session_id
       ORDER BY o.submitted_at DESC LIMIT 1
@@ -258,7 +258,7 @@ async function main() {
   const seen: string[] = []
   const counting = (label: string): TicketTransport => ({
     name: label,
-    deliver: (ticket) => { seen.push(String(ticket.roundNumber)); return Promise.resolve() },
+    deliver: (ticket) => { seen.push(String('roundNumber' in ticket ? ticket.roundNumber : ticket.kind)); return Promise.resolve() },
   })
   const [a, b] = await Promise.all([
     drainPrintQueue(() => counting('A')),

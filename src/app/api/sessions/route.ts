@@ -3,6 +3,7 @@ import { and, asc, eq, gte, inArray, isNull, or } from 'drizzle-orm'
 import { z } from 'zod'
 import { dishCount } from '@/server/orders/item-count'
 import { db } from '@/server/db'
+import { sessionPaymentStates } from '@/server/services/payment.service'
 import {
   orderEvents,
   orderSessions,
@@ -236,6 +237,8 @@ export async function GET() {
       for (const row of grouped) counts.set(row.sessionId, Number(row.total))
     }
 
+    const paymentStates = await sessionPaymentStates(db, rows.map((row) => row.sessionId))
+
     return NextResponse.json({
       success: true,
       data: rows.map((row) => ({
@@ -250,6 +253,8 @@ export async function GET() {
         sequence: row.sequence,
         /** The bar tab's nickname, if it was given one. Staff-only. */
         tabLabel: row.tabLabel,
+        /** ✓ Paid on the tab row, Close tab in the bar (Teran, 2026-11-10). */
+        paymentState: paymentStates.get(row.sessionId) ?? 'none',
       })),
     })
   } catch (error) {

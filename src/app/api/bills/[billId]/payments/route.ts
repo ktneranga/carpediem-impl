@@ -7,6 +7,9 @@ import {
   OverpaymentError,
   recordPayments,
 } from '@/server/services/payment.service'
+import { printBill } from '@/server/services/receipt.service'
+import { sessionPaymentState } from '@/server/services/payment.service'
+import { emitCounterSalesChanged, emitSessionPaymentChanged } from '@/server/socket/events'
 import { SessionAlreadyClosedError } from '@/server/services/table-session.service'
 
 const billIdSchema = z.string().uuid()
@@ -32,7 +35,19 @@ const bodySchema = z.object({
     .refine((tenders) => new Set(tenders.map((tender) => tender.method)).size === tenders.length, {
       message: 'A split payment is one cash and one card tender',
     }),
-})
+  /**
+   * The cash the guest handed over (Story 6.6) — for the receipt's change,
+   * never revenue. Only with a cash tender, and never less than it.
+   */
+  cashReceivedPaisa: z.number().int().positive().optional(),
+}).refine(
+  (body) => {
+    if (body.cashReceivedPaisa === undefined) return true
+    const cash = body.tenders.find((tender) => tender.method === 'cash')
+    return cash !== undefined && body.cashReceivedPaisa >= cash.amountPaisa
+  },
+  { message: 'Cash received must be at least the cash paid' },
+)
 
 function fail(code: string, message: string, status: number, extra?: object) {
   return NextResponse.json({ success: false, error: { code, message, ...extra } }, { status })
@@ -73,14 +88,37 @@ export async function POST(
   }
 
   try {
-    const result = await db.transaction((tx) =>
-      recordPayments(tx, {
+    const result = await db.transaction(async (tx) => {
+      const paid = await recordPayments(tx, {
         billId: parsedBillId.data,
         staffId,
         tenders: parsedBody.data.tenders,
-      }),
-    )
+        cashReceivedPaisa: parsedBody.data.cashReceivedPaisa ?? null,
+      })
 
+      // ── The receipt prints by itself once the bill is paid (Teran, 2026-11-10)
+      // In the same transaction, so a recorded payment and its queued receipt
+      // commit together — on whichever tablet took the money, even if the
+      // screen is closed straight after. A part payment prints nothing: the
+      // guest is not finished paying.
+      //
+      // Inside a SAVEPOINT: queuing a receipt must never cost the payment. If
+      // it fails, the money stays recorded and Print receipt on the bill
+      // screen is the way to get one.
+      let receiptJobId: string | null = null
+      if (paid.settled) {
+        receiptJobId = await tx
+          .transaction((savepoint) => printBill(savepoint, { billId: parsedBillId.data }))
+          .then((job) => job.jobId)
+          .catch((error: unknown) => {
+            console.error('[api/bills/:billId/payments] Paid, but the receipt was not queued:', error)
+            return null
+          })
+      }
+      return { ...paid, receiptJobId }
+    })
+
+    await announcePayment(result.sessionId)
     return NextResponse.json({ success: true, data: result }, { status: 201 })
   } catch (error) {
     if (error instanceof BillNotFoundError) return fail('BILL_NOT_FOUND', 'No such bill', 404)
@@ -97,5 +135,20 @@ export async function POST(
     }
     console.error('[api/bills/:billId/payments] Failed to record payment:', error)
     return fail('INTERNAL_ERROR', 'Could not record the payment', 500)
+  }
+}
+
+/**
+ * Tells the floor where this order now stands with its money, after the
+ * commit. A failure here never fails the request: the write already happened,
+ * and the floor refetches on its next load.
+ */
+async function announcePayment(sessionId: string): Promise<void> {
+  try {
+    emitSessionPaymentChanged({ sessionId, paymentState: await sessionPaymentState(db, sessionId) })
+    // Bar tabs are a list query, refreshed by this event (payload-free).
+    emitCounterSalesChanged()
+  } catch (error) {
+    console.error('[payments] Could not announce the payment state:', error)
   }
 }
