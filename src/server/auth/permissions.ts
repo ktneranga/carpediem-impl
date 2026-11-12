@@ -64,6 +64,11 @@ export const ROUTE_ROLES: RoutePolicy[] = [
   { prefix: '/api/bills', roles: ['owner', 'waiter'] },
   { prefix: '/api/payments', roles: ['owner', 'waiter'] },
 
+  // Opening the cash drawer with no sale (Story 6.7, FR72). Owner only — there
+  // is no manager role. Added BEFORE the route, because an unmatched prefix is
+  // default-allow. `canOpenCashDrawer` below must say the same thing.
+  { prefix: '/api/cash-drawer', roles: ['owner'] },
+
   // Opening and closing table sessions is order entry, so it follows the same
   // rule. Reads are exempt because every role's landing screen calls
   // GET /api/tables; every write — including verbs that do not exist yet — is
@@ -178,5 +183,18 @@ export function isRoleAllowed(pathname: string, role: StaffRole, method?: string
  * order page both ask it, so 10.6 changes this function and nothing else.
  */
 export function canAddCustomCharge(role: StaffRole | null | undefined): boolean {
+  return role === 'owner'
+}
+
+/**
+ * Whether this person may open the cash drawer WITHOUT a sale (Story 6.7,
+ * FR72). A cash payment opens it for anyone who may take payment; this is the
+ * no-sale button.
+ *
+ * The owner role until Story 10.6 grants it per person. 10.6 must widen the
+ * `/api/cash-drawer` entry in `ROUTE_ROLES` at the same time, or the button
+ * shows and the route refuses.
+ */
+export function canOpenCashDrawer(role: StaffRole | null | undefined): boolean {
   return role === 'owner'
 }

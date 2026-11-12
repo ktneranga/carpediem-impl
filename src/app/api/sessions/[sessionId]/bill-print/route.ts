@@ -75,6 +75,7 @@ export async function POST(
         items: parsedBody.data.items,
         personLabel: parsedBody.data.personLabel,
         expectedTotalPaisa: parsedBody.data.expectedTotalPaisa,
+        staffId: request.headers.get('x-staff-id'),
       }),
     )
     return NextResponse.json({ success: true, data: result }, { status: 202 })

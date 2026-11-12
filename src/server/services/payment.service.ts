@@ -122,6 +122,8 @@ export async function recordPayments(
   settled: boolean
   /** Every bill on the session paid, and nothing left unbilled. */
   allPaid: boolean
+  /** The cash tender's `payment_records` row, or null for card/transfer only. */
+  cashRecordId: string | null
 }> {
   const [bill] = await tx
     .select({ sessionId: bills.sessionId, totalPaisa: bills.totalPaisa })
@@ -145,7 +147,7 @@ export async function recordPayments(
   const tendered = tenders.reduce((total, tender) => total + tender.amountPaisa, 0)
   if (tendered > outstanding) throw new OverpaymentError(outstanding)
 
-  await tx.insert(paymentRecords).values(
+  const inserted = await tx.insert(paymentRecords).values(
     tenders.map((tender) => ({
       sessionId: bill.sessionId,
       billId,
@@ -154,7 +156,9 @@ export async function recordPayments(
       method: tender.method,
       cashReceivedPaisa: tender.method === 'cash' ? cashReceivedPaisa : null,
     })),
-  )
+  ).returning({ id: paymentRecords.id, method: paymentRecords.method })
+  // The cash tender, if there was one — it opens the drawer (Story 6.7).
+  const cashRecordId = inserted.find((row) => row.method === 'cash')?.id ?? null
 
   const settled = tendered === outstanding
 
@@ -174,6 +178,7 @@ export async function recordPayments(
     outstandingPaisa: outstanding - tendered,
     settled,
     allPaid,
+    cashRecordId,
   }
 }
 

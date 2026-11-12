@@ -239,6 +239,27 @@
       "when": 1794328043734,
       "tag": "0033_naive_ego",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1794495386201,
+      "tag": "0034_groovy_satana",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794495646734,
+      "tag": "0035_crazy_bushwacker",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794496090129,
+      "tag": "0036_thin_sugar_man",
+      "breakpoints": true
     }
   ]
 }

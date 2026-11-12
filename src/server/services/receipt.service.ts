@@ -6,6 +6,7 @@ import {
   orderSessions,
   paymentRecords,
   printJobs,
+  staff,
   tables,
   tenantConfig,
   tenants,
@@ -70,7 +71,7 @@ export function guestBillLabel(label: string | null | undefined): string {
 }
 
 /** Everything about the order and the restaurant the paper needs. */
-async function readHeading(tx: Tx, sessionId: string) {
+async function readHeading(tx: Tx, sessionId: string, staffId: string | null) {
   const [session] = await tx
     .select({
       tenantId: orderSessions.tenantId,
@@ -83,6 +84,9 @@ async function readHeading(tx: Tx, sessionId: string) {
       restaurantName: tenantConfig.restaurantName,
       receiptHeader: tenantConfig.receiptHeader,
       receiptFooter: tenantConfig.receiptFooter,
+      receiptQrUrl: tenantConfig.receiptQrUrl,
+      receiptQrCaption: tenantConfig.receiptQrCaption,
+      receiptLogo: tenantConfig.receiptLogo,
       // The database clock, not Node's, and `clock_timestamp()` rather than
       // `now()`: `now()` is when the TRANSACTION began, which is before the
       // session lock wait and the payment writes it may follow.
@@ -129,8 +133,23 @@ async function readHeading(tx: Tx, sessionId: string) {
     }
   }
 
+  // The cashier: whoever tapped Print, or took the payment the receipt follows.
+  // Same tenant only — a stale header never names someone else's staff.
+  const [cashier] = staffId
+    ? await tx
+        .select({ name: staff.name })
+        .from(staff)
+        .where(and(eq(staff.id, staffId), eq(staff.tenantId, session.tenantId)))
+        .limit(1)
+    : []
+
   return {
     tenantId: session.tenantId,
+    cashierName: cashier?.name ?? null,
+    logo: session.receiptLogo ?? null,
+    qr: session.receiptQrUrl
+      ? { url: session.receiptQrUrl.trim(), caption: session.receiptQrCaption ?? null }
+      : null,
     restaurantName: session.restaurantName ?? 'Bill',
     headerLines: receiptTextLines(session.receiptHeader ?? null),
     footerLines: receiptTextLines(session.receiptFooter ?? null),
@@ -159,12 +178,15 @@ async function enqueue(
  * this bill has already been PRINTED (a pending, retrying or dead job never
  * reached paper, so the next one is still the first the guest sees).
  */
-export async function printBill(tx: Tx, { billId }: { billId: string }): Promise<{ jobId: string }> {
+export async function printBill(
+  tx: Tx,
+  { billId, staffId = null }: { billId: string; staffId?: string | null },
+): Promise<{ jobId: string }> {
   const bill = await getBill(tx, billId)
   if (!bill) throw new ReceiptBillNotFoundError()
   await lockOpenSession(tx, bill.sessionId)
 
-  const heading = await readHeading(tx, bill.sessionId)
+  const heading = await readHeading(tx, bill.sessionId, staffId)
 
   const tenderRows = await tx
     .select({
@@ -237,8 +259,11 @@ export async function printDraft(
     items,
     personLabel,
     expectedTotalPaisa,
+    staffId = null,
   }: {
     sessionId: string
+    /** Who tapped Print — named on the paper as the cashier. */
+    staffId?: string | null
     items?: { eventId: string; quantity: number }[]
     personLabel?: string | null
     /** The total the waiter's screen showed; a different one refuses (BillTotalChangedError). */
@@ -255,7 +280,7 @@ export async function printDraft(
     throw new BillTotalChangedError(priced.totals.totalPaisa)
   }
 
-  const heading = await readHeading(tx, sessionId)
+  const heading = await readHeading(tx, sessionId, staffId)
   const payload = buildReceiptPayload({
     ...heading,
     title: 'BILL',

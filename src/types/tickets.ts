@@ -110,6 +110,15 @@ export type ReceiptPayload = {
    */
   headerLines: string[]
   footerLines: string[]
+  /**
+   * Printed as a QR code under the footer (`tenant_config.receipt_qr_url`).
+   * Optional: jobs queued before it existed have none.
+   */
+  qr?: { url: string; caption: string | null } | null
+  /** `tenant_config.receipt_logo`: a 1-bit raster printed above the name. */
+  logo?: { widthDots: number; heightDots: number; data: string } | null
+  /** Who printed it, or who took the payment it follows ("Cashier: Nina"). */
+  cashierName?: string | null
   /** Every table on the order, or `['Bar tab']` / `['COUNTER']`. */
   tableLabels: string[]
   /** "Seat 1", "Person 2" or "Split bill" when the bill covers part of the table. */
@@ -137,11 +146,31 @@ export type ReceiptPayload = {
  * Anything on the print queue. A stored job with no `kind` is a ticket — every
  * job written before Story 6.6 — and must keep printing as one.
  */
-export type PrintPayload = TicketPayload | ReceiptPayload
+/**
+ * Open the cash drawer (Story 6.7, FR72). The drawer hangs off the receipt
+ * printer's DK port, so the kick is a `cashier` job like a bill: one queue,
+ * kept in order, so a kick queued before the receipt opens first.
+ *
+ * `tableLabels` is `['Cash drawer']` because the worker reads it from ANY job to
+ * name the job in a `printer:alert`.
+ */
+export type DrawerKickPayload = {
+  kind: 'drawer'
+  destination: 'cashier'
+  tableLabels: string[]
+  opening: 'sale' | 'no_sale'
+}
+
+export type PrintPayload = TicketPayload | ReceiptPayload | DrawerKickPayload
 
 /** Whether a stored payload is a receipt. A job with no `kind` is a ticket. */
 export function isReceiptPayload(payload: PrintPayload): payload is ReceiptPayload {
   return (payload as { kind?: unknown }).kind === 'receipt'
+}
+
+/** Whether a stored payload is a cash-drawer kick (Story 6.7). */
+export function isDrawerKickPayload(payload: PrintPayload): payload is DrawerKickPayload {
+  return (payload as { kind?: unknown }).kind === 'drawer'
 }
 
 /**

@@ -1,0 +1,1 @@
+ALTER TABLE "tenant_config" ADD COLUMN "receipt_logo" jsonb;

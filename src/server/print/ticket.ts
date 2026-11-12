@@ -132,6 +132,13 @@ export function buildReceiptPayload(
     destination: 'cashier',
     ...input,
     restaurantName: clean(input.restaurantName),
+    cashierName: input.cashierName ? sanitizeTicketText(input.cashierName) : null,
+    // A link is printable ASCII with no spaces, and short enough for a QR the
+    // 80mm paper can hold; anything else prints no code rather than a wrong one.
+    qr:
+      input.qr && /^[\x21-\x7e]{1,300}$/.test(input.qr.url)
+        ? { url: input.qr.url, caption: input.qr.caption ? sanitizeTicketText(input.qr.caption) : null }
+        : null,
     tableLabels: input.tableLabels.map(clean),
     billLabel: input.billLabel === null ? null : clean(input.billLabel),
     lines: input.lines.map((line) => ({

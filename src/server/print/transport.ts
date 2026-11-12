@@ -16,7 +16,7 @@
  * No `server-only` anywhere in this folder: the worker is loaded from
  * `server.ts`, outside Next, where that module throws at import time.
  */
-import { isReceiptPayload, type PrintDestination, type PrintPayload, type ReceiptPayload, type TicketPayload } from '@/types/tickets'
+import { isDrawerKickPayload, isReceiptPayload, type PrintDestination, type PrintPayload, type ReceiptPayload, type TicketPayload } from '@/types/tickets'
 import { percentFromBp } from '@/lib/format'
 import {
   calendarDate,
@@ -84,6 +84,7 @@ function renderReceiptText(receipt: ReceiptPayload): string {
 }
 
 export function renderTicketText(payload: PrintPayload): string {
+  if (isDrawerKickPayload(payload)) return `CASH DRAWER (${payload.opening === 'no_sale' ? 'no sale' : 'sale'})`
   if (isReceiptPayload(payload)) return renderReceiptText(payload)
   const ticket: TicketPayload = payload
   const lines: string[] = []

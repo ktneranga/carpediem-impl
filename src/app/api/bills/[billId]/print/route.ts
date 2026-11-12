@@ -28,7 +28,7 @@ export async function POST(
   if (!request.headers.get('x-staff-id')) return fail('UNAUTHENTICATED', 'Sign in required', 401)
 
   try {
-    const result = await db.transaction((tx) => printBill(tx, { billId: parsed.data }))
+    const result = await db.transaction((tx) => printBill(tx, { billId: parsed.data, staffId: request.headers.get('x-staff-id') }))
     return NextResponse.json({ success: true, data: result }, { status: 202 })
   } catch (error) {
     if (error instanceof ReceiptBillNotFoundError) return fail('BILL_NOT_FOUND', 'No such bill', 404)

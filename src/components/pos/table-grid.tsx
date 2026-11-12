@@ -19,7 +19,7 @@ import { zoneIcon } from '@/lib/design'
 import { cn } from '@/lib/utils'
 import type { TableGridRow } from '@/app/api/tables/route'
 import type { PaymentState, SessionPaymentChangedPayload, TableStatusChangedPayload } from '@/types/tables'
-import type { StaffRole } from '@/server/auth/permissions'
+import { canOpenCashDrawer, type StaffRole } from '@/server/auth/permissions'
 
 const TABLES_QUERY_KEY = ['tables'] as const
 /**
@@ -1226,6 +1226,8 @@ export function TableGrid({
         // The only way off this screen for a waiter ending a shift. Sign-out
         // was once unreachable from the whole application.
         onStaffTap={signOut}
+        canOpenDrawer={canOpenCashDrawer(role)}
+        onDrawerOpened={() => showNotice('Drawer opening — recorded')}
       />
 
       {/* ── The zone bar (2026-10-19 design) ──────────────────────────────

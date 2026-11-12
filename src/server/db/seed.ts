@@ -13,6 +13,7 @@
 // Overriding inline still works:
 //   DATABASE_URL="postgres://..." pnpm db:seed
 import bcrypt from 'bcryptjs'
+import carpeDiemLogo from './seed-assets/carpe-diem-logo.json'
 import { Pool } from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { menuCategories, menuItems, staff, tables, tenantConfig, tenants, zones } from './schema'
@@ -169,6 +170,13 @@ async function main() {
       await tx.insert(tenantConfig).values({
         tenantId: tenant.id,
         restaurantName: 'Carpe Diem',
+        // Printed under the name on every guest bill (Teran, 2026-11-12).
+        receiptHeader: 'Hikkaduwa\nTel +94 72 455 0082',
+        receiptFooter: 'Thank you! Come again\nInstagram: carpe diem hikkaduwa\ncarpediemhikkaduwa.com',
+        receiptQrUrl: 'https://www.google.com/search?q=carpe+diem+hikkaduwa',
+        receiptQrCaption: 'Scan to review us on Google',
+        // The sun from the logo, as a 192-dot printer raster (made from the PNG once).
+        receiptLogo: carpeDiemLogo,
         authMode: 'session_short',
         sessionTimeoutMinutes: 5,
         financialActionReauth: true,

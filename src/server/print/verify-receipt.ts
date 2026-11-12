@@ -63,7 +63,7 @@ function part1() {
   const plain = paperLines(buildReceipt(receipt()))
   const text = plain.join('\n')
 
-  check('header names the restaurant, BILL and #042', text.includes('Carpe Diem') && text.includes('BILL #042'))
+  check('an unpaid bill names the restaurant, with no title and no #042', text.includes('Carpe Diem') && !/^BILL$/m.test(text) && !text.includes('#042'))
   check('table, date and time', text.includes('Table 7') && text.includes('02 Nov 2026  7:42 PM'))
   check('every line fits 48 columns', plain.every((line) => line.length <= PAPER_COLUMNS),
     String(Math.max(...plain.map((line) => line.length))))
@@ -87,7 +87,7 @@ function part1() {
       }),
     ),
   ).join('\n')
-  check('a paid bill is a RECEIPT', paid.includes('RECEIPT #042'))
+  check('a paid bill is a RECEIPT', /^RECEIPT$/m.test(paid))
   check('cash, received and change', /Cash\s+LKR 6,875$/m.test(paid) && /Received\s+LKR 7,000$/m.test(paid) && /Change\s+LKR 125$/m.test(paid))
   check('a receipt has no "Still to pay"', !paid.includes('Still to pay'))
 
@@ -145,6 +145,31 @@ function part1() {
   const comped = paperLines(buildReceipt(receipt({ comps: [{ reason: 'Customer complaint', amountPaisa: -50000 }] }))).join('\n')
   check('a comp prints as a deduction', /Comp: Customer complaint\s+-LKR 500$/m.test(comped))
 
+  // Cashier and the review QR (Teran, 2026-11-12).
+  const url = 'https://www.google.com/search?q=carpe+diem+hikkaduwa'
+  const extras = buildReceipt(
+    receipt({ cashierName: 'Nina', qr: { url, caption: 'Scan to review us on Google' }, footerLines: ['Thank you! Come again'] }),
+  ).toString('latin1')
+  check('the cashier is named', /^Cashier: Nina$/m.test(extras))
+  const store = Buffer.from([0x1d, 0x28, 0x6b, (url.length + 3) & 0xff, (url.length + 3) >> 8, 0x31, 0x50, 0x30]).toString('latin1') + url
+  check('the QR stores the link and prints it', extras.includes(store) && extras.includes('\x1d(k\x03\x001Q0'))
+  check('the QR caption is under the code, after the thank-you line',
+    extras.indexOf('Thank you!') < extras.indexOf(store) && extras.indexOf(store) < extras.indexOf('Scan to review us on Google'))
+  const noExtras = buildReceipt(receipt()).toString('latin1')
+  check('no cashier and no QR when not set', !noExtras.includes('Cashier') && !noExtras.includes('\x1d(k'))
+  // The logo (Teran, 2026-11-12): a 16x2 raster, then the name under it.
+  const logo = { widthDots: 16, heightDots: 2, data: Buffer.from([0xff, 0x00, 0x0f, 0xf0]).toString('base64') }
+  const withLogo = buildReceipt(receipt({ logo })).toString('latin1')
+  const raster = '\x1dv0\x00\x02\x00\x02\x00' + Buffer.from([0xff, 0x00, 0x0f, 0xf0]).toString('latin1')
+  check('the logo prints above the name', withLogo.includes(raster) && withLogo.indexOf(raster) < withLogo.indexOf('Carpe Diem'))
+  check('no logo when not set', !noExtras.includes('\x1dv0'))
+  const wrongSize = buildReceipt(receipt({ logo: { ...logo, heightDots: 3 } })).toString('latin1')
+  const tooWide = buildReceipt(receipt({ logo: { widthDots: 640, heightDots: 1, data: Buffer.alloc(80).toString('base64') } })).toString('latin1')
+  check('a malformed or too-wide logo prints none', !wrongSize.includes('\x1dv0') && !tooWide.includes('\x1dv0'))
+
+  const bad = buildReceipt(receipt({ qr: { url: 'https://x.com/a b\x1b', caption: null } })).toString('latin1')
+  check('a link with spaces or control bytes prints no QR', !bad.includes('\x1d(k'))
+
   const ticket: TicketPayload = {
     destination: 'kitchen', roundNumber: 2, tableLabels: ['Table 5'], usesSeats: false,
     submittedAt: '2026-11-02T14:12:00Z', timeZone: 'Asia/Colombo', dailyNumber: 42, businessDate: '2026-11-02',
@@ -169,6 +194,8 @@ const GUARDS = [
   ['bills', 'immutable_bills'],
   ['order_events', 'immutable_order_events'],
   ['order_rounds', 'immutable_order_rounds'],
+  // A cash payment opens the drawer (Story 6.7) and records it.
+  ['cash_drawer_openings', 'immutable_cash_drawer_openings'],
 ] as const
 
 /**
@@ -532,6 +559,11 @@ async function cleanup() {
   const guarded = GUARDS.filter(([table]) => table !== 'order_rounds')
   try {
     for (const [table, trigger] of guarded) await sql(`ALTER TABLE ${table} DISABLE TRIGGER ${trigger}`)
+    // The drawer rows first: they point at this run's payments and jobs.
+    await sql(
+      `DELETE FROM cash_drawer_openings WHERE print_job_id IN (SELECT id FROM print_jobs WHERE session_id = ANY($1::uuid[]))`,
+      [mine],
+    )
     await sql(`DELETE FROM print_jobs WHERE session_id = ANY($1::uuid[])`, [mine])
     await sql(`DELETE FROM payment_records WHERE session_id = ANY($1::uuid[])`, [mine])
     await sql(`DELETE FROM bill_lines WHERE bill_id IN (SELECT id FROM bills WHERE session_id = ANY($1::uuid[]))`, [mine])

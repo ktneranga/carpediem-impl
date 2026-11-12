@@ -20,7 +20,7 @@
  */
 import { lkrFromPaisa, percentFromBp } from '@/lib/format'
 import { dailyOrderLabel, orderReference } from '@/lib/order-number'
-import { isReceiptPayload, type PrintPayload, type ReceiptPayload, type TicketPayload } from '@/types/tickets'
+import { isDrawerKickPayload, isReceiptPayload, type PrintPayload, type ReceiptPayload, type TicketPayload } from '@/types/tickets'
 import type { TicketLine } from '@/types/orders'
 
 // ── Commands ────────────────────────────────────────────────────────────────
@@ -54,6 +54,40 @@ const feedLines = (lines: number) => [ESC, 0x64, lines]
  * what the code now actually does, via `feedLines` before this.
  */
 const CUT = [GS, 0x56, 66, 0x00]
+
+/**
+ * `GS v 0` — a 1-bit raster image (the logo). Null when the stored image is
+ * not a well-formed raster that fits the 80mm head (576 dots), so a bad
+ * setting prints no logo instead of a page of garbage.
+ */
+function rasterImage(image: { widthDots: unknown; heightDots: unknown; data: unknown }): number[] | null {
+  const { widthDots: width, heightDots: height, data } = image
+  if (typeof width !== 'number' || typeof height !== 'number' || typeof data !== 'string') return null
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || width > 576 || width % 8 !== 0) return null
+  if (height <= 0 || height > 600) return null
+  const bytes = Buffer.from(data, 'base64')
+  const rowBytes = width / 8
+  if (bytes.length !== rowBytes * height) return null
+  return [GS, 0x76, 0x30, 0, rowBytes & 0xff, rowBytes >> 8, height & 0xff, height >> 8, ...bytes, 0x0a]
+}
+
+/**
+ * `GS ( k` — the printer draws a QR code itself (Teran, 2026-11-12): model 2,
+ * 6-dot modules (about 25mm for a short link), error correction M, store the
+ * data, then print it. No image library; `url` is printable ASCII already.
+ */
+function qrCode(url: string): number[] {
+  const data = Buffer.from(url, 'ascii')
+  const stored = data.length + 3
+  return [
+    GS, 0x28, 0x6b, 4, 0, 0x31, 0x41, 0x32, 0x00, // model 2
+    GS, 0x28, 0x6b, 3, 0, 0x31, 0x43, 6, // module size
+    GS, 0x28, 0x6b, 3, 0, 0x31, 0x45, 0x31, // error correction M
+    GS, 0x28, 0x6b, stored & 0xff, stored >> 8, 0x31, 0x50, 0x30, ...data, // store
+    GS, 0x28, 0x6b, 3, 0, 0x31, 0x51, 0x30, // print
+    0x0a,
+  ]
+}
 
 /**
  * Characters per line at Font A.
@@ -492,24 +526,38 @@ export function buildReceipt(receipt: ReceiptPayload): Buffer {
 
   // ── Who, and what this paper is ───────────────────────────────────────────
   command(ALIGN_CENTRE)
+  const logo = receipt.logo ? rasterImage(receipt.logo) : null
+  if (logo) command(logo)
+  // The restaurant's name is the largest thing on the guest's paper (Teran,
+  // 2026-11-12). Double width halves the line, so it wraps at 24 columns.
+  command(SIZE_DOUBLE)
   command(BOLD_ON)
-  centred(receipt.restaurantName || 'Bill')
+  for (const line of wrapLine(foldToAscii(receipt.restaurantName || 'Bill'), 0, PAPER_COLUMNS / 2)) {
+    emit(line.trim())
+  }
+  command(SIZE_NORMAL)
   command(BOLD_OFF)
+  // Address and the like, in the normal size under the name.
   for (const line of strings(receipt.headerLines)) centred(line)
 
-  command(SIZE_DOUBLE)
+  // BILL or RECEIPT, without the day's `#042` beside it (Teran, 2026-11-12):
+  // that number is the kitchen's. The permanent `Order 20261102-042` at the
+  // foot still identifies the order.
   command(BOLD_ON)
   const number =
     Number.isInteger(receipt.dailyNumber) && receipt.dailyNumber > 0 ? receipt.dailyNumber : null
+  // RECEIPT once paid; an unpaid bill prints no title at all (Teran,
+  // 2026-11-12) — the guest knows what they asked for.
   const title = receipt.title === 'RECEIPT' ? 'RECEIPT' : 'BILL'
-  emit(number ? `${title} ${dailyOrderLabel(number)}` : title)
-  command(SIZE_NORMAL)
+  if (title === 'RECEIPT') emit(title)
   if (receipt.copy === true) emit('COPY')
   centred(strings(receipt.tableLabels).join(' + ') || 'COUNTER')
   command(BOLD_OFF)
   if (typeof receipt.billLabel === 'string') centred(receipt.billLabel)
   command(ALIGN_LEFT)
   emit(`${calendarDate(receipt.printedAt, receipt.timeZone)}  ${clockTime(receipt.printedAt, receipt.timeZone)}`)
+  const cashier = typeof receipt.cashierName === 'string' ? foldToAscii(receipt.cashierName).trim() : ''
+  if (cashier !== '') emit(`Cashier: ${cashier}`)
   divider()
 
   // ── What was had ──────────────────────────────────────────────────────────
@@ -564,6 +612,14 @@ export function buildReceipt(receipt: ReceiptPayload): Buffer {
     for (const line of footer) centred(line)
     command(ALIGN_LEFT)
   }
+  const qr = receipt.qr
+  if (qr && typeof qr.url === 'string' && /^[\x21-\x7e]{1,300}$/.test(qr.url)) {
+    emit('')
+    command(ALIGN_CENTRE)
+    command(qrCode(qr.url))
+    if (typeof qr.caption === 'string') centred(qr.caption)
+    command(ALIGN_LEFT)
+  }
   const businessDate =
     typeof receipt.businessDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(receipt.businessDate)
       ? receipt.businessDate
@@ -583,5 +639,20 @@ export function buildReceipt(receipt: ReceiptPayload): Buffer {
  * including all those written before Story 6.6 — a kitchen ticket.
  */
 export function buildPrintBytes(payload: PrintPayload): Buffer {
+  if (isDrawerKickPayload(payload)) return buildDrawerKick()
   return isReceiptPayload(payload) ? buildReceipt(payload) : buildTicket(payload)
+}
+
+/**
+ * Open the cash drawer (Story 6.7): `ESC @`, then `ESC p m t1 t2` — a pulse
+ * on pin `m` for t1 x 2 ms, then t2 x 2 ms off. 25/250 is 50 ms on, 500 ms
+ * off, which every common solenoid drawer accepts. No paper moves.
+ *
+ * The pin is the cable's: most drawers answer on pin 2 (`m = 0`), some on
+ * pin 5. `CASH_DRAWER_PIN=5` selects it, read now — at delivery — like the
+ * printer's own settings.
+ */
+export function buildDrawerKick(pin: string | undefined = process.env.CASH_DRAWER_PIN): Buffer {
+  const m = pin?.trim() === '5' ? 1 : 0
+  return Buffer.from([...INIT, ESC, 0x70, m, 25, 250])
 }

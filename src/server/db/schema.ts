@@ -12,6 +12,7 @@ import {
   index,
   uniqueIndex,
   primaryKey,
+  check,
 } from 'drizzle-orm/pg-core'
 // Type-only, and from a module that imports nothing. It types the `print_jobs`
 // ticket column so a malformed payload is a compile error rather than a
@@ -951,7 +952,12 @@ export const disputeRecords = pgTable('dispute_records', {
 export const printJobs = pgTable('print_jobs', {
   id:        uuid('id').primaryKey().defaultRandom(),
   tenantId:  uuid('tenant_id').notNull().references(() => tenants.id),
-  sessionId: uuid('session_id').notNull().references(() => orderSessions.id),
+  /**
+   * The order this job prints for. Null only for a `cashier` job that belongs
+   * to no order — a no-sale drawer opening (Story 6.7). The CHECK below keeps
+   * every kitchen ticket tied to its order.
+   */
+  sessionId: uuid('session_id').references(() => orderSessions.id),
   /**
    * The round this ticket is for. One job per destination present in it.
    * Null for a bill or receipt (Story 6.6): a bill has no round.
@@ -1011,6 +1017,46 @@ export const printJobs = pgTable('print_jobs', {
   index('idx_print_jobs_destination_order').on(t.destination, t.createdAt),
   index('idx_print_jobs_session_id').on(t.sessionId),
   index('idx_print_jobs_bill_id').on(t.billId),
+  check('print_jobs_session_unless_cashier', sql`${t.sessionId} IS NOT NULL OR ${t.destination} = 'cashier'`),
+])
+
+// ── Cash drawer (Story 6.7, FR72) ─────────────────────────────────────────────
+
+export const cashDrawerKindEnum = pgEnum('cash_drawer_kind', ['sale', 'no_sale'])
+export const cashDrawerReasonEnum = pgEnum('cash_drawer_reason', ['change', 'float', 'other'])
+
+/**
+ * Every time the app asked the printer to open the cash drawer — APPEND-ONLY
+ * (NFR-D1; trigger `immutable_cash_drawer_openings`).
+ *
+ * A row is written when the kick is REQUESTED, in the same transaction as its
+ * print job. Whether the printer then delivered it once, late, or twice (a
+ * stale claim retried) is the queue's business; the request is the fact the
+ * owner audits. `sale` points at the cash tender that opened it; `no_sale`
+ * carries the reason someone gave.
+ */
+export const cashDrawerOpenings = pgTable('cash_drawer_openings', {
+  id:              uuid('id').primaryKey().defaultRandom(),
+  tenantId:        uuid('tenant_id').notNull().references(() => tenants.id),
+  kind:            cashDrawerKindEnum('kind').notNull(),
+  reason:          cashDrawerReasonEnum('reason'),
+  note:            text('note'),
+  paymentRecordId: uuid('payment_record_id').references(() => paymentRecords.id),
+  printJobId:      uuid('print_job_id').notNull().references(() => printJobs.id),
+  staffId:         uuid('staff_id').notNull().references(() => staff.id),
+  createdAt:       timestamp('created_at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+}, (t) => [
+  index('idx_cash_drawer_openings_tenant_created').on(t.tenantId, t.createdAt),
+  check(
+    'cash_drawer_openings_kind_shape',
+    sql`(${t.kind} = 'sale' AND ${t.paymentRecordId} IS NOT NULL AND ${t.reason} IS NULL)
+     OR (${t.kind} = 'no_sale' AND ${t.paymentRecordId} IS NULL AND ${t.reason} IS NOT NULL)`,
+  ),
+  check(
+    'cash_drawer_openings_note',
+    sql`(${t.note} IS NULL OR char_length(${t.note}) <= 120)
+     AND (${t.reason} IS DISTINCT FROM 'other' OR char_length(btrim(coalesce(${t.note}, ''))) > 0)`,
+  ),
 ])
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -1048,7 +1094,21 @@ export const tenantConfig = pgTable('tenant_config', {
    */
   receiptHeader:  text('receipt_header'),
   receiptFooter:  text('receipt_footer'),
-  brandColor:     text('brand_color').notNull().default('#2288B4'),
+  /**
+   * A link printed as a QR code at the foot of every bill — a review page, a
+   * menu (Teran, 2026-11-12). The printer draws it (`GS ( k`); null prints none.
+   * `receipt_qr_caption` is the line under it, e.g. "Scan to review us".
+   */
+  receiptQrUrl:     text('receipt_qr_url'),
+  receiptQrCaption: text('receipt_qr_caption'),
+  /**
+   * The logo printed above the name (Teran, 2026-11-12), ALREADY converted to
+   * the printer's 1-bit raster: `data` is base64, one bit per dot, rows of
+   * `widthDots / 8` bytes, MSB left, 1 = ink. Converting happens once, off the
+   * till, so printing needs no image library. Null prints no logo.
+   */
+  receiptLogo: jsonb('receipt_logo').$type<{ widthDots: number; heightDots: number; data: string }>(),
+  brandColor:    text('brand_color').notNull().default('#2288B4'),
   currencyCode:   text('currency_code').notNull().default('LKR'),
   taxRatePercent: integer('tax_rate_percent').notNull().default(0),
   /**

@@ -8,6 +8,8 @@ import {
   recordPayments,
 } from '@/server/services/payment.service'
 import { printBill } from '@/server/services/receipt.service'
+import { kickForCashPayment } from '@/server/services/cash-drawer.service'
+import { wakePrintQueue } from '@/server/print/wake'
 import { announcePayment } from '@/server/services/payment-announce'
 import { SessionAlreadyClosedError } from '@/server/services/table-session.service'
 
@@ -98,6 +100,24 @@ export async function POST(
         cashReceivedPaisa: parsedBody.data.cashReceivedPaisa ?? null,
       })
 
+      // ── Cash opens the drawer (Story 6.7) ──────────────────────────────────
+      // Queued BEFORE the receipt: both go to the `cashier` printer, whose
+      // queue keeps order, so the drawer opens while the receipt prints. In
+      // its own savepoint for the same reason as the receipt: the drawer must
+      // never cost the payment. If the printer was off, the kick waits and
+      // retries like any job — the drawer may open up to a minute late.
+      let drawerJobId: string | null = null
+      if (paid.cashRecordId) {
+        const paymentRecordId = paid.cashRecordId
+        drawerJobId = await tx
+          .transaction((savepoint) => kickForCashPayment(savepoint, { paymentRecordId, staffId }))
+          .then((job) => job.jobId)
+          .catch((error: unknown) => {
+            console.error('[api/bills/:billId/payments] Paid in cash, but the drawer kick was not queued:', error)
+            return null
+          })
+      }
+
       // ── The receipt prints by itself once the bill is paid (Teran, 2026-11-10)
       // In the same transaction, so a recorded payment and its queued receipt
       // commit together — on whichever tablet took the money, even if the
@@ -110,16 +130,18 @@ export async function POST(
       let receiptJobId: string | null = null
       if (paid.settled) {
         receiptJobId = await tx
-          .transaction((savepoint) => printBill(savepoint, { billId: parsedBillId.data }))
+          .transaction((savepoint) => printBill(savepoint, { billId: parsedBillId.data, staffId }))
           .then((job) => job.jobId)
           .catch((error: unknown) => {
             console.error('[api/bills/:billId/payments] Paid, but the receipt was not queued:', error)
             return null
           })
       }
-      return { ...paid, receiptJobId }
+      return { ...paid, drawerJobId, receiptJobId }
     })
 
+    // The drawer should open now, not on the queue's next 3-second tick.
+    if (result.drawerJobId || result.receiptJobId) wakePrintQueue()
     await announcePayment(result.sessionId)
     return NextResponse.json({ success: true, data: result }, { status: 201 })
   } catch (error) {

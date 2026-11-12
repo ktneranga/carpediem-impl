@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-03
-last_updated: 2026-11-10
+last_updated: 2026-11-12
 project: carpe-diem-restaurant
 project_key: NOKEY
 tracking_system: file-system
@@ -116,7 +116,7 @@ development_status:
   6-4-implement-per-seat-slot-independent-billing: done
   6-5-implement-payment-recording-and-session-auto-close: done  # code-reviewed 2026-10-31 (server + UI), fixes applied
   6-6-print-the-customer-bill: done  # added 2026-11-04 — go-live
-  6-7-cash-drawer: backlog  # added 2026-11-04 — go-live, after 6-6
+  6-7-cash-drawer: in-progress  # added 2026-11-04 — go-live, after 6-6
   epic-6-retrospective: optional
 
   # ── Epic 7: Audit Trail & Dispute Resolution ──────────────────────────────
