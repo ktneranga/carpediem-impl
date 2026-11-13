@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
 
 /**
  * The dashboard's four cards (Story 9.3): cash check, needs attention
- * (long-open orders), sold out, comps. One query feeds all four; payments,
+ * (long-open orders), not available, comps. One query feeds all four; payments,
  * menu changes and table changes refresh it, and so does a minute passing
  * (long-open times grow on their own).
  */
@@ -70,7 +70,7 @@ export function SummaryCards() {
         )}
       </Panel>
 
-      <Panel title="Sold out" minHeight="min-h-56">
+      <Panel title="Not available" minHeight="min-h-56">
         {!data ? waiting : data.soldOut.length === 0 ? (
           <Empty text="Everything is available." />
         ) : (
@@ -79,7 +79,7 @@ export function SummaryCards() {
               <li key={item.id} className="flex min-h-11 items-center justify-between gap-sp-3 border-t border-slate-100 py-sp-2">
                 <span className="min-w-0 truncate text-fs-16 text-slate-900">{item.name}</span>
                 <span className="shrink-0 rounded-pill bg-slate-100 px-sp-2 py-0.5 text-fs-12 font-semibold text-slate-700">
-                  {item.kind === 'depleted' ? 'Out of stock' : 'Marked sold out'}
+                  {item.kind === 'depleted' ? 'Ran out' : 'Switched off'}
                 </span>
               </li>
             ))}

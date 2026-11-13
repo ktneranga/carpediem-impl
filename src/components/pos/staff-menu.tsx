@@ -89,7 +89,7 @@ export function StaffMenu({
               }}
             >
               <Ban aria-hidden="true" className="size-4 text-slate-600" />
-              Sold out
+              Availability
             </button>
           ) : null}
           <button

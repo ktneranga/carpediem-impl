@@ -24,9 +24,9 @@ export const MANAGE_SECTIONS = [
   },
   {
     href: '/manage/sold-out',
-    title: 'Sold out',
+    title: 'Availability',
     story: '8.3',
-    what: 'Mark dishes and options sold out. Waiters can do this too, without the password.',
+    what: "Switch dishes and options off when they can't be served, and back on. Waiters can do this too, without the password.",
     waiter: true,
   },
   {

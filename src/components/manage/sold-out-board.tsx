@@ -13,7 +13,7 @@ import { loginUrl } from '@/lib/return-to'
 import { cn } from '@/lib/utils'
 
 /**
- * Manage → Sold out (Story 8.3): mark a dish or an option sold out, and back
+ * Manage → Availability (Story 8.3; "Sold out" until 2026-11-13): switch a dish or an option off, and back
  * on, mid-service. Owner and waiters, no Manage password.
  *
  * Last write wins — no version is sent. A tap flips the switch at once
@@ -159,7 +159,7 @@ export function SoldOutBoard() {
   return (
     <div className="flex max-w-3xl flex-col gap-sp-4">
       <header className="flex flex-col gap-sp-3">
-        <h1 className="text-fs-24 font-extrabold text-slate-900">Sold out</h1>
+        <h1 className="text-fs-24 font-extrabold text-slate-900">Availability</h1>
         <label className="relative flex items-center">
           <span className="sr-only">Find a dish</span>
           <Search aria-hidden="true" className="pointer-events-none absolute left-sp-3 size-4 text-slate-500" />
@@ -185,7 +185,7 @@ export function SoldOutBoard() {
       {offCount > 0 ? (
         <section aria-labelledby="off-now" className="flex flex-col gap-sp-2 rounded-panel border border-unavailable-edge bg-unavailable-body p-sp-3">
           <div className="flex flex-wrap items-center justify-between gap-sp-2">
-            <h2 id="off-now" className="text-fs-18 font-extrabold text-unavailable-ink">Sold out now ({offCount})</h2>
+            <h2 id="off-now" className="text-fs-18 font-extrabold text-unavailable-ink">Not available now ({offCount})</h2>
             <button type="button" className={secondary} disabled={resetting} onClick={() => setConfirmReset(true)}>
               <RotateCcw className="size-4" aria-hidden="true" /> Put everything back on
             </button>
@@ -258,7 +258,7 @@ export function SoldOutBoard() {
       {confirmReset ? (
         <ConfirmDialog
           text={`Put ${offCount} item${offCount === 1 ? '' : 's'} back on?`}
-          note="Every sold-out dish and option goes back on every tablet."
+          note="Every dish and option that is off comes back on, on every tablet."
           confirmLabel="Put back on"
           busy={resetting}
           onCancel={() => setConfirmReset(false)}
@@ -322,7 +322,7 @@ function DishOptions({ item, open, onOpen, ...row }: RowProps & { item: ManageIt
         className="inline-flex min-h-11 items-center gap-sp-1 rounded-control px-sp-2 text-fs-12 font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-500"
       >
         {open ? <ChevronDown className="size-4" aria-hidden="true" /> : <ChevronRight className="size-4" aria-hidden="true" />}
-        Options{off > 0 ? ` (${off} sold out)` : ''}
+        Options{off > 0 ? ` (${off} off)` : ''}
       </button>
       {open
         ? item.groups
@@ -349,7 +349,7 @@ function DishOptions({ item, open, onOpen, ...row }: RowProps & { item: ManageIt
   )
 }
 
-/** A switch with its state in words: "Available" or "Sold out". 44px tall. */
+/** A switch with its state in words: "Available" or "Not available". 44px tall. */
 function Switch({ on, label, saving, onToggle }: { on: boolean; label: string; saving: boolean; onToggle: () => void }) {
   return (
     <button
@@ -369,7 +369,7 @@ function Switch({ on, label, saving, onToggle }: { on: boolean; label: string; s
       )}
     >
       <span aria-hidden="true" className={cn('size-8 shrink-0 rounded-pill', on ? 'bg-open-band' : 'bg-white')} />
-      <span className="flex-1 text-center">{on ? 'Available' : 'Sold out'}</span>
+      <span className="flex-1 text-center">{on ? 'Available' : 'Not available'}</span>
     </button>
   )
 }
