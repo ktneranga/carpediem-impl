@@ -42,7 +42,7 @@ tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 
 # GO-LIVE ORDER (sprint-change-proposal-2026-11-04.md):
-#   review 4-8 → 6-6 → 6-7 → 10-0 → 10-4 + 8-3 → 10-2 → 9-5 → 11-3 (lite) → 1-4 (install)
+#   review 4-8 → 6-6 → 6-7 → 10-0 → 10-4 → 10-3 (lite, added 2026-11-13) → 8-3 → 10-2 → 9-5 → 11-3 (lite) → 1-4 (install)
 # Everything else is after launch. 7-3 moved after launch 2026-11-06 (Teran): too complex for now;
 # the built work is in `git stash` ("Story 7.3 comp/void - reverted 2026-11-06").
 
@@ -148,7 +148,7 @@ development_status:
   10-0-manage-area-and-owner-password: review  # added 2026-11-04 — go-live
   10-1-build-hamburgerdrawer-component: backlog
   10-2-implement-staff-account-management: backlog
-  10-3-implement-zone-table-and-station-configuration: backlog
+  10-3-implement-zone-table-and-station-configuration: ready-for-dev  # LITE (zones + tables) brought into go-live 2026-11-13 — stations later
   10-4-implement-menu-management: review
   10-5-implement-tenant-feature-flags-and-brand-customization: backlog
   10-6-implement-per-user-permissions: backlog  # added 2026-10-31
