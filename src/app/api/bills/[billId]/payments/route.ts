@@ -45,6 +45,12 @@ const bodySchema = z.object({
   // validation and then fail the whole payment as a 500. The pad stops at
   // LKR 9,999,999 (999,999,900 paisa).
   cashReceivedPaisa: z.number().int().positive().max(2_000_000_000).optional(),
+  /**
+   * False when the guest does not want a receipt (Teran, 2026-11-13: "No
+   * receipt" in the settle dialog). Absent means print, as before. The cash
+   * drawer still opens for cash; Print receipt on the paid bill still works.
+   */
+  printReceipt: z.boolean().optional(),
 }).refine(
   (body) => {
     if (body.cashReceivedPaisa === undefined) return true
@@ -132,9 +138,12 @@ export async function POST(
       // Skipped when the guest already holds a printed BILL for exactly this
       // and nothing was added since (Teran, 2026-11-13): the bill they checked
       // IS their slip. `receiptSkipped` tells the screen it was on purpose.
+      // Also skipped when the cashier ticked "No receipt".
       let receiptJobId: string | null = null
       let receiptSkipped = false
-      if (paid.settled) {
+      if (paid.settled && parsedBody.data.printReceipt === false) {
+        receiptSkipped = true
+      } else if (paid.settled) {
         receiptJobId = await tx
           .transaction(async (savepoint) => {
             if (await billAlreadyHandedOver(savepoint, parsedBillId.data)) {

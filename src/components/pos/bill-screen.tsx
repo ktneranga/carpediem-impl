@@ -1272,7 +1272,7 @@ export function BillScreen({
             setPaying(null)
             if (wrote) router.refresh()
           }}
-          onPay={async (tenders, cashReceivedPaisa) => {
+          onPay={async (tenders, cashReceivedPaisa, printReceipt) => {
             // A bill this dialog already wrote, on a retry after a failed
             // payment (code review UI-P1), is paid — never written again.
             let billId = paying.kind === 'bill' ? paying.bill.billId : (paying.billId ?? null)
@@ -1297,6 +1297,7 @@ export function BillScreen({
             }>(`/api/bills/${billId}/payments`, {
               tenders,
               cashReceivedPaisa,
+              printReceipt,
             })
             setPaying(null)
             // The last bill is paid: ask, once, whether the guests have gone
@@ -1884,7 +1885,9 @@ function PaymentDialog({
    */
   onPay: (
     tenders: { method: 'cash' | 'card' | 'transfer'; amountPaisa: number }[],
-    cashReceivedPaisa?: number,
+    cashReceivedPaisa: number | undefined,
+    /** False when "No receipt" is ticked (Teran, 2026-11-13). */
+    printReceipt: boolean,
   ) => Promise<void>
 }) {
   const [method, setMethod] = useState<'cash' | 'card' | 'transfer' | 'split'>('cash')
@@ -1894,6 +1897,8 @@ function PaymentDialog({
   const [exact, setExact] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Off each time the dialog opens: most guests want their receipt.
+  const [noReceipt, setNoReceipt] = useState(false)
 
   const received = exact ?? (digits === '' ? null : Number(digits) * 100)
   const stillNeeded = received === null ? duePaisa : Math.max(duePaisa - received, 0)
@@ -2062,6 +2067,25 @@ function PaymentDialog({
                 <dd className="font-extrabold tabular-nums text-slate-900">{lkrFromPaisa(duePaisa)}</dd>
               </div>
             </dl>
+
+            {/* The guest doesn't want a receipt (Teran, 2026-11-13). The whole row is the target. */}
+            <label
+              className={cn(
+                'flex min-h-touch-standard cursor-pointer items-center gap-sp-3 rounded-control border-2 px-sp-3 py-sp-2',
+                noReceipt ? 'border-brand-500 bg-brand-050' : 'border-slate-200 bg-white',
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={noReceipt}
+                onChange={(event) => setNoReceipt(event.target.checked)}
+                className="size-5 shrink-0 accent-brand-700"
+              />
+              <span className="flex flex-col">
+                <span className="text-fs-16 font-bold text-slate-900">No receipt</span>
+                <span className="text-fs-12 text-slate-600">The guest doesn&rsquo;t want one. You can still print it later.</span>
+              </span>
+            </label>
           </section>
 
           {/* ── Right: the pad ────────────────────────────────────────────── */}
@@ -2207,7 +2231,7 @@ function PaymentDialog({
                 setBusy(true)
                 setError(null)
                 try {
-                  await onPay(tenders, method === 'cash' ? cash : undefined)
+                  await onPay(tenders, method === 'cash' ? cash : undefined, !noReceipt)
                 } catch (caught) {
                   setError(caught instanceof Error ? caught.message : 'Could not record the payment.')
                   setBusy(false)

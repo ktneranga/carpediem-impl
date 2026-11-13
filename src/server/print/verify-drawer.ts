@@ -192,6 +192,19 @@ async function part2() {
     !transferPaid.body?.data?.receiptJobId ||
       buildReceipt(transferReceipt.ticket as ReceiptPayload).toString('latin1').includes('Bank transfer'))
 
+  // "No receipt" (Teran, 2026-11-13): paid, the drawer still opens for cash, no receipt is queued.
+  const quiet = await billedTab(owner)
+  const quietPaid = await api(owner, `/api/bills/${quiet.billId}/payments`, {
+    tenders: [{ method: 'cash', amountPaisa: quiet.totalPaisa }],
+    cashReceivedPaisa: quiet.totalPaisa,
+    printReceipt: false,
+  })
+  const quietReceipts = await sql(`SELECT 1 FROM print_jobs WHERE bill_id = $1 AND ticket->>'kind' = 'receipt'`, [quiet.billId])
+  check('"No receipt": paid and settled, no receipt queued, skipped on purpose',
+    quietPaid.status === 201 && quietPaid.body?.data?.settled === true && quietPaid.body?.data?.receiptJobId === null &&
+      quietPaid.body?.data?.receiptSkipped === true && quietReceipts.length === 0, JSON.stringify(quietPaid.body))
+  check('"No receipt" in cash still opens the drawer', (await kicksFor(quiet.sessionId)).length === 1)
+
   // Case 4: cash + card — one kick, at the cash row.
   const mixed = await billedTab(owner)
   const mixedPaid = await api(owner, `/api/bills/${mixed.billId}/payments`, {
