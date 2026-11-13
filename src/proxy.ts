@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE_NAME, touchSession, validateSession } from '@/server/services/session.service'
 import { isRoleAllowed } from '@/server/auth/permissions'
-import { loginUrl, manageUnlockUrl } from '@/lib/return-to'
+import { isManagePath, loginUrl, manageUnlockUrl } from '@/lib/return-to'
 import { needsManageSession } from '@/server/auth/manage-gate'
 import {
   MANAGE_COOKIE_NAME,
@@ -90,6 +90,7 @@ export async function proxy(request: NextRequest) {
   const headers = new Headers(request.headers)
   headers.delete('x-staff-id')
   headers.delete('x-staff-role')
+  headers.delete('x-manage-unlocked')
 
   if (isPublic(request)) {
     return NextResponse.next({ request: { headers } })
@@ -115,6 +116,7 @@ export async function proxy(request: NextRequest) {
   // The Manage gate, AFTER the role check: a waiter is refused as a waiter,
   // never shown the unlock screen. A PIN alone never opens configuration.
   let manageTouched = false
+  let manageUnlocked = false
   if (needsManageSession(request.nextUrl.pathname)) {
     try {
       const manage = await validateManageSession(
@@ -123,16 +125,28 @@ export async function proxy(request: NextRequest) {
       )
       if (!manage) return manageLocked(request)
       manageTouched = await touchManageSession(manage)
+      manageUnlocked = true
     } catch (error) {
       // Database down: refuse, never let through.
       console.error('[proxy] Manage session check failed:', error)
       return manageLocked(request)
+    }
+  } else if (session.role === 'owner' && isManagePath(request.nextUrl.pathname)) {
+    // Availability opens without the password (Story 8.3), but the owner's
+    // nav shows the rest of Manage only when it is really unlocked (Teran,
+    // 2026-11-13). Read-only: this does not slide the idle window.
+    try {
+      manageUnlocked = !!(await validateManageSession(request.cookies.get(MANAGE_COOKIE_NAME)?.value, session.sessionId))
+    } catch {
+      manageUnlocked = false
     }
   }
 
   // Set from the validated session only — never from anything the client sent.
   headers.set('x-staff-id', session.staffId)
   headers.set('x-staff-role', session.role)
+  // Only decides which links the Manage nav shows; access was decided above.
+  if (manageUnlocked) headers.set('x-manage-unlocked', '1')
 
   const response = NextResponse.next({ request: { headers } })
 

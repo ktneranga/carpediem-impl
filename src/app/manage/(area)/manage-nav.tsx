@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import { ArrowLeft, Lock } from 'lucide-react'
+import { ArrowLeft, Lock, LockKeyhole } from 'lucide-react'
 import { MANAGE_SECTIONS } from './sections'
 import { cn } from '@/lib/utils'
 
@@ -13,10 +13,12 @@ const itemClass = cn(
 )
 
 /**
- * `ownerView` false (a waiter, in Sold out — Story 8.3): only the sections marked
- * `waiter`, and no Lock — a waiter holds no Manage session to lock.
+ * `unlocked` (owner with a live Manage session): every section, and Lock.
+ * Otherwise — a waiter, or the owner on Availability without the password
+ * (Story 8.3) — only the sections marked `waiter`; the owner also gets
+ * "Open Manage", which asks for the password (Teran, 2026-11-13).
  */
-export function ManageNav({ ownerView }: { ownerView: boolean }) {
+export function ManageNav({ owner, unlocked }: { owner: boolean; unlocked: boolean }) {
   const pathname = usePathname()
   const [locking, setLocking] = useState(false)
 
@@ -45,7 +47,7 @@ export function ManageNav({ ownerView }: { ownerView: boolean }) {
 
       <nav aria-label="Manage sections" className="overflow-x-auto">
         <ul className="flex gap-sp-1 md:flex-col">
-          {MANAGE_SECTIONS.filter((section) => ownerView || ('waiter' in section && section.waiter)).map((section) => {
+          {MANAGE_SECTIONS.filter((section) => unlocked || ('waiter' in section && section.waiter)).map((section) => {
             const current = pathname === section.href || pathname.startsWith(`${section.href}/`)
             return (
               <li key={section.href}>
@@ -65,7 +67,17 @@ export function ManageNav({ ownerView }: { ownerView: boolean }) {
         </ul>
       </nav>
 
-      {ownerView ? (
+      {owner && !unlocked ? (
+        <Link
+          href="/manage/dashboard"
+          className={cn(itemClass, 'gap-sp-2 text-slate-600 hover:bg-slate-100')}
+        >
+          <LockKeyhole aria-hidden="true" className="size-4" />
+          Open Manage
+        </Link>
+      ) : null}
+
+      {unlocked ? (
         <div className="flex gap-sp-1 md:mt-auto md:flex-col">
           <button
             type="button"
