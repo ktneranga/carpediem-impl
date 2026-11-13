@@ -103,30 +103,30 @@ export function UnlockForm({
   }
 
   const inputClass = cn(
-    'min-h-touch-standard w-full rounded-control border border-slate-200 bg-white px-sp-3',
-    'text-fs-16 text-slate-900',
+    'min-h-touch-standard w-full rounded-control border border-slate-200 bg-white px-sp-3 night:border-night-hairline night:bg-night-card',
+    'text-fs-16 text-slate-900 night:text-night-text',
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
   )
 
   return (
     <form
       onSubmit={submit}
-      className="flex w-full max-w-sm flex-col gap-sp-4 rounded-panel bg-white p-sp-6 shadow-sm"
+      className="flex w-full max-w-sm flex-col gap-sp-4 rounded-panel bg-white p-sp-6 shadow-sm night:bg-night-card"
     >
       <div className="flex items-center gap-sp-3">
-        <span className="flex size-10 items-center justify-center rounded-pill bg-brand-050 text-brand-800">
+        <span className="flex size-10 items-center justify-center rounded-pill bg-brand-050 text-brand-800 night:bg-night-raised night:text-brand-300">
           <Lock aria-hidden="true" className="size-5" />
         </span>
         <div>
-          <h1 className="text-fs-18 font-extrabold text-slate-900">Manage</h1>
-          <p className="text-fs-14 text-slate-600">
+          <h1 className="text-fs-18 font-extrabold text-slate-900 night:text-night-text">Manage</h1>
+          <p className="text-fs-14 text-slate-600 night:text-night-second">
             {mode === 'set' ? 'Choose a password for Manage' : 'Enter the Manage password'}
           </p>
         </div>
       </div>
 
       <label className="flex flex-col gap-sp-1">
-        <span className="text-fs-14 font-semibold text-slate-900">Password</span>
+        <span className="text-fs-14 font-semibold text-slate-900 night:text-night-text">Password</span>
         <input
           type="password"
           autoComplete={mode === 'set' ? 'new-password' : 'current-password'}
@@ -139,7 +139,7 @@ export function UnlockForm({
 
       {mode === 'set' ? (
         <label className="flex flex-col gap-sp-1">
-          <span className="text-fs-14 font-semibold text-slate-900">Type it again</span>
+          <span className="text-fs-14 font-semibold text-slate-900 night:text-night-text">Type it again</span>
           <input
             type="password"
             autoComplete="new-password"
@@ -147,14 +147,14 @@ export function UnlockForm({
             onChange={(event) => setConfirm(event.target.value)}
             className={inputClass}
           />
-          <span className="text-fs-12 text-slate-600">
+          <span className="text-fs-12 text-slate-600 night:text-night-second">
             {MIN_BYTES}–{MAX_BYTES} characters. Forgotten later? It is reset on the server.
           </span>
         </label>
       ) : null}
 
       {error ? (
-        <p role="alert" className="text-fs-14 font-semibold text-unavailable-ink">
+        <p role="alert" className="text-fs-14 font-semibold text-unavailable-ink night:text-red-300">
           {error}
         </p>
       ) : null}
@@ -173,7 +173,7 @@ export function UnlockForm({
 
       <Link
         href="/"
-        className="flex min-h-touch-standard items-center justify-center text-fs-14 font-semibold text-slate-600"
+        className="flex min-h-touch-standard items-center justify-center text-fs-14 font-semibold text-slate-600 night:text-night-second"
       >
         Back to floor
       </Link>

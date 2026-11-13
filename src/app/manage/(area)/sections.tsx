@@ -46,10 +46,10 @@ export const MANAGE_SECTIONS = [
 export function ComingSoon({ href }: { href: (typeof MANAGE_SECTIONS)[number]['href'] }) {
   const section = MANAGE_SECTIONS.find((s) => s.href === href)!
   return (
-    <section className="max-w-2xl rounded-panel bg-white p-sp-6">
-      <h1 className="text-fs-24 font-extrabold text-slate-900">{section.title}</h1>
-      <p className="mt-sp-2 text-fs-16 text-slate-600">{section.what}</p>
-      <p className="mt-sp-4 text-fs-14 font-semibold text-slate-600">Coming with Story {section.story}.</p>
+    <section className="max-w-2xl rounded-panel bg-white p-sp-6 night:bg-night-card">
+      <h1 className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">{section.title}</h1>
+      <p className="mt-sp-2 text-fs-16 text-slate-600 night:text-night-second">{section.what}</p>
+      <p className="mt-sp-4 text-fs-14 font-semibold text-slate-600 night:text-night-second">Coming with Story {section.story}.</p>
     </section>
   )
 }

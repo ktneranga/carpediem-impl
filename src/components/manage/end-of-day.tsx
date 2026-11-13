@@ -74,7 +74,7 @@ export function EndOfDay({ initialDate }: { initialDate: string | null }) {
     <div className="flex flex-col gap-sp-4">
       <header className="flex flex-wrap items-center justify-between gap-sp-3">
         <div className="flex flex-wrap items-center gap-sp-2">
-          <h1 className="mr-sp-2 text-fs-24 font-extrabold text-slate-900">End of day</h1>
+          <h1 className="mr-sp-2 text-fs-24 font-extrabold text-slate-900 night:text-night-text">End of day</h1>
           <button type="button" aria-label="Previous day" className={icon} disabled={!shown} onClick={() => shown && choose(shiftDate(shown, -1))}>
             <ChevronLeft className="size-5" aria-hidden="true" />
           </button>
@@ -95,19 +95,19 @@ export function EndOfDay({ initialDate }: { initialDate: string | null }) {
           >
             <ChevronRight className="size-5" aria-hidden="true" />
           </button>
-          {shown && shown === today ? <span className="text-fs-14 font-semibold text-slate-600">Today</span> : null}
+          {shown && shown === today ? <span className="text-fs-14 font-semibold text-slate-600 night:text-night-second">Today</span> : null}
         </div>
         <div className="flex items-center gap-sp-3">
-          {printNote ? <span role="status" className="text-fs-14 font-semibold text-slate-600">{printNote}</span> : null}
+          {printNote ? <span role="status" className="text-fs-14 font-semibold text-slate-600 night:text-night-second">{printNote}</span> : null}
           <button type="button" className={primary} disabled={!t || printing} onClick={() => void print()}>
             <Printer className="size-4" aria-hidden="true" /> Print
           </button>
         </div>
       </header>
 
-      {isLoading ? <p className="text-fs-14 text-slate-600">Loading the takings…</p> : null}
+      {isLoading ? <p className="text-fs-14 text-slate-600 night:text-night-second">Loading the takings…</p> : null}
       {error ? (
-        <p role="alert" className="text-fs-14 font-semibold text-red-700">
+        <p role="alert" className="text-fs-14 font-semibold text-red-700 night:text-red-400">
           {error instanceof Error ? error.message : 'Could not load the takings.'}
         </p>
       ) : null}
@@ -115,7 +115,7 @@ export function EndOfDay({ initialDate }: { initialDate: string | null }) {
       {t ? (
         <>
           {t.orders === 0 && t.openOrders.length === 0 ? (
-            <p className="rounded-panel bg-white p-sp-4 text-fs-16 text-slate-600">No orders on this day.</p>
+            <p className="rounded-panel bg-white p-sp-4 text-fs-16 text-slate-600 night:bg-night-card night:text-night-second">No orders on this day.</p>
           ) : null}
 
           <div className="grid gap-sp-4 lg:grid-cols-2">
@@ -151,15 +151,15 @@ export function EndOfDay({ initialDate }: { initialDate: string | null }) {
 
           <Card title={`Still open (${t.openOrders.length})`}>
             {t.openOrders.length === 0 ? (
-              <p className="py-sp-2 text-fs-14 text-slate-600">Every order of this day is closed.</p>
+              <p className="py-sp-2 text-fs-14 text-slate-600 night:text-night-second">Every order of this day is closed.</p>
             ) : (
               <>
-                <p className="pb-sp-2 text-fs-14 text-amber-900">These orders are not in the totals until they are paid.</p>
+                <p className="pb-sp-2 text-fs-14 text-amber-900 night:text-amber-300">These orders are not in the totals until they are paid.</p>
                 {t.openOrders.map((order) => (
-                  <div key={order.dailyNumber} className="flex min-h-11 flex-wrap items-center gap-sp-3 border-t border-slate-100 py-sp-2">
-                    <span className="w-16 text-fs-16 font-bold text-slate-900 tabular-nums">{dailyOrderLabel(order.dailyNumber)}</span>
-                    <span className="min-w-0 flex-1 text-fs-16 text-slate-900">{order.tables.join(' + ')}</span>
-                    <span className="text-fs-14 text-slate-600">
+                  <div key={order.dailyNumber} className="flex min-h-11 flex-wrap items-center gap-sp-3 border-t border-slate-100 py-sp-2 night:border-night-hairline">
+                    <span className="w-16 text-fs-16 font-bold text-slate-900 tabular-nums night:text-night-text">{dailyOrderLabel(order.dailyNumber)}</span>
+                    <span className="min-w-0 flex-1 text-fs-16 text-slate-900 night:text-night-text">{order.tables.join(' + ')}</span>
+                    <span className="text-fs-14 text-slate-600 night:text-night-second">
                       {time(order.openedAt)} · {order.openedBy}
                     </span>
                   </div>
@@ -170,13 +170,13 @@ export function EndOfDay({ initialDate }: { initialDate: string | null }) {
 
           <Card title={`No-sale drawer openings (${t.noSales.length})`}>
             {t.noSales.length === 0 ? (
-              <p className="py-sp-2 text-fs-14 text-slate-600">The drawer was only opened for cash payments.</p>
+              <p className="py-sp-2 text-fs-14 text-slate-600 night:text-night-second">The drawer was only opened for cash payments.</p>
             ) : (
               t.noSales.map((opening, index) => (
-                <div key={index} className="flex min-h-11 flex-wrap items-center gap-sp-3 border-t border-slate-100 py-sp-2">
-                  <span className="w-16 text-fs-14 font-semibold text-slate-900 tabular-nums">{time(opening.openedAt)}</span>
-                  <span className="text-fs-16 text-slate-900">{opening.staffName}</span>
-                  <span className="min-w-0 flex-1 text-fs-14 text-slate-600">
+                <div key={index} className="flex min-h-11 flex-wrap items-center gap-sp-3 border-t border-slate-100 py-sp-2 night:border-night-hairline">
+                  <span className="w-16 text-fs-14 font-semibold text-slate-900 tabular-nums night:text-night-text">{time(opening.openedAt)}</span>
+                  <span className="text-fs-16 text-slate-900 night:text-night-text">{opening.staffName}</span>
+                  <span className="min-w-0 flex-1 text-fs-14 text-slate-600 night:text-night-second">
                     {opening.reason === 'other' ? opening.note : REASONS[opening.reason]}
                   </span>
                 </div>
@@ -191,8 +191,8 @@ export function EndOfDay({ initialDate }: { initialDate: string | null }) {
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section aria-label={title} className="flex flex-col rounded-panel bg-white p-sp-4">
-      <h2 className="pb-sp-2 text-fs-14 font-bold tracking-micro text-slate-500 uppercase">{title}</h2>
+    <section aria-label={title} className="flex flex-col rounded-panel bg-white p-sp-4 night:bg-night-card">
+      <h2 className="pb-sp-2 text-fs-14 font-bold tracking-micro text-slate-500 uppercase night:text-night-muted">{title}</h2>
       {children}
     </section>
   )
@@ -202,9 +202,9 @@ function Row({ label, value, strong, warn }: { label: string; value: string; str
   return (
     <div
       className={cn(
-        'flex min-h-10 items-center justify-between gap-sp-3 border-t border-slate-100 text-fs-16',
-        strong ? 'font-extrabold text-slate-900' : 'text-slate-700',
-        warn ? 'font-semibold text-amber-900' : '',
+        'flex min-h-10 items-center justify-between gap-sp-3 border-t border-slate-100 text-fs-16 night:border-night-hairline',
+        strong ? 'font-extrabold text-slate-900 night:text-night-text' : 'text-slate-700 night:text-night-second',
+        warn ? 'font-semibold text-amber-900 night:text-amber-300' : '',
       )}
     >
       <span>{label}</span>

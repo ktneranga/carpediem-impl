@@ -1,13 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Monitor, Moon, Sun } from 'lucide-react'
 import { call as callApi } from '@/components/manage/manage-ui'
 import { AuditList, CompsByReason, PaymentSplit, RevenueChart, StatTiles, TopItems } from '@/components/manage/dashboard/insight-panels'
 import { Panel, PanelSkeleton, tone } from '@/components/manage/dashboard/panel'
 import { CashCountButton, LiveCards, SUMMARY_KEY } from '@/components/manage/dashboard/summary-cards'
-import { setThemeChoice, useDashboardTheme, type ThemeChoice } from '@/components/manage/dashboard/theme'
+import { useManageTheme } from '@/components/manage/theme'
 import { useSocketEvent, useSocketStatus } from '@/hooks/use-socket'
 import type { Insights, Period } from '@/server/services/insights.service'
 import { cn } from '@/lib/utils'
@@ -18,7 +17,7 @@ import { cn } from '@/lib/utils'
  * by hour or day with its peak, four stat tiles (recorded revenue vs the same
  * span before, cash gap, covers, comps), payment split, top items, comps by
  * reason, unclosed orders and corrections — and on Today, what needs attention
- * now. Light and dark (the night tokens), following the device unless pinned.
+ * now. Light and dark follow the Manage area's theme (the toggle is in the menu).
  */
 
 const PERIODS: { value: Period; label: string; word: string }[] = [
@@ -26,11 +25,6 @@ const PERIODS: { value: Period; label: string; word: string }[] = [
   { value: 'yesterday', label: 'Yesterday', word: 'Yesterday' },
   { value: 'week', label: 'Week', word: 'This week' },
   { value: 'month', label: 'Month', word: 'This month' },
-]
-const THEMES: { value: ThemeChoice; label: string; icon: typeof Sun }[] = [
-  { value: 'auto', label: 'Follow device', icon: Monitor },
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'dark', label: 'Dark', icon: Moon },
 ]
 
 const date = (iso: string, options: Intl.DateTimeFormatOptions) =>
@@ -45,7 +39,7 @@ function periodTitle(data: Insights) {
 export function Dashboard() {
   const queryClient = useQueryClient()
   const live = useSocketStatus()
-  const { choice, dark } = useDashboardTheme()
+  const { dark } = useManageTheme()
   const [period, setPeriod] = useState<Period>('today')
   const includesToday = period !== 'yesterday'
 
@@ -67,20 +61,7 @@ export function Dashboard() {
   useSocketEvent('menu:changed', () => void queryClient.invalidateQueries({ queryKey: SUMMARY_KEY }))
 
   const word = PERIODS.find((p) => p.value === period)!.word
-  const nextTheme = THEMES[(THEMES.findIndex((t) => t.value === choice) + 1) % THEMES.length]!
-  const ThemeIcon = THEMES.find((t) => t.value === choice)!.icon
   const shown = data && data.period === period ? data : null
-
-  // The whole Manage area (nav included) follows the dashboard's theme while it
-  // is open; other Manage screens have no dark styles, so it is removed on leave.
-  useEffect(() => {
-    const root = document.documentElement
-    if (dark) root.dataset.theme = 'night'
-    else delete root.dataset.theme
-    return () => {
-      delete root.dataset.theme
-    }
-  }, [dark])
 
   return (
     <div>
@@ -112,15 +93,6 @@ export function Dashboard() {
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              aria-label={`Theme: ${THEMES.find((t) => t.value === choice)!.label}. Switch to ${nextTheme.label}`}
-              title={`Theme: ${THEMES.find((t) => t.value === choice)!.label}`}
-              className={cn('inline-flex size-10 items-center justify-center rounded-control', tone.card, tone.second)}
-              onClick={() => setThemeChoice(nextTheme.value)}
-            >
-              <ThemeIcon className="size-4" aria-hidden="true" />
-            </button>
             <span className={cn('flex items-center gap-sp-1 text-fs-12 font-semibold', tone.muted)}>
               <span aria-hidden="true" className={cn('size-2 rounded-full', live ? 'bg-open-edge' : 'bg-slate-400')} />
               {live ? 'Live' : 'Offline'}

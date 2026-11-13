@@ -85,15 +85,15 @@ export function FloorEditor() {
   return (
     <div className="flex flex-col gap-sp-4">
       <header className="flex flex-wrap items-center justify-between gap-sp-3">
-        <h1 className="text-fs-24 font-extrabold text-slate-900">Floor</h1>
-        <label className="flex min-h-11 items-center gap-sp-2 text-fs-14 font-semibold text-slate-700">
+        <h1 className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">Floor</h1>
+        <label className="flex min-h-11 items-center gap-sp-2 text-fs-14 font-semibold text-slate-700 night:text-night-second">
           <input type="checkbox" className="size-5" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />
           Show removed tables
         </label>
       </header>
 
       {message ? (
-        <p role="alert" className="flex items-center justify-between gap-sp-3 rounded-control bg-amber-50 px-sp-4 py-sp-3 text-fs-14 font-semibold text-amber-900">
+        <p role="alert" className="flex items-center justify-between gap-sp-3 rounded-control bg-amber-50 px-sp-4 py-sp-3 text-fs-14 font-semibold text-amber-900 night:bg-amber-500/10 night:text-amber-300">
           {message}
           <button type="button" aria-label="Dismiss" className={icon} onClick={() => setMessage(null)}>
             <X className="size-4" aria-hidden="true" />
@@ -101,12 +101,12 @@ export function FloorEditor() {
         </p>
       ) : null}
 
-      {isLoading ? <p className="text-fs-14 text-slate-600">Loading the floor…</p> : null}
+      {isLoading ? <p className="text-fs-14 text-slate-600 night:text-night-second">Loading the floor…</p> : null}
 
       <div className="flex flex-col gap-sp-4 lg:flex-row lg:items-start">
         {/* ── Zones ──────────────────────────────────────────────────────── */}
-        <section aria-label="Zones" className="flex flex-col gap-sp-2 rounded-panel bg-white p-sp-3 lg:w-72 lg:shrink-0">
-          <h2 className="px-sp-2 text-fs-14 font-bold tracking-micro text-slate-500 uppercase">Zones</h2>
+        <section aria-label="Zones" className="flex flex-col gap-sp-2 rounded-panel bg-white p-sp-3 lg:w-72 lg:shrink-0 night:bg-night-card">
+          <h2 className="px-sp-2 text-fs-14 font-bold tracking-micro text-slate-500 uppercase night:text-night-muted">Zones</h2>
           <SortableList
             items={zones}
             disabled={busy}
@@ -138,10 +138,10 @@ export function FloorEditor() {
         </section>
 
         {/* ── Tables ─────────────────────────────────────────────────────── */}
-        <section aria-label="Tables" className="flex min-w-0 flex-1 flex-col gap-sp-2 rounded-panel bg-white p-sp-3">
+        <section aria-label="Tables" className="flex min-w-0 flex-1 flex-col gap-sp-2 rounded-panel bg-white p-sp-3 night:bg-night-card">
           <div className="flex items-center justify-between gap-sp-3 px-sp-2">
-            <h2 className="flex items-center gap-sp-2 text-fs-18 font-extrabold text-slate-900">
-              {selected ? <ZoneIcon name={selected.name} className="size-5 text-slate-500" /> : null}
+            <h2 className="flex items-center gap-sp-2 text-fs-18 font-extrabold text-slate-900 night:text-night-text">
+              {selected ? <ZoneIcon name={selected.name} className="size-5 text-slate-500 night:text-night-muted" /> : null}
               {selected?.name ?? 'No zones yet'}
             </h2>
             {selected ? (
@@ -151,7 +151,7 @@ export function FloorEditor() {
             ) : null}
           </div>
           {selected && selected.tables.length === 0 ? (
-            <p className="px-sp-2 py-sp-4 text-fs-14 text-slate-600">
+            <p className="px-sp-2 py-sp-4 text-fs-14 text-slate-600 night:text-night-second">
               No tables in this zone. A zone shows on the floor once it has a table.
             </p>
           ) : null}
@@ -160,7 +160,7 @@ export function FloorEditor() {
               items={selected.tables}
               disabled={busy}
               label={(table) => table.label}
-              className="flex flex-col divide-y divide-slate-100"
+              className="flex flex-col divide-y divide-slate-100 night:divide-night-hairline"
               onReorder={(ids) => reorder('table', selected.id, ids)}
               renderItem={(table, handle) => (
                 <TableRow
@@ -186,16 +186,16 @@ export function FloorEditor() {
       </div>
 
       {showRemoved ? (
-        <section aria-label="Removed tables" className="flex flex-col gap-sp-2 rounded-panel bg-white p-sp-3">
-          <h2 className="px-sp-2 text-fs-14 font-bold tracking-micro text-slate-500 uppercase">Removed tables</h2>
-          {removed.length === 0 ? <p className="px-sp-2 text-fs-14 text-slate-600">No removed tables.</p> : null}
-          <ul className="flex flex-col divide-y divide-slate-100">
+        <section aria-label="Removed tables" className="flex flex-col gap-sp-2 rounded-panel bg-white p-sp-3 night:bg-night-card">
+          <h2 className="px-sp-2 text-fs-14 font-bold tracking-micro text-slate-500 uppercase night:text-night-muted">Removed tables</h2>
+          {removed.length === 0 ? <p className="px-sp-2 text-fs-14 text-slate-600 night:text-night-second">No removed tables.</p> : null}
+          <ul className="flex flex-col divide-y divide-slate-100 night:divide-night-hairline">
             {removed.map((table) => {
               const ownZoneActive = zones.some((zone) => zone.id === table.zoneId)
               return (
                 <li key={table.id + table.version} className="flex flex-wrap items-center gap-sp-2 py-sp-2 pl-sp-2">
-                  <span className="min-w-0 flex-1 text-fs-16 font-bold text-slate-400 line-through">{table.label}</span>
-                  <span className="text-fs-12 text-slate-500">{table.zoneName}</span>
+                  <span className="min-w-0 flex-1 text-fs-16 font-bold text-slate-400 line-through night:text-night-muted">{table.label}</span>
+                  <span className="text-fs-12 text-slate-500 night:text-night-muted">{table.zoneName}</span>
                   <button
                     type="button"
                     className={secondary}
@@ -279,19 +279,19 @@ function ZoneRow({
           </button>
         </form>
       ) : (
-        <div className={cn('flex min-w-0 flex-1 items-center rounded-control', selected ? 'bg-brand-050' : '')}>
+        <div className={cn('flex min-w-0 flex-1 items-center rounded-control', selected ? 'bg-brand-050 night:bg-night-raised' : '')}>
           <button
             type="button"
             aria-current={selected ? 'true' : undefined}
             onClick={onSelect}
             className={cn(
               'flex min-h-11 min-w-0 flex-1 items-center gap-sp-2 rounded-control px-sp-3 text-left text-fs-14 font-semibold whitespace-nowrap',
-              selected ? 'text-brand-800' : 'text-slate-700 hover:bg-slate-100',
+              selected ? 'text-brand-800 night:text-brand-300' : 'text-slate-700 hover:bg-slate-100 night:text-night-second night:hover:bg-night-raised',
             )}
           >
-            <ZoneIcon name={zone.name} className="size-4 shrink-0 text-slate-500" />
+            <ZoneIcon name={zone.name} className="size-4 shrink-0 text-slate-500 night:text-night-muted" />
             <span className="truncate">{zone.name}</span>
-            <span className="text-fs-12 text-slate-500">{zone.tables.length}</span>
+            <span className="text-fs-12 text-slate-500 night:text-night-muted">{zone.tables.length}</span>
           </button>
           {selected ? (
             <span className="flex">
@@ -313,7 +313,7 @@ function AddZone({ busy, onAdd }: { busy: boolean; onAdd: (name: string) => Prom
   const [name, setName] = useState('')
   return (
     <form
-      className="flex gap-sp-1 border-t border-slate-100 pt-sp-2"
+      className="flex gap-sp-1 border-t border-slate-100 pt-sp-2 night:border-night-hairline"
       onSubmit={async (event) => {
         event.preventDefault()
         if (await onAdd(name)) setName('')
@@ -347,17 +347,17 @@ function TableRow({
     <div className="flex flex-wrap items-center gap-sp-2 py-sp-2 pr-sp-2">
       {handle}
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-sp-2">
-        <span className="text-fs-16 font-bold text-slate-900">{table.label}</span>
+        <span className="text-fs-16 font-bold text-slate-900 night:text-night-text">{table.label}</span>
         {table.capacity ? (
-          <span className="inline-flex items-center gap-sp-1 text-fs-12 text-slate-600">
+          <span className="inline-flex items-center gap-sp-1 text-fs-12 text-slate-600 night:text-night-second">
             <Users className="size-3.5" aria-hidden="true" /> {table.capacity} seats
           </span>
         ) : null}
         {occupied ? (
-          <span className="rounded-pill bg-brand-050 px-sp-2 py-0.5 text-fs-12 font-semibold text-brand-800">Occupied</span>
+          <span className="rounded-pill bg-brand-050 px-sp-2 py-0.5 text-fs-12 font-semibold text-brand-800 night:bg-night-raised night:text-brand-300">Occupied</span>
         ) : null}
         {table.status === 'unavailable' ? (
-          <span className="rounded-pill bg-amber-50 px-sp-2 py-0.5 text-fs-12 font-semibold text-amber-900">Out of service</span>
+          <span className="rounded-pill bg-amber-50 px-sp-2 py-0.5 text-fs-12 font-semibold text-amber-900 night:bg-amber-500/10 night:text-amber-300">Out of service</span>
         ) : null}
       </div>
       <button type="button" aria-label={`Edit ${table.label}`} className={icon} onClick={onEdit}>
@@ -421,9 +421,9 @@ function TableSheet({
         if (event.key === 'Escape') onClose()
       }}
     >
-      <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2">
+      <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2 night:bg-night-card">
         <div className="flex items-center justify-between">
-          <h2 id="table-sheet-title" className="text-fs-20 font-extrabold text-slate-900">
+          <h2 id="table-sheet-title" className="text-fs-20 font-extrabold text-slate-900 night:text-night-text">
             {table ? table.label : 'New table'}
           </h2>
           <button type="button" aria-label="Close" className={icon} onClick={onClose}>
@@ -431,7 +431,7 @@ function TableSheet({
           </button>
         </div>
         {table && (table.inUse || table.status === 'occupied') ? (
-          <p className="text-fs-14 text-slate-600">An order is open on this table. It stays on it if you rename or move it.</p>
+          <p className="text-fs-14 text-slate-600 night:text-night-second">An order is open on this table. It stays on it if you rename or move it.</p>
         ) : null}
         <form
           className="flex flex-col gap-sp-3"
@@ -441,16 +441,16 @@ function TableSheet({
           }}
         >
           <label className="flex flex-col gap-sp-1">
-            <span className="text-fs-14 font-semibold text-slate-700">Label</span>
+            <span className="text-fs-14 font-semibold text-slate-700 night:text-night-second">Label</span>
             <input autoFocus maxLength={20} className={input} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Table 7" />
           </label>
           <label className="flex flex-col gap-sp-1">
-            <span className="text-fs-14 font-semibold text-slate-700">Seats (optional)</span>
+            <span className="text-fs-14 font-semibold text-slate-700 night:text-night-second">Seats (optional)</span>
             <input inputMode="numeric" maxLength={2} className={input} value={seats} onChange={(e) => setSeats(e.target.value)} placeholder="4" />
-            {capacity === undefined ? <span className="text-fs-12 text-red-700">A whole number, 1 to 30</span> : null}
+            {capacity === undefined ? <span className="text-fs-12 text-red-700 night:text-red-400">A whole number, 1 to 30</span> : null}
           </label>
           <label className="flex flex-col gap-sp-1">
-            <span className="text-fs-14 font-semibold text-slate-700">Zone</span>
+            <span className="text-fs-14 font-semibold text-slate-700 night:text-night-second">Zone</span>
             <select className={input} value={zoneId} onChange={(e) => setZoneId(e.target.value)}>
               {zones.map((zone) => (
                 <option key={zone.id} value={zone.id}>{zone.name}</option>

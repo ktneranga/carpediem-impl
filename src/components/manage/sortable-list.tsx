@@ -111,8 +111,8 @@ function SortableRow({
       aria-label={`Drag ${label}`}
       disabled={disabled}
       className={cn(
-        'inline-flex size-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-control text-slate-400',
-        'hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing disabled:opacity-30',
+        'inline-flex size-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-control text-slate-400 night:text-night-muted',
+        'hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing disabled:opacity-30 night:hover:bg-night-raised night:hover:text-night-second',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
       )}
       {...attributes}
@@ -125,7 +125,7 @@ function SortableRow({
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn(className, isDragging && 'relative z-10 rounded-control bg-white shadow-el-2')}
+      className={cn(className, isDragging && 'relative z-10 rounded-control bg-white shadow-el-2 night:bg-night-card')}
     >
       {children(handle)}
     </li>

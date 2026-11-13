@@ -22,9 +22,9 @@ const call = (method: string, url: string, body?: unknown) => callApi(method, ur
 
 /** What each access level (set by the job) can open, and its badge colour. */
 const ROLES: { role: StaffRole; access: string; badge: string }[] = [
-  { role: 'waiter', access: 'Orders & bills', badge: 'bg-slate-100 text-slate-700' },
-  { role: 'kitchen', access: 'Kitchen screen only', badge: 'bg-amber-50 text-amber-900' },
-  { role: 'owner', access: 'Everything, incl. Manage', badge: 'bg-brand-050 text-brand-800' },
+  { role: 'waiter', access: 'Orders & bills', badge: 'bg-slate-100 text-slate-700 night:bg-night-raised night:text-night-second' },
+  { role: 'kitchen', access: 'Kitchen screen only', badge: 'bg-amber-50 text-amber-900 night:bg-amber-500/10 night:text-amber-300' },
+  { role: 'owner', access: 'Everything, incl. Manage', badge: 'bg-brand-050 text-brand-800 night:bg-night-raised night:text-brand-300' },
 ]
 const roleOf = (role: StaffRole) => ROLES.find((r) => r.role === role)!
 
@@ -64,39 +64,39 @@ export function StaffEditor({ meId }: { meId: string | null }) {
   return (
     <div className="flex flex-col gap-sp-4">
       <header className="flex flex-wrap items-center justify-between gap-sp-3">
-        <h1 className="text-fs-24 font-extrabold text-slate-900">Staff</h1>
+        <h1 className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">Staff</h1>
         <button type="button" className={primary} onClick={() => setSheet({ mode: 'new' })}>
           <Plus className="size-4" aria-hidden="true" /> Add staff
         </button>
       </header>
 
-      {isLoading ? <p className="text-fs-14 text-slate-600">Loading the staff…</p> : null}
-      {error ? <p role="alert" className="text-fs-14 font-semibold text-red-700">Could not load the staff.</p> : null}
+      {isLoading ? <p className="text-fs-14 text-slate-600 night:text-night-second">Loading the staff…</p> : null}
+      {error ? <p role="alert" className="text-fs-14 font-semibold text-red-700 night:text-red-400">Could not load the staff.</p> : null}
 
-      <section aria-label="Active staff" className="flex flex-col divide-y divide-slate-100 rounded-panel bg-white p-sp-2">
+      <section aria-label="Active staff" className="flex flex-col divide-y divide-slate-100 rounded-panel bg-white p-sp-2 night:divide-night-hairline night:bg-night-card">
         {active.map((person) => (
           <button
             key={`${person.id}-${person.version}`}
             type="button"
-            className="flex min-h-14 items-center gap-sp-3 rounded-control px-sp-3 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-brand-500"
+            className="flex min-h-14 items-center gap-sp-3 rounded-control px-sp-3 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-brand-500 night:hover:bg-night-raised"
             onClick={() => setSheet({ mode: 'edit', person })}
           >
-            <span className="min-w-0 flex-1 truncate text-fs-16 font-bold text-slate-900">{person.name}</span>
+            <span className="min-w-0 flex-1 truncate text-fs-16 font-bold text-slate-900 night:text-night-text">{person.name}</span>
             {person.id === meId ? (
-              <span className="rounded-pill border border-slate-300 px-sp-2 py-0.5 text-fs-12 font-semibold text-slate-600">You</span>
+              <span className="rounded-pill border border-slate-300 px-sp-2 py-0.5 text-fs-12 font-semibold text-slate-600 night:border-night-hairline night:text-night-second">You</span>
             ) : null}
-            <span className="hidden text-fs-12 text-slate-500 sm:inline">{roleOf(person.role).access}</span>
+            <span className="hidden text-fs-12 text-slate-500 sm:inline night:text-night-muted">{roleOf(person.role).access}</span>
             <RoleBadge role={person.role} job={person.jobTitle} />
           </button>
         ))}
       </section>
 
       {inactive.length > 0 ? (
-        <section aria-label="Deactivated staff" className="flex flex-col rounded-panel bg-white p-sp-2">
+        <section aria-label="Deactivated staff" className="flex flex-col rounded-panel bg-white p-sp-2 night:bg-night-card">
           <button
             type="button"
             aria-expanded={showInactive}
-            className="flex min-h-11 items-center gap-sp-2 rounded-control px-sp-3 text-fs-14 font-bold text-slate-600 hover:bg-slate-50"
+            className="flex min-h-11 items-center gap-sp-2 rounded-control px-sp-3 text-fs-14 font-bold text-slate-600 hover:bg-slate-50 night:text-night-second night:hover:bg-night-raised"
             onClick={() => setShowInactive((open) => !open)}
           >
             <ChevronDown className={cn('size-4 transition-transform', showInactive ? '' : '-rotate-90')} aria-hidden="true" />
@@ -104,8 +104,8 @@ export function StaffEditor({ meId }: { meId: string | null }) {
           </button>
           {showInactive
             ? inactive.map((person) => (
-                <div key={`${person.id}-${person.version}`} className="flex min-h-14 items-center gap-sp-3 border-t border-slate-100 px-sp-3">
-                  <span className="min-w-0 flex-1 truncate text-fs-16 font-semibold text-slate-500">{person.name}</span>
+                <div key={`${person.id}-${person.version}`} className="flex min-h-14 items-center gap-sp-3 border-t border-slate-100 px-sp-3 night:border-night-hairline">
+                  <span className="min-w-0 flex-1 truncate text-fs-16 font-semibold text-slate-500 night:text-night-muted">{person.name}</span>
                   <RoleBadge role={person.role} job={person.jobTitle} />
                   <button type="button" className={secondary} disabled={busy} onClick={() => setSheet({ mode: 'reactivate', person })}>
                     Reactivate
@@ -214,9 +214,9 @@ function StaffSheet({
         if (event.key === 'Escape' && confirming === null) onClose()
       }}
     >
-      <div className="flex max-h-full w-full max-w-md flex-col gap-sp-4 overflow-y-auto rounded-panel bg-white p-sp-5 shadow-el-2">
+      <div className="flex max-h-full w-full max-w-md flex-col gap-sp-4 overflow-y-auto rounded-panel bg-white p-sp-5 shadow-el-2 night:bg-night-card">
         <div className="flex items-center justify-between gap-sp-3">
-          <h2 id="staff-sheet-title" className="min-w-0 truncate text-fs-20 font-extrabold text-slate-900">{title}</h2>
+          <h2 id="staff-sheet-title" className="min-w-0 truncate text-fs-20 font-extrabold text-slate-900 night:text-night-text">{title}</h2>
           <button type="button" aria-label="Close" className={icon} onClick={onClose}>
             <X className="size-5" aria-hidden="true" />
           </button>
@@ -230,16 +230,16 @@ function StaffSheet({
           }}
         >
           {reactivating ? (
-            <p className="text-fs-14 text-slate-600">Choose a PIN for them. It can be their old one if no one else uses it.</p>
+            <p className="text-fs-14 text-slate-600 night:text-night-second">Choose a PIN for them. It can be their old one if no one else uses it.</p>
           ) : (
             <>
               <label className="flex flex-col gap-sp-1">
-                <span className="text-fs-14 font-semibold text-slate-700">Name</span>
+                <span className="text-fs-14 font-semibold text-slate-700 night:text-night-second">Name</span>
                 <input autoFocus maxLength={40} className={input} value={name} onChange={(e) => setName(e.target.value)} placeholder="Nimal" />
               </label>
 
               <fieldset className="flex flex-col gap-sp-1">
-                <legend className="mb-sp-1 text-fs-14 font-semibold text-slate-700">Job</legend>
+                <legend className="mb-sp-1 text-fs-14 font-semibold text-slate-700 night:text-night-second">Job</legend>
                 <div className="grid grid-cols-3 gap-sp-2">
                   {STAFF_JOBS.map((choice) => (
                     <button
@@ -254,7 +254,7 @@ function StaffSheet({
                     </button>
                   ))}
                 </div>
-                <span className="text-fs-12 text-slate-600">
+                <span className="text-fs-12 text-slate-600 night:text-night-second">
                   Can use: {roleOf(accessOf(job)).access}
                   {isMe ? '. Another owner can change your job.' : null}
                 </span>
@@ -263,7 +263,7 @@ function StaffSheet({
           )}
 
           <label className="flex flex-col gap-sp-1">
-            <span className="text-fs-14 font-semibold text-slate-700">
+            <span className="text-fs-14 font-semibold text-slate-700 night:text-night-second">
               {sheet.mode === 'edit' ? 'Set a new PIN (leave empty to keep)' : 'PIN (4 digits)'}
             </span>
             <span className="flex gap-sp-1">
@@ -290,7 +290,7 @@ function StaffSheet({
           </label>
 
           {problem ? (
-            <p role="alert" className="rounded-control bg-amber-50 px-sp-3 py-sp-2 text-fs-14 font-semibold text-amber-900">{problem}</p>
+            <p role="alert" className="rounded-control bg-amber-50 px-sp-3 py-sp-2 text-fs-14 font-semibold text-amber-900 night:bg-amber-500/10 night:text-amber-300">{problem}</p>
           ) : null}
 
           <button type="submit" className={primary} disabled={busy || !valid}>
@@ -299,12 +299,12 @@ function StaffSheet({
         </form>
 
         {person ? (
-          <div className="flex flex-col gap-sp-1 border-t border-slate-100 pt-sp-3">
+          <div className="flex flex-col gap-sp-1 border-t border-slate-100 pt-sp-3 night:border-night-hairline">
             <div className="flex gap-sp-2">
               {sheet.mode === 'edit' ? (
                 <button
                   type="button"
-                  className={cn(secondary, 'flex-1 text-red-700')}
+                  className={cn(secondary, 'flex-1 text-red-700 night:text-red-400')}
                   disabled={busy || isMe}
                   onClick={() => setConfirming('deactivate')}
                 >
@@ -315,14 +315,14 @@ function StaffSheet({
                 type="button"
                 aria-label={`Delete ${person.name}`}
                 title="Delete (only someone with no orders or bills)"
-                className={cn(icon, 'text-red-700')}
+                className={cn(icon, 'text-red-700 night:text-red-400')}
                 disabled={busy || isMe}
                 onClick={() => setConfirming('delete')}
               >
                 <Trash2 className="size-5" aria-hidden="true" />
               </button>
             </div>
-            {isMe ? <span className="text-fs-12 text-slate-600">Another owner can change this.</span> : null}
+            {isMe ? <span className="text-fs-12 text-slate-600 night:text-night-second">Another owner can change this.</span> : null}
           </div>
         ) : null}
       </div>
@@ -356,6 +356,6 @@ function choiceClass(chosen: boolean) {
   return cn(
     'min-h-12 rounded-control border px-sp-2 text-fs-14 font-bold disabled:opacity-50',
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-    chosen ? 'border-brand-800 bg-brand-800 text-white' : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-50',
+    chosen ? 'border-brand-800 bg-brand-800 text-white' : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-50 night:border-night-hairline night:bg-night-card night:text-night-text night:hover:bg-night-raised',
   )
 }

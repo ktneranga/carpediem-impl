@@ -24,6 +24,9 @@
 /* Night theme — the owner dashboard, read on a phone after service. */
 @custom-variant night (&:is([data-theme="night"] *));
 
+/* Native controls (date picker, dropdowns, scrollbars) follow the night theme too. */
+[data-theme="night"] { color-scheme: dark; }
+
 @theme {
   /* ── Brand — coastal sky blue ───────────────────────────────────────────────
      Stored per tenant for white-labelling, so it appears as INTERFACE colour —

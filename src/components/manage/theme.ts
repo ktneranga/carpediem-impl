@@ -3,16 +3,17 @@
 import { useSyncExternalStore } from 'react'
 
 /**
- * The dashboard's light / dark choice (Teran, 2026-11-13). `auto` follows the
- * device. Kept in this browser only (localStorage) — a per-viewer convenience;
- * if storage is blocked the dashboard simply follows the device.
+ * The Manage area's light / dark choice (Teran, 2026-11-13). `auto` follows
+ * the device. Kept in this browser only (localStorage) — a per-viewer
+ * convenience; if storage is blocked Manage simply follows the device.
  *
  * Dark uses the design system's night tokens (`night:` variant,
- * `[data-theme="night"]`, globals.css), which were drawn for this dashboard.
+ * `[data-theme="night"]`, globals.css). `ManageThemeRoot` puts the attribute
+ * on <html> while a Manage screen is open; the POS never gets it.
  */
 
 export type ThemeChoice = 'auto' | 'light' | 'dark'
-const KEY = 'cdrms-dashboard-theme'
+const KEY = 'cdrms-manage-theme'
 const listeners = new Set<() => void>()
 
 function readChoice(): ThemeChoice {
@@ -54,7 +55,7 @@ function snapshot(): string {
   return `${current}|${dark ? 'dark' : 'light'}`
 }
 
-export function useDashboardTheme(): { choice: ThemeChoice; dark: boolean } {
+export function useManageTheme(): { choice: ThemeChoice; dark: boolean } {
   const value = useSyncExternalStore(subscribe, snapshot, () => 'auto|light')
   const [choice, resolved] = value.split('|') as [ThemeChoice, string]
   return { choice, dark: resolved === 'dark' }

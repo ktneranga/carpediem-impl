@@ -118,15 +118,15 @@ export function MenuEditor() {
   return (
     <div className="flex flex-col gap-sp-4">
       <header className="flex flex-wrap items-center justify-between gap-sp-3">
-        <h1 className="text-fs-24 font-extrabold text-slate-900">Menu</h1>
-        <label className="flex min-h-11 items-center gap-sp-2 text-fs-14 font-semibold text-slate-700">
+        <h1 className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">Menu</h1>
+        <label className="flex min-h-11 items-center gap-sp-2 text-fs-14 font-semibold text-slate-700 night:text-night-second">
           <input type="checkbox" className="size-5" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />
           Show removed dishes
         </label>
       </header>
 
       {message ? (
-        <p role="alert" className="flex items-center justify-between gap-sp-3 rounded-control bg-amber-50 px-sp-4 py-sp-3 text-fs-14 font-semibold text-amber-900">
+        <p role="alert" className="flex items-center justify-between gap-sp-3 rounded-control bg-amber-50 px-sp-4 py-sp-3 text-fs-14 font-semibold text-amber-900 night:bg-amber-500/10 night:text-amber-300">
           {message}
           <button type="button" aria-label="Dismiss" className={icon} onClick={() => setMessage(null)}>
             <X className="size-4" aria-hidden="true" />
@@ -134,17 +134,17 @@ export function MenuEditor() {
         </p>
       ) : null}
 
-      {isLoading ? <p className="text-fs-14 text-slate-600">Loading the menu…</p> : null}
+      {isLoading ? <p className="text-fs-14 text-slate-600 night:text-night-second">Loading the menu…</p> : null}
 
       <div className="flex flex-col gap-sp-4 lg:flex-row lg:items-start">
         {/* ── Categories ─────────────────────────────────────────────────── */}
-        <section aria-label="Categories" className="flex flex-col gap-sp-2 rounded-panel bg-white p-sp-3 lg:w-72 lg:shrink-0">
-          <h2 className="px-sp-2 text-fs-14 font-bold tracking-micro text-slate-500 uppercase">Categories</h2>
+        <section aria-label="Categories" className="flex flex-col gap-sp-2 rounded-panel bg-white p-sp-3 lg:w-72 lg:shrink-0 night:bg-night-card">
+          <h2 className="px-sp-2 text-fs-14 font-bold tracking-micro text-slate-500 uppercase night:text-night-muted">Categories</h2>
           {(['Food', 'Drinks'] as const).map((side) => {
             const list = categories.filter((category) => sideOf(category, addedTo) === side)
             return (
               <div key={side} className="flex flex-col gap-sp-1">
-                <h3 className="px-sp-2 pt-sp-2 text-fs-12 font-bold text-slate-500">{side}</h3>
+                <h3 className="px-sp-2 pt-sp-2 text-fs-12 font-bold text-slate-500 night:text-night-muted">{side}</h3>
                 <SortableList
                   items={list}
                   disabled={busy}
@@ -199,10 +199,10 @@ export function MenuEditor() {
         </section>
 
         {/* ── Dishes ─────────────────────────────────────────────────────── */}
-        <section aria-label="Dishes" className="flex min-w-0 flex-1 flex-col gap-sp-2 rounded-panel bg-white p-sp-3">
+        <section aria-label="Dishes" className="flex min-w-0 flex-1 flex-col gap-sp-2 rounded-panel bg-white p-sp-3 night:bg-night-card">
           <div className="flex items-center justify-between gap-sp-3 px-sp-2">
-            <h2 className="flex items-center gap-sp-2 text-fs-18 font-extrabold text-slate-900">
-              {selected ? <CategoryIcon name={selected.name} className="size-5 text-slate-500" /> : null}
+            <h2 className="flex items-center gap-sp-2 text-fs-18 font-extrabold text-slate-900 night:text-night-text">
+              {selected ? <CategoryIcon name={selected.name} className="size-5 text-slate-500 night:text-night-muted" /> : null}
               {selected?.name ?? 'No categories yet'}
             </h2>
             {selected ? (
@@ -212,14 +212,14 @@ export function MenuEditor() {
             ) : null}
           </div>
           {selected && selected.items.length === 0 ? (
-            <p className="px-sp-2 py-sp-4 text-fs-14 text-slate-600">No dishes in this category.</p>
+            <p className="px-sp-2 py-sp-4 text-fs-14 text-slate-600 night:text-night-second">No dishes in this category.</p>
           ) : null}
           {selected ? (
             <SortableList
               items={selected.items.filter((item) => item.isActive)}
               disabled={busy}
               label={(item) => item.name}
-              className="flex flex-col divide-y divide-slate-100"
+              className="flex flex-col divide-y divide-slate-100 night:divide-night-hairline"
               onReorder={(ids) => reorder('item', selected.id, ids)}
               renderItem={(item, handle) => (
                 <DishRow
@@ -241,7 +241,7 @@ export function MenuEditor() {
             />
           ) : null}
           {selected && selected.items.some((item) => !item.isActive) ? (
-            <ul className="flex flex-col divide-y divide-slate-100 border-t border-slate-200">
+            <ul className="flex flex-col divide-y divide-slate-100 border-t border-slate-200 night:divide-night-hairline night:border-night-hairline">
               {selected.items
                 .filter((item) => !item.isActive)
                 .map((item) => (
@@ -332,19 +332,19 @@ function CategoryRow({
           </button>
         </form>
       ) : (
-        <div className={cn('flex min-w-0 flex-1 items-center rounded-control', selected ? 'bg-brand-050' : '')}>
+        <div className={cn('flex min-w-0 flex-1 items-center rounded-control', selected ? 'bg-brand-050 night:bg-night-raised' : '')}>
           <button
             type="button"
             aria-current={selected ? 'true' : undefined}
             onClick={onSelect}
             className={cn(
               'flex min-h-11 min-w-0 flex-1 items-center gap-sp-2 rounded-control px-sp-3 text-left text-fs-14 font-semibold whitespace-nowrap',
-              selected ? 'text-brand-800' : 'text-slate-700 hover:bg-slate-100',
+              selected ? 'text-brand-800 night:text-brand-300' : 'text-slate-700 hover:bg-slate-100 night:text-night-second night:hover:bg-night-raised',
             )}
           >
-            <CategoryIcon name={category.name} className="size-4 shrink-0 text-slate-500" />
+            <CategoryIcon name={category.name} className="size-4 shrink-0 text-slate-500 night:text-night-muted" />
             <span className="truncate">{category.name}</span>
-            <span className="text-fs-12 text-slate-500">{category.items.filter((i) => i.isActive).length}</span>
+            <span className="text-fs-12 text-slate-500 night:text-night-muted">{category.items.filter((i) => i.isActive).length}</span>
           </button>
           {selected ? (
             <span className="flex">
@@ -381,16 +381,16 @@ function DishRow({
     <div className="flex flex-wrap items-center gap-sp-2 py-sp-2 pr-sp-2">
       {handle ?? <span className="size-11 shrink-0" />}
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className={cn('text-fs-16 font-bold', item.isActive ? 'text-slate-900' : 'text-slate-400 line-through')}>
+        <span className={cn('text-fs-16 font-bold', item.isActive ? 'text-slate-900 night:text-night-text' : 'text-slate-400 line-through night:text-night-muted')}>
           {item.name}
         </span>
-        <span className="flex flex-wrap items-center gap-sp-2 text-fs-12 text-slate-600">
+        <span className="flex flex-wrap items-center gap-sp-2 text-fs-12 text-slate-600 night:text-night-second">
           <StationChip destination={item.productionDestination} />
           {item.groups.length > 0 ? `${item.groups.length} option group${item.groups.length === 1 ? '' : 's'}` : ''}
           {item.isActive ? '' : 'removed'}
         </span>
       </div>
-      <span className="text-fs-16 font-bold tabular-nums text-slate-900">{lkrFromPaisa(item.pricePaisa)}</span>
+      <span className="text-fs-16 font-bold tabular-nums text-slate-900 night:text-night-text">{lkrFromPaisa(item.pricePaisa)}</span>
       {item.isActive ? (
         <>
           <button type="button" aria-label={`Edit ${item.name}`} className={icon} onClick={onEdit}>
@@ -413,7 +413,7 @@ function AddCategory({ side, busy, onAdd }: { side: Side; busy: boolean; onAdd: 
   const [name, setName] = useState('')
   return (
     <form
-      className="flex gap-sp-1 border-t border-slate-100 pt-sp-2"
+      className="flex gap-sp-1 border-t border-slate-100 pt-sp-2 night:border-night-hairline"
       onSubmit={async (event) => {
         event.preventDefault()
         if (await onAdd(name)) setName('')
@@ -493,9 +493,9 @@ function ItemSheet({
         if (event.key === 'Escape') onClose()
       }}
     >
-      <div className="flex h-full w-full max-w-2xl flex-col gap-sp-4 overflow-y-auto bg-white p-sp-5 shadow-el-2">
+      <div className="flex h-full w-full max-w-2xl flex-col gap-sp-4 overflow-y-auto bg-white p-sp-5 shadow-el-2 night:bg-night-card">
         <div className="flex items-center justify-between">
-          <h2 id="item-sheet-title" className="text-fs-20 font-extrabold text-slate-900">
+          <h2 id="item-sheet-title" className="text-fs-20 font-extrabold text-slate-900 night:text-night-text">
             {item ? item.name : 'New dish'}
           </h2>
           <button type="button" aria-label="Close" className={icon} onClick={onClose}>
@@ -511,11 +511,11 @@ function ItemSheet({
           }}
         >
           <label className="flex flex-col gap-sp-1 sm:col-span-2">
-            <span className="text-fs-14 font-semibold text-slate-700">Name</span>
+            <span className="text-fs-14 font-semibold text-slate-700 night:text-night-second">Name</span>
             <input autoFocus={!item} maxLength={60} className={input} value={name} onChange={(e) => setName(e.target.value)} />
           </label>
           <label className="flex flex-col gap-sp-1">
-            <span className="text-fs-14 font-semibold text-slate-700">Category</span>
+            <span className="text-fs-14 font-semibold text-slate-700 night:text-night-second">Category</span>
             <select className={input} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>{category.name}</option>
@@ -523,14 +523,14 @@ function ItemSheet({
             </select>
           </label>
           <label className="flex flex-col gap-sp-1">
-            <span className="text-fs-14 font-semibold text-slate-700">Price (LKR, whole rupees)</span>
+            <span className="text-fs-14 font-semibold text-slate-700 night:text-night-second">Price (LKR, whole rupees)</span>
             <input inputMode="numeric" className={input} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="1,250" />
-            <span className={cn('text-fs-12', pricePaisa === null && price !== '' ? 'text-red-700' : 'text-slate-500')}>
+            <span className={cn('text-fs-12', pricePaisa === null && price !== '' ? 'text-red-700 night:text-red-400' : 'text-slate-500 night:text-night-muted')}>
               {price === '' ? ' ' : pricePaisa === null ? 'Whole rupees only, like 1250' : lkrFromPaisa(pricePaisa)}
             </span>
           </label>
           <fieldset className="flex flex-col gap-sp-1 sm:col-span-2">
-            <legend className="text-fs-14 font-semibold text-slate-700">Prints at</legend>
+            <legend className="text-fs-14 font-semibold text-slate-700 night:text-night-second">Prints at</legend>
             <div className="flex gap-sp-1" role="radiogroup">
               {DESTINATIONS.map((d) => {
                 return (
@@ -540,7 +540,7 @@ function ItemSheet({
                   role="radio"
                   aria-checked={destination === d.value}
                   onClick={() => setDestination(d.value)}
-                  className={cn(button, 'flex-1 border', destination === d.value ? 'border-brand-800 bg-brand-800 text-white' : 'border-slate-200 text-slate-900')}
+                  className={cn(button, 'flex-1 border', destination === d.value ? 'border-brand-800 bg-brand-800 text-white' : 'border-slate-200 text-slate-900 night:border-night-hairline night:text-night-text')}
                 >
                   {createElement(routeForDestination(d.value).icon, { 'aria-hidden': true, className: 'size-4' })}
                   {d.label}
@@ -557,9 +557,9 @@ function ItemSheet({
         </form>
 
         {item ? (
-          <section aria-label="Options" className="flex flex-col gap-sp-3 border-t border-slate-200 pt-sp-4">
-            <h3 className="text-fs-18 font-extrabold text-slate-900">Options</h3>
-            {item.groups.length === 0 ? <p className="text-fs-14 text-slate-600">No options on this dish.</p> : null}
+          <section aria-label="Options" className="flex flex-col gap-sp-3 border-t border-slate-200 pt-sp-4 night:border-night-hairline">
+            <h3 className="text-fs-18 font-extrabold text-slate-900 night:text-night-text">Options</h3>
+            {item.groups.length === 0 ? <p className="text-fs-14 text-slate-600 night:text-night-second">No options on this dish.</p> : null}
             <SortableList
               items={item.groups}
               disabled={busy}
@@ -582,7 +582,7 @@ function ItemSheet({
             <AddGroup busy={busy} onAdd={(body) => run('POST', `/api/manage/menu/items/${item.id}/groups`, body)} />
           </section>
         ) : (
-          <p className="text-fs-14 text-slate-600">Add the dish first, then its options.</p>
+          <p className="text-fs-14 text-slate-600 night:text-night-second">Add the dish first, then its options.</p>
         )}
       </div>
     </div>
@@ -612,7 +612,7 @@ function GroupCard({
   const changed = name !== group.name || selection !== group.selection || required !== group.isRequired
 
   return (
-    <div className="flex flex-col gap-sp-3 rounded-panel border border-slate-200 p-sp-3">
+    <div className="flex flex-col gap-sp-3 rounded-panel border border-slate-200 p-sp-3 night:border-night-hairline">
       <div className="flex flex-wrap items-center gap-sp-2">
         {handle}
         <input aria-label="Group name" maxLength={60} className={cn(input, 'min-w-40 flex-1 font-bold')} value={name} onChange={(e) => setName(e.target.value)} />
@@ -620,7 +620,7 @@ function GroupCard({
           <option value="single">Pick one</option>
           <option value="multi">Pick any</option>
         </select>
-        <label className="flex min-h-11 items-center gap-sp-2 text-fs-14 text-slate-700">
+        <label className="flex min-h-11 items-center gap-sp-2 text-fs-14 text-slate-700 night:text-night-second">
           <input type="checkbox" className="size-5" checked={required} onChange={(e) => setRequired(e.target.checked)} /> Required
         </label>
         {changed ? (
@@ -681,12 +681,12 @@ function OptionFields({ draft, setDraft, otherGroups }: { draft: OptionDraft; se
           value={draft.price}
           onChange={(e) => setDraft({ ...draft, price: e.target.value })}
         />
-        <span className="text-fs-12 text-slate-500">{delta === null ? (draft.price === '' ? 'no change' : 'whole rupees') : signedLkrFromPaisa(delta) || 'no change'}</span>
+        <span className="text-fs-12 text-slate-500 night:text-night-muted">{delta === null ? (draft.price === '' ? 'no change' : 'whole rupees') : signedLkrFromPaisa(delta) || 'no change'}</span>
       </label>
-      <label className="flex min-h-11 items-center gap-sp-1 text-fs-14 text-slate-700">
+      <label className="flex min-h-11 items-center gap-sp-1 text-fs-14 text-slate-700 night:text-night-second">
         <input type="checkbox" className="size-5" checked={draft.isDefault} onChange={(e) => setDraft({ ...draft, isDefault: e.target.checked })} /> Default
       </label>
-      <label className="flex items-center gap-sp-1 text-fs-14 text-slate-700">
+      <label className="flex items-center gap-sp-1 text-fs-14 text-slate-700 night:text-night-second">
         Max
         <input aria-label="Max per dish" type="number" min={1} max={10} className={cn(input, 'w-16')} value={draft.maxCount} onChange={(e) => setDraft({ ...draft, maxCount: e.target.value })} />
       </label>
@@ -733,7 +733,7 @@ function OptionRow({
   const body = draftBody(draft)
   const changed = JSON.stringify(draft) !== JSON.stringify(initial)
   return (
-    <div className="flex flex-wrap items-center gap-sp-2 rounded-control bg-slate-50 p-sp-2">
+    <div className="flex flex-wrap items-center gap-sp-2 rounded-control bg-slate-50 p-sp-2 night:bg-night-raised">
       {handle}
       <OptionFields draft={draft} setDraft={setDraft} otherGroups={otherGroups} />
       {changed ? (
@@ -764,7 +764,7 @@ function AddOption({ busy, otherGroups, onAdd }: { busy: boolean; otherGroups: M
   const body = draftBody(draft)
   return (
     <form
-      className="flex flex-wrap items-center gap-sp-2 border-t border-slate-100 pt-sp-2"
+      className="flex flex-wrap items-center gap-sp-2 border-t border-slate-100 pt-sp-2 night:border-night-hairline"
       onSubmit={async (event) => {
         event.preventDefault()
         if (body && (await onAdd(body))) setDraft(empty)
@@ -784,7 +784,7 @@ function AddGroup({ busy, onAdd }: { busy: boolean; onAdd: (body: object) => Pro
   const [required, setRequired] = useState(false)
   return (
     <form
-      className="flex flex-wrap items-center gap-sp-2 rounded-panel border border-dashed border-slate-300 p-sp-3"
+      className="flex flex-wrap items-center gap-sp-2 rounded-panel border border-dashed border-slate-300 p-sp-3 night:border-night-hairline"
       onSubmit={async (event) => {
         event.preventDefault()
         if (await onAdd({ name, selection, isRequired: required })) {
@@ -798,7 +798,7 @@ function AddGroup({ busy, onAdd }: { busy: boolean; onAdd: (body: object) => Pro
         <option value="single">Pick one</option>
         <option value="multi">Pick any</option>
       </select>
-      <label className="flex min-h-11 items-center gap-sp-2 text-fs-14 text-slate-700">
+      <label className="flex min-h-11 items-center gap-sp-2 text-fs-14 text-slate-700 night:text-night-second">
         <input type="checkbox" className="size-5" checked={required} onChange={(e) => setRequired(e.target.checked)} /> Required
       </label>
       <button type="submit" className={secondary} disabled={busy || name.trim() === ''}>

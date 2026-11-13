@@ -159,10 +159,10 @@ export function SoldOutBoard() {
   return (
     <div className="flex max-w-3xl flex-col gap-sp-4">
       <header className="flex flex-col gap-sp-3">
-        <h1 className="text-fs-24 font-extrabold text-slate-900">Availability</h1>
+        <h1 className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">Availability</h1>
         <label className="relative flex items-center">
           <span className="sr-only">Find a dish</span>
-          <Search aria-hidden="true" className="pointer-events-none absolute left-sp-3 size-4 text-slate-500" />
+          <Search aria-hidden="true" className="pointer-events-none absolute left-sp-3 size-4 text-slate-500 night:text-night-muted" />
           <input
             type="search"
             value={search}
@@ -174,7 +174,7 @@ export function SoldOutBoard() {
       </header>
 
       {message ? (
-        <p role="status" className="flex items-center justify-between gap-sp-3 rounded-control bg-slate-50 px-sp-4 py-sp-3 text-fs-14 font-semibold text-slate-800">
+        <p role="status" className="flex items-center justify-between gap-sp-3 rounded-control bg-slate-50 px-sp-4 py-sp-3 text-fs-14 font-semibold text-slate-800 night:bg-night-raised night:text-night-text">
           {message}
           <button type="button" aria-label="Dismiss" className={icon} onClick={() => setMessage(null)}>
             <X className="size-4" aria-hidden="true" />
@@ -183,14 +183,14 @@ export function SoldOutBoard() {
       ) : null}
 
       {offCount > 0 ? (
-        <section aria-labelledby="off-now" className="flex flex-col gap-sp-2 rounded-panel border border-unavailable-edge bg-unavailable-body p-sp-3">
+        <section aria-labelledby="off-now" className="flex flex-col gap-sp-2 rounded-panel border border-unavailable-edge bg-unavailable-body p-sp-3 night:bg-night-unavailable-body">
           <div className="flex flex-wrap items-center justify-between gap-sp-2">
-            <h2 id="off-now" className="text-fs-18 font-extrabold text-unavailable-ink">Not available now ({offCount})</h2>
+            <h2 id="off-now" className="text-fs-18 font-extrabold text-unavailable-ink night:text-red-300">Not available now ({offCount})</h2>
             <button type="button" className={secondary} disabled={resetting} onClick={() => setConfirmReset(true)}>
               <RotateCcw className="size-4" aria-hidden="true" /> Put everything back on
             </button>
           </div>
-          <ul className="flex flex-col divide-y divide-unavailable-chip">
+          <ul className="flex flex-col divide-y divide-unavailable-chip night:divide-night-hairline">
             {offItems.map((item) => (
               <li key={keyOf('item', item.id)}>
                 <ToggleRow {...row} kind="item" id={item.id} name={item.name} detail={lkrFromPaisa(item.pricePaisa)} server={item.isAvailable} />
@@ -216,28 +216,28 @@ export function SoldOutBoard() {
             className={cn(
               'h-11 rounded-pill px-sp-4 text-fs-14 font-bold disabled:opacity-50',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-              term === '' && side === value ? 'bg-brand-800 text-white' : 'border border-slate-200 bg-white text-slate-900',
+              term === '' && side === value ? 'bg-brand-800 text-white' : 'border border-slate-200 bg-white text-slate-900 night:border-night-hairline night:bg-night-card night:text-night-text',
             )}
           >
             {value}
           </button>
         ))}
-        {term !== '' ? <span className="self-center text-fs-12 font-semibold text-slate-600">Searching the whole menu</span> : null}
+        {term !== '' ? <span className="self-center text-fs-12 font-semibold text-slate-600 night:text-night-second">Searching the whole menu</span> : null}
       </div>
 
-      {isLoading ? <p className="text-fs-14 text-slate-600">Loading the menu…</p> : null}
-      {isError ? <p role="alert" className="text-fs-14 font-semibold text-unavailable-ink">Could not load the menu. Reload to try again.</p> : null}
+      {isLoading ? <p className="text-fs-14 text-slate-600 night:text-night-second">Loading the menu…</p> : null}
+      {isError ? <p role="alert" className="text-fs-14 font-semibold text-unavailable-ink night:text-red-300">Could not load the menu. Reload to try again.</p> : null}
       {!isLoading && !isError && listed.length === 0 ? (
-        <p className="text-fs-14 text-slate-600">{term ? `No dish matches “${search.trim().slice(0, 40)}”.` : 'No dishes here.'}</p>
+        <p className="text-fs-14 text-slate-600 night:text-night-second">{term ? `No dish matches “${search.trim().slice(0, 40)}”.` : 'No dishes here.'}</p>
       ) : null}
 
       {listed.map((category) => (
-        <section key={category.id} aria-label={category.name} className="flex flex-col rounded-panel bg-white p-sp-3">
-          <h2 className="flex items-center gap-sp-2 px-sp-1 pb-sp-2 text-fs-16 font-extrabold text-slate-900">
-            <CategoryIcon name={category.name} className="size-4 text-slate-600" />
+        <section key={category.id} aria-label={category.name} className="flex flex-col rounded-panel bg-white p-sp-3 night:bg-night-card">
+          <h2 className="flex items-center gap-sp-2 px-sp-1 pb-sp-2 text-fs-16 font-extrabold text-slate-900 night:text-night-text">
+            <CategoryIcon name={category.name} className="size-4 text-slate-600 night:text-night-second" />
             {category.name}
           </h2>
-          <ul className="flex flex-col divide-y divide-slate-100">
+          <ul className="flex flex-col divide-y divide-slate-100 night:divide-night-hairline">
             {category.items.map((item) => (
               <li key={item.id}>
                 <ToggleRow {...row} kind="item" id={item.id} name={item.name} detail={lkrFromPaisa(item.pricePaisa)} server={item.isAvailable} />
@@ -294,15 +294,15 @@ function ToggleRow({
     <div className={cn('flex flex-col py-sp-2', nested ? 'pl-sp-4' : 'px-sp-1')}>
       <div className="flex items-center gap-sp-3">
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className={cn(nested ? 'text-fs-14' : 'text-fs-16', 'font-bold', on ? 'text-slate-900' : 'text-unavailable-ink line-through')}>
+          <span className={cn(nested ? 'text-fs-14' : 'text-fs-16', 'font-bold', on ? 'text-slate-900 night:text-night-text' : 'text-unavailable-ink line-through night:text-red-300')}>
             {name}
           </span>
-          <span className="text-fs-12 text-slate-600 tabular-nums">{detail}</span>
+          <span className="text-fs-12 text-slate-600 tabular-nums night:text-night-second">{detail}</span>
         </div>
         <Switch on={on} label={name} saving={key in pending} onToggle={() => void toggle(kind, id, !on)} />
       </div>
       {failed[key] ? (
-        <p role="alert" className="pt-sp-1 text-right text-fs-12 font-semibold text-unavailable-ink">{failed[key]}</p>
+        <p role="alert" className="pt-sp-1 text-right text-fs-12 font-semibold text-unavailable-ink night:text-red-300">{failed[key]}</p>
       ) : null}
     </div>
   )
@@ -319,7 +319,7 @@ function DishOptions({ item, open, onOpen, ...row }: RowProps & { item: ManageIt
         type="button"
         aria-expanded={open}
         onClick={onOpen}
-        className="inline-flex min-h-11 items-center gap-sp-1 rounded-control px-sp-2 text-fs-12 font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-500"
+        className="inline-flex min-h-11 items-center gap-sp-1 rounded-control px-sp-2 text-fs-12 font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-500 night:text-night-second night:hover:bg-night-raised"
       >
         {open ? <ChevronDown className="size-4" aria-hidden="true" /> : <ChevronRight className="size-4" aria-hidden="true" />}
         Options{off > 0 ? ` (${off} off)` : ''}
@@ -329,7 +329,7 @@ function DishOptions({ item, open, onOpen, ...row }: RowProps & { item: ManageIt
             .filter((group) => group.options.length > 0)
             .map((group) => (
               <div key={group.id} className="flex flex-col">
-                <p className="pl-sp-4 pt-sp-1 text-fs-12 font-bold uppercase tracking-wide text-slate-500">{group.name}</p>
+                <p className="pl-sp-4 pt-sp-1 text-fs-12 font-bold uppercase tracking-wide text-slate-500 night:text-night-muted">{group.name}</p>
                 {group.options.map((option) => (
                   <ToggleRow
                     key={option.id}
@@ -364,11 +364,11 @@ function Switch({ on, label, saving, onToggle }: { on: boolean; label: string; s
       className={cn(
         'inline-flex h-11 w-36 shrink-0 items-center gap-sp-2 rounded-pill border-2 px-sp-1 text-fs-14 font-bold',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-        on ? 'border-open-edge bg-open-body text-open-ink' : 'flex-row-reverse border-unavailable-band bg-unavailable-band text-white',
+        on ? 'border-open-edge bg-open-body text-open-ink night:bg-night-open-body night:text-green-400' : 'flex-row-reverse border-unavailable-band bg-unavailable-band text-white',
         saving && 'opacity-70',
       )}
     >
-      <span aria-hidden="true" className={cn('size-8 shrink-0 rounded-pill', on ? 'bg-open-band' : 'bg-white')} />
+      <span aria-hidden="true" className={cn('size-8 shrink-0 rounded-pill', on ? 'bg-open-band' : 'bg-white night:bg-night-card')} />
       <span className="flex-1 text-center">{on ? 'Available' : 'Not available'}</span>
     </button>
   )

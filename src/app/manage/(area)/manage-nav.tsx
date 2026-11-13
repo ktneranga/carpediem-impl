@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { ArrowLeft, Lock, LockKeyhole } from 'lucide-react'
 import { MANAGE_SECTIONS } from './sections'
+import { ManageThemeToggle } from '@/components/manage/theme-root'
 import { cn } from '@/lib/utils'
 
 const itemClass = cn(
@@ -35,15 +36,23 @@ export function ManageNav({ owner, unlocked }: { owner: boolean; unlocked: boole
   return (
     <aside className="flex shrink-0 flex-col gap-sp-2 border-b border-slate-200 bg-white p-sp-3 night:border-night-hairline night:bg-night-card md:w-60 md:border-r md:border-b-0 md:p-sp-4">
       {/* At the top, where people look for a way back (Teran, 2026-11-13). */}
-      <Link
-        href="/"
-        className={cn(itemClass, 'gap-sp-2 border border-slate-300 text-slate-900 hover:bg-slate-100 night:border-night-hairline night:text-night-text night:hover:bg-night-raised')}
-      >
-        <ArrowLeft aria-hidden="true" className="size-4" />
-        Back to floor
-      </Link>
+      <div className="flex gap-sp-2">
+        <Link
+          href="/"
+          className={cn(itemClass, 'flex-1 gap-sp-2 border border-slate-300 text-slate-900 hover:bg-slate-100 night:border-night-hairline night:text-night-text night:hover:bg-night-raised')}
+        >
+          <ArrowLeft aria-hidden="true" className="size-4" />
+          Back to floor
+        </Link>
+        {/* On a phone the menu is a top row: light / dark sits here. */}
+        <ManageThemeToggle className="md:hidden" />
+      </div>
 
-      <p className="hidden px-sp-3 pt-sp-2 pb-sp-2 text-fs-18 font-extrabold text-slate-900 night:text-night-text md:block">Manage</p>
+      <div className="hidden items-center justify-between md:flex md:pt-sp-1">
+        <p className="px-sp-3 text-fs-18 font-extrabold text-slate-900 night:text-night-text">Manage</p>
+        {/* Light / dark for the whole Manage area — small: it is set once and left. */}
+        <ManageThemeToggle />
+      </div>
 
       <nav aria-label="Manage sections" className="overflow-x-auto">
         <ul className="flex gap-sp-1 md:flex-col">
