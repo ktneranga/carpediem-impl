@@ -304,6 +304,7 @@ export async function submitRound(
             name: menuItems.name,
             pricePaisa: menuItems.pricePaisa,
             isAvailable: menuItems.isAvailable,
+            isActive: menuItems.isActive,
             productionDestination: menuItems.productionDestination,
           })
           .from(menuItems)
@@ -325,7 +326,8 @@ export async function submitRound(
       return { unitPricePaisa: line.pricePaisa, options: [] as OrderEventOption[] }
     }
     const item = itemsById.get(line.menuItemId)
-    if (!item || !item.isAvailable) throw new ItemUnavailableError(line.menuItemId)
+    // Removed from the menu (Story 10.4) is refused exactly like sold out.
+    if (!item || !item.isAvailable || !item.isActive) throw new ItemUnavailableError(line.menuItemId)
     const groups = groupsByItem.get(line.menuItemId) ?? []
     const optionIds = line.optionIds ?? []
     const problem = validateSelection(groups, optionIds)

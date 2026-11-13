@@ -170,6 +170,12 @@ export function MenuBrowser({
    * noticing: Decision 2 agreed the event's NAME, and the shape has to be agreed
    * the same way.
    */
+  // The owner changed the menu in Manage (Story 10.4): refetch it. Staged,
+  // unsent lines are left alone; Send re-checks every one on the server.
+  useSocketEvent('menu:changed', () => {
+    void queryClient.invalidateQueries({ queryKey: MENU_QUERY_KEY })
+  })
+
   useSocketEvent<MenuItemUpdatedPayload>('menu:item_updated', (payload) => {
     const current = queryClient.getQueryData<MenuCategoryRow[]>(MENU_QUERY_KEY)
     if (!current) {

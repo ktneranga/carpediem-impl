@@ -107,6 +107,20 @@ export function emitMenuItemUpdated(payload: MenuItemUpdatedPayload): void {
   }
 }
 
+/**
+ * The menu itself changed in Manage — a dish, price, category or option added,
+ * edited, moved or removed (Story 10.4). No payload: edits are rare and the menu
+ * is small, so every tablet refetches it rather than patching (a patch cannot
+ * drift). `menu:item_updated` stays the fast path for a sold-out toggle.
+ */
+export function emitMenuChanged(): void {
+  try {
+    getIO().emit('menu:changed', {})
+  } catch (error) {
+    console.error('[socket] Failed to emit menu:changed:', error)
+  }
+}
+
 // ── Rooms ────────────────────────────────────────────────────────────────────
 //
 // Everything ABOVE is a broadcast to every connected (and, since Story 4.5,

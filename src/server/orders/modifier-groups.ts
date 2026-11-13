@@ -58,7 +58,9 @@ export async function loadModifierGroups(
       available: modifierOptions.isAvailable,
     })
     .from(modifierOptions)
-    .where(inArray(modifierOptions.groupId, groups.map((group) => group.id)))
+    // Removed options (Story 10.4) are gone from the sheet AND refused at
+    // send, in this one place both read from.
+    .where(and(inArray(modifierOptions.groupId, groups.map((group) => group.id)), eq(modifierOptions.isActive, true)))
     .orderBy(asc(modifierOptions.displayOrder), asc(modifierOptions.name))
   const options = lock ? await optionQuery.for('share') : await optionQuery
 

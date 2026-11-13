@@ -291,6 +291,9 @@ export const menuCategories = pgTable('menu_categories', {
   name:         text('name').notNull(),
   displayOrder: integer('display_order').notNull().default(0),
   isActive:     boolean('is_active').notNull().default(true),
+  /** Sync-ready (FR71): bumped by every Manage write, which also appends to `config_changes`. */
+  version:      integer('version').notNull().default(1),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_menu_categories_tenant_id').on(t.tenantId),
 ])
@@ -327,6 +330,15 @@ export const menuItems = pgTable('menu_items', {
   isAvailable:      boolean('is_available').notNull().default(true),
   ticketOutputMode: ticketOutputModeEnum('ticket_output_mode').notNull().default('print'),
   displayOrder:     integer('display_order').notNull().default(0),
+  /**
+   * False = REMOVED from the menu (Story 10.4). Not `is_available`, which is the
+   * sold-out switch (8.3): a sold-out dish is shown greyed, a removed one is gone.
+   * Never deleted — order events, tickets and bills point at it.
+   */
+  isActive:         boolean('is_active').notNull().default(true),
+  /** Sync-ready (FR71): bumped by every Manage write, which also appends to `config_changes`. */
+  version:      integer('version').notNull().default(1),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_menu_items_tenant_id').on(t.tenantId),
   index('idx_menu_items_category_id').on(t.categoryId),
@@ -355,6 +367,9 @@ export const modifierGroups = pgTable('modifier_groups', {
   isRequired:   boolean('is_required').notNull().default(false),
   displayOrder: integer('display_order').notNull().default(0),
   isActive:     boolean('is_active').notNull().default(true),
+  /** Sync-ready (FR71): bumped by every Manage write, which also appends to `config_changes`. */
+  version:      integer('version').notNull().default(1),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_modifier_groups_tenant_id').on(t.tenantId),
   index('idx_modifier_groups_menu_item_id').on(t.menuItemId),
@@ -388,9 +403,42 @@ export const modifierOptions = pgTable('modifier_options', {
   excludesGroupId: uuid('excludes_group_id').references(() => modifierGroups.id),
   isAvailable:     boolean('is_available').notNull().default(true),
   displayOrder:    integer('display_order').notNull().default(0),
+  /** False = removed (Story 10.4); `is_available` stays the sold-out switch. */
+  isActive:        boolean('is_active').notNull().default(true),
+  /** Sync-ready (FR71): bumped by every Manage write, which also appends to `config_changes`. */
+  version:      integer('version').notNull().default(1),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_modifier_options_tenant_id').on(t.tenantId),
   index('idx_modifier_options_group_id').on(t.groupId),
+])
+
+// ── Config change log (Story 10.4, FR71 groundwork) ───────────────────────────
+
+export const configChangeOriginEnum = pgEnum('config_change_origin', ['local', 'cloud'])
+
+/**
+ * Every configuration write, in the same transaction as the write (Story 10.4).
+ * Nothing reads it until the cloud sync (Epic 13), which will set `synced_at`;
+ * writing it now means sync needs no rework. DELETE is refused by trigger.
+ * `config-change.service.ts` is the only writer.
+ */
+export const configChanges = pgTable('config_changes', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  tenantId:  uuid('tenant_id').notNull().references(() => tenants.id),
+  tableName: text('table_name').notNull(),
+  rowId:     uuid('row_id').notNull(),
+  version:   integer('version').notNull(),
+  /** The row after the change, camelCase. */
+  payload:   jsonb('payload').notNull(),
+  /** Null only for a change that came from the cloud. */
+  staffId:   uuid('staff_id').references(() => staff.id),
+  origin:    configChangeOriginEnum('origin').notNull().default('local'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+  syncedAt:  timestamp('synced_at', { withTimezone: true }),
+}, (t) => [
+  index('idx_config_changes_tenant_created').on(t.tenantId, t.createdAt),
+  index('idx_config_changes_unsynced').on(t.tenantId).where(sql`${t.syncedAt} IS NULL`),
 ])
 
 // ── Orders ────────────────────────────────────────────────────────────────────

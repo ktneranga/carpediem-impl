@@ -95,7 +95,10 @@ export async function GET() {
       .from(menuCategories)
       // LEFT, so a category with no items still appears. An empty category is a
       // configuration fact the owner should see, not one the API hides.
-      .leftJoin(menuItems, eq(menuItems.categoryId, menuCategories.id))
+      // Removed dishes (Story 10.4, `is_active = false`) are not on the menu.
+      // In the JOIN, not the WHERE, so a category whose dishes are all removed
+      // still appears, empty.
+      .leftJoin(menuItems, and(eq(menuItems.categoryId, menuCategories.id), eq(menuItems.isActive, true)))
       .where(and(eq(menuCategories.tenantId, tenant.id), eq(menuCategories.isActive, true)))
       .orderBy(
         asc(menuCategories.displayOrder),

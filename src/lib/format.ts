@@ -141,3 +141,19 @@ export function clockTime(iso: string): string {
 export function quantity(count: number): string {
   return `${count}×`
 }
+
+/**
+ * A price typed in Manage, in WHOLE rupees (Teran, 2026-11-13), as integer
+ * paisa — or null when it is not one. `1250` and `1,250` → 125000; with
+ * `allowNegative`, `-1000` / `−1,000` → −100000 (an option that takes money
+ * off). A decimal point, letters or an empty field → null. No floats: the
+ * digits are parsed as an integer and multiplied by 100.
+ */
+export function paisaFromLkrInput(text: string, { allowNegative = false }: { allowNegative?: boolean } = {}): number | null {
+  const cleaned = text.trim().replace(/^LKR\s*/i, '').replace(/−/g, '-').replace(/,/g, '').replace(/\s+/g, '')
+  const match = /^(-?)(\d{1,8})$/.exec(cleaned)
+  if (!match) return null
+  if (match[1] === '-' && !allowNegative) return null
+  const rupees = Number.parseInt(match[2]!, 10)
+  return (match[1] === '-' ? -rupees : rupees) * 100
+}

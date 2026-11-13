@@ -267,6 +267,13 @@
       "when": 1794497951727,
       "tag": "0037_manage_area",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1794540942336,
+      "tag": "0038_striped_ezekiel",
+      "breakpoints": true
     }
   ]
 }
