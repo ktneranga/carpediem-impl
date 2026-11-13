@@ -703,6 +703,13 @@ export function buildTakings(payload: TakingsPayload): Buffer {
   command(BOLD_OFF)
   command(SIZE_NORMAL)
 
+  const drawer = t.cashCount
+  if (drawer && typeof drawer.countedPaisa === 'number') {
+    row('Cash counted', drawer.countedPaisa)
+    if (num(drawer.gapPaisa) === 0) emit('Cash balanced')
+    else row(num(drawer.gapPaisa) > 0 ? 'Cash over' : 'Cash short', drawer.gapPaisa)
+  }
+
   const unpaid = (t.closedUnpaid ?? {}) as Partial<TakingsPayload['takings']['closedUnpaid']>
   if (num(unpaid.count) > 0) {
     divider()

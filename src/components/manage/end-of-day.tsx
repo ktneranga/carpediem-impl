@@ -133,6 +133,16 @@ export function EndOfDay({ initialDate }: { initialDate: string | null }) {
               <Row label="Card" value={money(t.paid.cardPaisa)} />
               {t.paid.transferPaisa !== 0 ? <Row label="Transfer" value={money(t.paid.transferPaisa)} /> : null}
               <Row label="Total paid" value={money(t.paid.totalPaisa)} strong />
+              {t.cashCount ? (
+                <>
+                  <Row label="Cash counted" value={money(t.cashCount.countedPaisa)} />
+                  <Row
+                    label={t.cashCount.gapPaisa === 0 ? 'Cash balanced' : t.cashCount.gapPaisa > 0 ? 'Cash over' : 'Cash short'}
+                    value={t.cashCount.gapPaisa === 0 ? '✓' : money(t.cashCount.gapPaisa)}
+                    warn={t.cashCount.gapPaisa !== 0}
+                  />
+                </>
+              ) : null}
               {t.closedUnpaid.count > 0 ? (
                 <Row label={`Closed unpaid (${t.closedUnpaid.count})`} value={money(t.closedUnpaid.owedPaisa)} warn />
               ) : null}

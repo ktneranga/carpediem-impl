@@ -62,7 +62,7 @@ export async function loadTakings(
 ): Promise<Takings> {
   const day = dayOrders(tenantId, businessDate)
 
-  const [orders, billed, items, comps, paid, closedUnpaid, open, noSales] = await Promise.all([
+  const [orders, billed, items, comps, paid, closedUnpaid, open, noSales, counted] = await Promise.all([
     rows<{ n: number }>(executor, sql`
       select count(*)::int as n from order_sessions s
        where s.id in ${day}
@@ -109,6 +109,11 @@ export async function loadTakings(
        where s.id in ${day} and s.closed_at is null
        order by s.daily_number`),
     listNoSaleOpenings(executor, { tenantId, businessDate }),
+    // The owner's latest drawer count (Story 9.3); a recount adds a row.
+    rows<{ n: number }>(executor, sql`
+      select counted_paisa as n from cash_counts
+       where tenant_id = ${tenantId} and business_date = ${businessDate}::date
+       order by created_at desc, id desc limit 1`),
   ])
 
   const b = billed[0]!
@@ -129,6 +134,7 @@ export async function loadTakings(
       totalPaisa: int(p.cash) + int(p.card) + int(p.transfer),
     },
     closedUnpaid: { count: int(closedUnpaid[0]?.n), owedPaisa: int(closedUnpaid[0]?.owed) },
+    cashCount: counted[0] ? { countedPaisa: int(counted[0].n), gapPaisa: int(counted[0].n) - int(p.cash) } : null,
     openOrders: open.map((row) => ({
       dailyNumber: row.daily_number,
       tables: openOrderPlace(row),
@@ -143,7 +149,7 @@ export async function loadTakings(
  * Where an open order is, as the floor names it. A bar tab shows its nickname
  * here — this is the owner's screen and slip, never a guest's paper.
  */
-function openOrderPlace(row: { kind: string; tab_label: string | null; tables: string[] | null; primary_label: string | null }) {
+export function openOrderPlace(row: { kind: string; tab_label: string | null; tables: string[] | null; primary_label: string | null }) {
   const tables = [...(row.tables ?? [])].sort((x, y) => x.localeCompare(y, undefined, { numeric: true }))
   if (tables.length > 0) return tables
   if (row.kind === 'counter') return [row.tab_label ? `Bar tab (${row.tab_label})` : 'Bar tab']

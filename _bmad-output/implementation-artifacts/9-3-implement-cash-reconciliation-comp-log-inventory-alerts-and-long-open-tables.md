@@ -1,6 +1,6 @@
 # Story 9.3: Cash check, comps, sold out and long-open tables
 
-Status: ready-for-dev
+Status: review
 
 <!-- Brought forward 2026-11-13 (Teran). Testing in the final round (launch rush). -->
 
@@ -50,11 +50,11 @@ so that I see what needs my attention without opening other screens.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1 — Schema + migration (+ trigger SQL appended by hand, like 0001).
-- [ ] Task 2 — `dashboard.service.ts`: `loadSummary`, `recordCashCount`; `takings.service.ts` gets `cashCount`.
-- [ ] Task 3 — Routes `summary` (GET), `cash-count` (POST).
-- [ ] Task 4 — Panels in `src/components/manage/dashboard/`; End of day screen + slip lines.
-- [ ] Task 5 — Verify script; `tsc`, `lint`; existing `verify-takings.ts` still passes.
+- [x] Task 1 — Schema + migration (+ trigger SQL appended by hand, like 0001).
+- [x] Task 2 — `dashboard.service.ts`: `loadSummary`, `recordCashCount`; `takings.service.ts` gets `cashCount`.
+- [x] Task 3 — Routes `summary` (GET), `cash-count` (POST).
+- [x] Task 4 — Panels in `src/components/manage/dashboard/`; End of day screen + slip lines.
+- [x] Task 5 — Verify script; `tsc`, `lint`; existing `verify-takings.ts` still passes.
 
 ## Dev Notes
 
@@ -68,6 +68,40 @@ so that I see what needs my attention without opening other screens.
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Completion Notes List
 
+- Migration `0042_cash_counts.sql`: `cash_counts` (append-only trigger `immutable_cash_counts`, counted ≥ 0) and
+  `tenant_config.long_open_minutes` (default 120). Applied locally.
+- `dashboard.service.ts`: `loadSummary` (cash expected / latest count / gap, comps, sold out, long-open — parallel
+  reads on the pool), `latestCashCount`, `checkCountedPaisa` (whole rupees, 0–10M), `recordCashCount` (today's
+  business date). `openOrderPlace` exported from `takings.service.ts` and reused.
+- End of day (9.5): `Takings.cashCount` (latest count, gap vs cash paid; read with its own query to avoid a
+  circular import); screen rows "Cash counted" + "Cash balanced / over / short"; slip lines likewise.
+- Routes `GET /api/manage/dashboard/summary`, `POST /api/manage/dashboard/cash-count` (201).
+- `summary-cards.tsx`: Cash check (Expected, Counted, Balanced in the open/green tokens or a red-bordered
+  Over/Short with an icon, "Counted 11:42 by …", Recount), Needs attention, Sold out (Out of stock / Marked sold
+  out), Comps (scrolls, total in the header). One query; refresh on `session:payment_changed`,
+  `menu:item_updated`, `menu:changed`, `table:status_changed` and every 60 s.
+- Verify `verify-dashboard.ts` 17/17. Regression: takings 22/22, revenue 8/8, staff 39/39, escpos 54/54.
+- `tsc` clean; lint 0 errors (1 pre-existing warning). Not clicked through — final test round.
+- Known edge: the verify's orders are "now − 20…95 min"; run within ~1.5 h after the 4 AM turnover and some land
+  on the previous business day.
+
 ### File List
+
+- src/server/db/schema.ts (updated)
+- src/server/db/migrations/0042_cash_counts.sql (new)
+- src/server/db/migrations/meta/0042_snapshot.json (new)
+- src/server/db/migrations/meta/_journal.json (updated)
+- src/server/services/dashboard.service.ts (updated)
+- src/server/services/takings.service.ts (updated)
+- src/server/services/verify-dashboard.ts (new)
+- src/app/api/manage/dashboard/summary/route.ts (new)
+- src/app/api/manage/dashboard/cash-count/route.ts (new)
+- src/components/manage/dashboard/summary-cards.tsx (new)
+- src/components/manage/dashboard.tsx (updated)
+- src/components/manage/end-of-day.tsx (updated)
+- src/server/print/escpos.ts (updated)
+- src/types/tickets.ts (updated)

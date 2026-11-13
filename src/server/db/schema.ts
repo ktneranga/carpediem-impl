@@ -1156,6 +1156,24 @@ export const cashDrawerOpenings = pgTable('cash_drawer_openings', {
   ),
 ])
 
+/**
+ * The cash the owner counted in the drawer at close, without the float
+ * (Story 9.3, FR50) — APPEND-ONLY (trigger `immutable_cash_counts`). A recount
+ * adds a row; the latest for a business date is the count. Kept so past gaps
+ * stay on record.
+ */
+export const cashCounts = pgTable('cash_counts', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  tenantId:     uuid('tenant_id').notNull().references(() => tenants.id),
+  businessDate: date('business_date', { mode: 'string' }).notNull(),
+  countedPaisa: integer('counted_paisa').notNull(),
+  staffId:      uuid('staff_id').notNull().references(() => staff.id),
+  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+}, (t) => [
+  index('idx_cash_counts_tenant_date').on(t.tenantId, t.businessDate, t.createdAt),
+  check('cash_counts_counted_non_negative', sql`${t.countedPaisa} >= 0`),
+])
+
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 export const printerConfigs = pgTable('printer_configs', {
@@ -1228,6 +1246,8 @@ export const tenantConfig = pgTable('tenant_config', {
   // Carpe Diem's row is explicitly 5. The NFR-S6 mismatch is recorded for the PRD.
   authMode:              authModeEnum('auth_mode').notNull().default('session_short'),
   sessionTimeoutMinutes: integer('session_timeout_minutes').notNull().default(5),
+  /** An open order older than this shows under "Needs attention" on the dashboard (Story 9.3). No UI yet. */
+  longOpenMinutes:       integer('long_open_minutes').notNull().default(120),
   /**
    * Require a fresh PIN on bill and payment actions (NFR-S3).
    *

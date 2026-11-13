@@ -181,6 +181,8 @@ export type Takings = {
   paid: { cashPaisa: number; cardPaisa: number; transferPaisa: number; totalPaisa: number }
   /** Orders closed as walkout or abandoned, and what their bills still owed. */
   closedUnpaid: { count: number; owedPaisa: number }
+  /** The owner's latest drawer count for the day (Story 9.3), and counted − cash paid. Optional: old slips have none. */
+  cashCount?: { countedPaisa: number; gapPaisa: number } | null
   openOrders: { dailyNumber: number; tables: string[]; openedAt: string; openedBy: string }[]
   noSales: { openedAt: string; staffName: string; reason: 'change' | 'float' | 'other'; note: string | null }[]
 }

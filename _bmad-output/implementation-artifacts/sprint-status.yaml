@@ -138,7 +138,7 @@ development_status:
   epic-9: in-progress
   9-1-implement-owner-dashboard-shell-and-dark-theme: review  # in Manage, light theme (Teran 2026-11-13)
   9-2-implement-real-time-revenue-chart: review
-  9-3-implement-cash-reconciliation-comp-log-inventory-alerts-and-long-open-tables: in-progress  # counted cash (Teran 2026-11-13)
+  9-3-implement-cash-reconciliation-comp-log-inventory-alerts-and-long-open-tables: review  # counted cash (Teran 2026-11-13)
   9-4-implement-manager-shift-summary-and-remote-access: backlog
   9-5-end-of-day-takings: review  # added 2026-11-04 — go-live
   epic-9-retrospective: optional
