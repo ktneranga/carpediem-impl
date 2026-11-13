@@ -1226,6 +1226,9 @@ export function TableGrid({
         // The only way off this screen for a waiter ending a shift. Sign-out
         // was once unreachable from the whole application.
         onStaffTap={signOut}
+        // The owner's badge opens a small menu with Manage (Story 10.0).
+        // Full navigation: the Manage pages are server-gated by the proxy.
+        onManage={role === 'owner' ? () => window.location.assign('/manage') : undefined}
         canOpenDrawer={canOpenCashDrawer(role)}
         onDrawerOpened={() => showNotice('Drawer opening — recorded')}
       />

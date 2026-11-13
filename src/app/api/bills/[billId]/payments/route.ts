@@ -7,7 +7,7 @@ import {
   OverpaymentError,
   recordPayments,
 } from '@/server/services/payment.service'
-import { printBill } from '@/server/services/receipt.service'
+import { billAlreadyHandedOver, printBill } from '@/server/services/receipt.service'
 import { kickForCashPayment } from '@/server/services/cash-drawer.service'
 import { wakePrintQueue } from '@/server/print/wake'
 import { announcePayment } from '@/server/services/payment-announce'
@@ -127,17 +127,28 @@ export async function POST(
       // Inside a SAVEPOINT: queuing a receipt must never cost the payment. If
       // it fails, the money stays recorded and Print receipt on the bill
       // screen is the way to get one.
+      //
+      // Skipped when the guest already holds a printed BILL for exactly this
+      // and nothing was added since (Teran, 2026-11-13): the bill they checked
+      // IS their slip. `receiptSkipped` tells the screen it was on purpose.
       let receiptJobId: string | null = null
+      let receiptSkipped = false
       if (paid.settled) {
         receiptJobId = await tx
-          .transaction((savepoint) => printBill(savepoint, { billId: parsedBillId.data, staffId }))
-          .then((job) => job.jobId)
+          .transaction(async (savepoint) => {
+            if (await billAlreadyHandedOver(savepoint, parsedBillId.data)) {
+              receiptSkipped = true
+              return null
+            }
+            return printBill(savepoint, { billId: parsedBillId.data, staffId })
+          })
+          .then((job) => job?.jobId ?? null)
           .catch((error: unknown) => {
             console.error('[api/bills/:billId/payments] Paid, but the receipt was not queued:', error)
             return null
           })
       }
-      return { ...paid, drawerJobId, receiptJobId }
+      return { ...paid, drawerJobId, receiptJobId, receiptSkipped }
     })
 
     // The drawer should open now, not on the queue's next 3-second tick.

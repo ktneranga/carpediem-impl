@@ -116,7 +116,7 @@ development_status:
   6-4-implement-per-seat-slot-independent-billing: done
   6-5-implement-payment-recording-and-session-auto-close: done  # code-reviewed 2026-10-31 (server + UI), fixes applied
   6-6-print-the-customer-bill: done  # added 2026-11-04 — go-live
-  6-7-cash-drawer: in-progress  # added 2026-11-04 — go-live, after 6-6
+  6-7-cash-drawer: review  # added 2026-11-04 — go-live, after 6-6
   epic-6-retrospective: optional
 
   # ── Epic 7: Audit Trail & Dispute Resolution ──────────────────────────────
@@ -145,7 +145,7 @@ development_status:
 
   # ── Epic 10: System Configuration & Staff Management ─────────────────────
   epic-10: backlog
-  10-0-manage-area-and-owner-password: backlog  # added 2026-11-04 — go-live
+  10-0-manage-area-and-owner-password: review  # added 2026-11-04 — go-live
   10-1-build-hamburgerdrawer-component: backlog
   10-2-implement-staff-account-management: backlog
   10-3-implement-zone-table-and-station-configuration: backlog

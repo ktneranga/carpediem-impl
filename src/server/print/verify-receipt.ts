@@ -266,7 +266,7 @@ async function makeTab(nickname: string) {
     )[0].id as string
   const cashew = await add(2, 95000)
   const prawns = await add(1, 245000)
-  return { sessionId: session.id as string, cashew, prawns }
+  return { sessionId: session.id as string, cashew, prawns, add }
 }
 
 async function jobOf(jobId: string) {
@@ -385,6 +385,10 @@ async function part2() {
   check('jobs that never printed do not make a COPY', afterDead.ticket.copy === false)
 
   // ── Paid: a RECEIPT with the change ────────────────────────────────────────
+  // The drafts printed above never reached the guest here: without this, the
+  // printed BILL would make the receipt skip itself (Teran, 2026-11-13), and
+  // this block is about what the receipt says.
+  await sql(`UPDATE print_jobs SET status = 'dead' WHERE session_id = $1 AND bill_id IS NULL`, [tab.sessionId])
   // Before paying, while the bill is still open — afterwards the refusal would
   // be "already settled" and say nothing about this rule.
   const short = await api(owner, `/api/bills/${billId}/payments`, {
@@ -421,6 +425,33 @@ async function part2() {
   await sql(`UPDATE print_jobs SET status = 'printed' WHERE bill_id = $1`, [billId])
   const again = await jobOf((await api(owner, `/api/bills/${billId}/print`)).body?.data?.jobId)
   check('Print receipt afterwards prints a COPY', again.ticket.title === 'RECEIPT' && again.ticket.copy === true)
+
+  // ── No second slip when the guest already holds the bill (Teran, 2026-11-13)
+  // The printed BILL is their slip, unless items changed after it printed.
+  const unchanged = await makeTab('No second slip')
+  await api(owner, `/api/sessions/${unchanged.sessionId}/bill-print`)
+  const unchangedBill = (await api(owner, `/api/sessions/${unchanged.sessionId}/bills`, { type: 'consolidated' })).body?.data
+  const unchangedPay = await api(owner, `/api/bills/${unchangedBill?.billId}/payments`, {
+    tenders: [{ method: 'card', amountPaisa: unchangedBill?.totalPaisa }],
+  })
+  check('bill printed, nothing added, paid → no automatic receipt',
+    unchangedPay.status === 201 && unchangedPay.body?.data?.receiptJobId === null && unchangedPay.body?.data?.receiptSkipped === true,
+    JSON.stringify(unchangedPay.body?.data))
+  const splitPay = await api(owner, `/api/bills/${splitBill.body?.data?.billId}/payments`, {
+    tenders: [{ method: 'card', amountPaisa: splitBill.body?.data?.totalPaisa }],
+  })
+  check('a split share printed for that person, paid → no automatic receipt',
+    splitPay.status === 201 && splitPay.body?.data?.receiptSkipped === true, JSON.stringify(splitPay.body?.data))
+  const changed = await makeTab('Added after')
+  await api(owner, `/api/sessions/${changed.sessionId}/bill-print`)
+  await changed.add(1, 50000)
+  const changedBill = (await api(owner, `/api/sessions/${changed.sessionId}/bills`, { type: 'consolidated' })).body?.data
+  const changedPay = await api(owner, `/api/bills/${changedBill?.billId}/payments`, {
+    tenders: [{ method: 'card', amountPaisa: changedBill?.totalPaisa }],
+  })
+  check('bill printed, then an item added, paid → the receipt prints',
+    changedPay.status === 201 && typeof changedPay.body?.data?.receiptJobId === 'string' && changedPay.body?.data?.receiptSkipped === false,
+    JSON.stringify(changedPay.body?.data))
 
   // The payment request from before this story — no cashReceivedPaisa — must
   // still be accepted, and stores no received amount. Paid in two parts: the

@@ -52,6 +52,13 @@ export const ROUTE_ROLES: RoutePolicy[] = [
   { prefix: '/api/staff', roles: ['owner'] },
   { prefix: '/owner', roles: ['owner'] },
 
+  // The Manage area (Story 10.0, FR70). Owner only, AND behind the Manage
+  // password — the proxy's second gate. Added BEFORE any route under them,
+  // because an unmatched prefix is default-allow. No manager role exists to
+  // give "Sold out" to; Story 8.3 gives that screen its own route outside.
+  { prefix: '/manage', roles: ['owner'] },
+  { prefix: '/api/manage', roles: ['owner'] },
+
   // Kitchen display. Listed now even though Epic 5 builds the screen — access
   // policy belongs with the policy, not with whichever story adds the route.
   // Waiters are excluded: the PRD matrix gives them no KDS access.

@@ -2,6 +2,7 @@
 
 import { CashDrawerButton } from '@/components/pos/cash-drawer-button'
 import { StaffBadge } from '@/components/pos/staff-badge'
+import { StaffMenu } from '@/components/pos/staff-menu'
 import { cn } from '@/lib/utils'
 
 /**
@@ -36,6 +37,7 @@ export function FloorHeader({
   onStaffTap,
   canOpenDrawer = false,
   onDrawerOpened,
+  onManage,
 }: {
   occupiedCount: number
   openCount: number
@@ -51,6 +53,11 @@ export function FloorHeader({
   /** Owner only (`canOpenCashDrawer`): the no-sale drawer icon (Story 6.7). */
   canOpenDrawer?: boolean
   onDrawerOpened?: () => void
+  /**
+   * Owner only (Story 10.0): the badge opens a menu — Manage, Switch user.
+   * Omitted, the badge switches user at once, as it always has.
+   */
+  onManage?: () => void
 }) {
   return (
     // h-18/72px, measured off the design — the white band above the zone bar.
@@ -88,7 +95,16 @@ export function FloorHeader({
 
         <div className="flex items-center gap-sp-2">
           {canOpenDrawer ? <CashDrawerButton onOpened={() => onDrawerOpened?.()} /> : null}
-          <StaffBadge staffName={staffName} clock={clock} onTap={onStaffTap} />
+          {onManage ? (
+            <StaffMenu
+              staffName={staffName}
+              clock={clock}
+              onManage={onManage}
+              onSwitchUser={onStaffTap}
+            />
+          ) : (
+            <StaffBadge staffName={staffName} clock={clock} onTap={onStaffTap} />
+          )}
         </div>
       </div>
     </header>

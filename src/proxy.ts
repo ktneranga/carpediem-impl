@@ -1,7 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE_NAME, touchSession, validateSession } from '@/server/services/session.service'
 import { isRoleAllowed } from '@/server/auth/permissions'
-import { loginUrl } from '@/lib/return-to'
+import { isManagePath, loginUrl, manageUnlockUrl } from '@/lib/return-to'
+import {
+  MANAGE_COOKIE_NAME,
+  manageCookieOptions,
+  touchManageSession,
+  validateManageSession,
+} from '@/server/services/manage-session.service'
 
 /**
  * Session validation and RBAC for every request.
@@ -56,6 +62,33 @@ function forbidden(request: NextRequest): NextResponse {
   return NextResponse.redirect(new URL('/', request.url))
 }
 
+/**
+ * Behind the Manage password (Story 10.0, FR70): the area and its API, except
+ * the endpoints that get you IN (or out) — without those nobody could unlock.
+ */
+const MANAGE_GATE_EXEMPT = new Set([
+  '/manage/unlock',
+  '/api/manage/unlock',
+  '/api/manage/password',
+  '/api/manage/lock',
+])
+
+function needsManageSession(pathname: string): boolean {
+  if (MANAGE_GATE_EXEMPT.has(pathname)) return false
+  return isManagePath(pathname) || pathname === '/api/manage' || pathname.startsWith('/api/manage/')
+}
+
+function manageLocked(request: NextRequest): NextResponse {
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    return NextResponse.json(
+      { success: false, error: { code: 'MANAGE_LOCKED', message: 'Manage is locked' } },
+      { status: 401 },
+    )
+  }
+  const { pathname, search } = request.nextUrl
+  return NextResponse.redirect(new URL(manageUnlockUrl(pathname + search), request.url))
+}
+
 export async function proxy(request: NextRequest) {
   // Strip identity headers UNCONDITIONALLY, before anything else and regardless
   // of whether this route is public.
@@ -91,11 +124,38 @@ export async function proxy(request: NextRequest) {
     return forbidden(request)
   }
 
+  // The Manage gate, AFTER the role check: a waiter is refused as a waiter,
+  // never shown the unlock screen. A PIN alone never opens configuration.
+  let manageTouched = false
+  if (needsManageSession(request.nextUrl.pathname)) {
+    try {
+      const manage = await validateManageSession(
+        request.cookies.get(MANAGE_COOKIE_NAME)?.value,
+        session.sessionId,
+      )
+      if (!manage) return manageLocked(request)
+      manageTouched = await touchManageSession(manage)
+    } catch (error) {
+      // Database down: refuse, never let through.
+      console.error('[proxy] Manage session check failed:', error)
+      return manageLocked(request)
+    }
+  }
+
   // Set from the validated session only — never from anything the client sent.
   headers.set('x-staff-id', session.staffId)
   headers.set('x-staff-role', session.role)
 
   const response = NextResponse.next({ request: { headers } })
+
+  if (manageTouched) {
+    // Refresh Max-Age with the row, as for the POS cookie below.
+    response.cookies.set(
+      MANAGE_COOKIE_NAME,
+      request.cookies.get(MANAGE_COOKIE_NAME)!.value,
+      manageCookieOptions(),
+    )
+  }
 
   // Slide the idle window. Throttled inside touchSession, so this is a no-op for
   // most requests.

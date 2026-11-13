@@ -45,6 +45,29 @@ export function safeReturnPath(raw: string | null | undefined): string {
   return raw
 }
 
+/** True for `/manage` and `/manage/...` — not `/manager-notes`. */
+export function isManagePath(pathname: string): boolean {
+  return pathname === '/manage' || pathname.startsWith('/manage/')
+}
+
+/**
+ * `next` for the Manage unlock screen (Story 10.0): the same checks as
+ * `safeReturnPath`, and it must be a Manage page other than the unlock screen
+ * itself. Anything else lands on `/manage`.
+ */
+export function safeManagePath(raw: string | null | undefined): string {
+  const safe = safeReturnPath(raw)
+  const path = (safe.split(/[?#]/)[0] ?? '').toLowerCase().replace(/\/+$/, '')
+  if (!isManagePath(path) || path === '/manage/unlock') return '/manage'
+  return safe
+}
+
+/** `/manage/unlock?next=<this Manage page>`. */
+export function manageUnlockUrl(from: string): string {
+  const safe = safeManagePath(withoutInternalParams(from))
+  return safe === '/manage' ? '/manage/unlock' : `/manage/unlock?next=${encodeURIComponent(safe)}`
+}
+
 /**
  * Drops Next's own `_rsc` cache-buster. A prefetch that hit the timeout
  * carries it, and sending the waiter to that URL after sign-in would load an

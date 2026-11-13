@@ -173,6 +173,46 @@ async function enqueue(
 }
 
 /**
+ * Whether the guest already holds a printed BILL for exactly what was just paid
+ * (Teran, 2026-11-13). Then the automatic receipt at payment is skipped:
+ * the guest checked that bill and paid it, a second slip says nothing new.
+ *
+ * True when a BILL job for this order — the draft printed before Settle, or
+ * this recorded bill printed — is not dead, has the same total and the same
+ * guest label (split / seat), and no item was added, removed, changed, comped
+ * or voided after it was queued. Anything changed since → the receipt prints,
+ * so the guest has the right figures. Print receipt still prints one on demand.
+ */
+export async function billAlreadyHandedOver(tx: Tx, billId: string): Promise<boolean> {
+  const bill = await getBill(tx, billId)
+  if (!bill) return false
+  const billLabel =
+    bill.type === 'seat' ? bill.seatLabel : bill.type === 'split' ? guestBillLabel(bill.personLabel) : null
+
+  const result = await tx.execute(sql`
+    select exists (
+      select 1
+        from print_jobs j
+       where j.session_id = ${bill.sessionId}
+         and j.status <> 'dead'
+         and j.ticket->>'kind' = 'receipt'
+         and j.ticket->>'title' = 'BILL'
+         and (j.ticket->>'totalPaisa')::int = ${bill.totalPaisa}
+         and (j.bill_id = ${billId}
+              or (j.bill_id is null
+                  and coalesce(j.ticket->>'billLabel', '') = ${billLabel ?? ''}))
+         and j.created_at > coalesce((
+               select max(e.created_at)
+                 from order_events e
+                where e.session_id = ${bill.sessionId}
+                  and e.event_type in ('ITEM_ADDED', 'ITEM_REMOVED', 'ITEM_MODIFIED',
+                                       'ITEM_COMPED', 'ITEM_VOIDED')
+             ), '-infinity'::timestamptz)
+    ) as handed_over`)
+  return Boolean((result.rows[0] as { handed_over?: boolean } | undefined)?.handed_over)
+}
+
+/**
  * Prints a RECORDED bill — a seat billed early, a bill written at Settle, a
  * paid one. `RECEIPT` once fully paid, with its tenders; `COPY` when a job for
  * this bill has already been PRINTED (a pending, retrying or dead job never

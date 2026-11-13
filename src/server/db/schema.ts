@@ -156,6 +156,16 @@ export const tenants = pgTable('tenants', {
    */
   businessDayStartHour: integer('business_day_start_hour').notNull().default(4),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * The Manage area password (Story 10.0, FR70). bcrypt, cost 10. Null = not
+   * set yet: the first owner entry chooses one. Read only by
+   * manage-password.service.ts; never logged, never returned.
+   */
+  managePasswordHash:   text('manage_password_hash'),
+  /** Wrong passwords in a row. Reset by a right one, and when the lock is set. */
+  manageFailedAttempts: integer('manage_failed_attempts').notNull().default(0),
+  /** Every attempt is refused until then (database clock). */
+  manageLockedUntil:    timestamp('manage_locked_until', { withTimezone: true }),
 })
 
 export const staff = pgTable('staff', {
@@ -195,6 +205,23 @@ export const staffSessions = pgTable('staff_sessions', {
 }, (t) => [
   index('idx_staff_sessions_staff_id').on(t.staffId),
   index('idx_staff_sessions_expires_at').on(t.expiresAt),
+])
+
+/**
+ * An unlocked Manage area (Story 10.0, NFR-S7), owned by ONE POS session.
+ *
+ * ON DELETE CASCADE is the whole of AC 7: logout, idle expiry, the sweep and a
+ * deactivated staff member all delete the POS session, and that deletes this.
+ * Nothing that ends a POS session needs to know Manage exists.
+ */
+export const manageSessions = pgTable('manage_sessions', {
+  id:             uuid('id').primaryKey().defaultRandom(),
+  staffSessionId: uuid('staff_session_id').notNull()
+    .references(() => staffSessions.id, { onDelete: 'cascade' }),
+  createdAt:      timestamp('created_at',     { withTimezone: true }).notNull().defaultNow(),
+  lastActiveAt:   timestamp('last_active_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_manage_sessions_staff_session_id').on(t.staffSessionId),
 ])
 
 export const zones = pgTable('zones', {

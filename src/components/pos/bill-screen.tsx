@@ -1291,6 +1291,8 @@ export function BillScreen({
               allPaid: boolean
               settled: boolean
               receiptJobId: string | null
+              /** The guest already has the printed BILL for this (Teran, 2026-11-13). */
+              receiptSkipped?: boolean
             }>(`/api/bills/${billId}/payments`, {
               tenders,
               cashReceivedPaisa,
@@ -1308,7 +1310,7 @@ export function BillScreen({
             // The receipt prints by itself. If it could not be queued the money is
             // still recorded — say so, so nobody waits at the printer.
             setNotice(
-              paid.settled && !paid.receiptJobId
+              paid.settled && !paid.receiptJobId && !paid.receiptSkipped
                 ? 'Paid, but the receipt was not queued. Use the print icon on the paid bill to get one.'
                 : null,
             )
