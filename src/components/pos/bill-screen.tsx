@@ -2002,7 +2002,7 @@ function PaymentDialog({
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row">
           {/* ── Left: method and the sum ─────────────────────────────────── */}
-          <section className="flex shrink-0 flex-col gap-sp-4 border-slate-200 bg-slate-50 p-sp-5 md:w-80 md:border-r">
+          <section className="flex shrink-0 flex-col gap-sp-4 border-slate-200 bg-slate-50 p-sp-5 md:w-96 md:border-r">
             <div className="flex flex-col gap-sp-2">
               <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
                 Method
@@ -2023,7 +2023,7 @@ function PaymentDialog({
                       setError(null)
                     }}
                     className={cn(
-                      'flex h-touch-kitchen items-center justify-center gap-sp-2 rounded-waiter border-2 text-fs-16 font-bold',
+                      'flex h-touch-kitchen items-center justify-center gap-sp-2 rounded-waiter border-2 px-sp-3 text-fs-16 font-bold whitespace-nowrap',
                       'active:scale-[0.97]',
                       focusRing,
                       method === key
