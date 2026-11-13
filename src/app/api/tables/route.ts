@@ -123,7 +123,8 @@ export async function GET() {
         ),
       )
       // A deactivated zone must not appear in the grid or the filter bar.
-      .where(and(eq(tables.tenantId, tenant.id), eq(zones.isActive, true)))
+      // Removed tables (Story 10.3) are gone from the floor.
+      .where(and(eq(tables.tenantId, tenant.id), eq(tables.isActive, true), eq(zones.isActive, true)))
       // display_order defaults to 0 on both tables, so anything created outside
       // the seed ties. PostgreSQL gives no ordering guarantee for ties, which
       // let the grid reshuffle between refetches and interleaved the tables of

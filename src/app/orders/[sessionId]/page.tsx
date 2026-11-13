@@ -211,6 +211,7 @@ export default async function OrderPage({
       initialBills={initialBills}
       initialHasUnbilled={initialHasUnbilled}
       canAddCustomCharge={canAddCustomCharge(staffRole)}
+      canManage={staffRole === 'owner'}
     />
   )
 }

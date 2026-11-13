@@ -1,6 +1,6 @@
 # Story 10.3 (lite): Floor — Zones & Tables
 
-Status: ready-for-dev
+Status: review
 
 - **Epic:** 10 — System Configuration & Staff Management
 - **Scope (Teran, 2026-11-13):** the LITE cut, brought into go-live — zones (the floor pills) and their tables,
@@ -44,60 +44,60 @@ so that the floor plan on every tablet matches the restaurant as it is laid out 
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Migration (AC 4, 7, 8)**
-  - [ ] `zones`: `version integer not null default 1`, `updated_at timestamptz not null default now()`.
-  - [ ] `tables`: `is_active boolean not null default true`, `version`, `updated_at`.
-  - [ ] Unique label among ACTIVE tables: `CREATE UNIQUE INDEX idx_tables_tenant_label_active ON tables
+- [x] **Task 1: Migration (AC 4, 7, 8)**
+  - [x] `zones`: `version integer not null default 1`, `updated_at timestamptz not null default now()`.
+  - [x] `tables`: `is_active boolean not null default true`, `version`, `updated_at`.
+  - [x] Unique label among ACTIVE tables: `CREATE UNIQUE INDEX idx_tables_tenant_label_active ON tables
         (tenant_id, lower(label)) WHERE is_active` — declare it in `schema.ts` with `uniqueIndex(...).on(...)
         .where(...)` and `sql\`lower(${t.label})\``. Check the live data has no duplicate labels before migrating.
-  - [ ] `pnpm db:generate`, read the SQL, `pnpm db:migrate`. It will be 0039.
-- [ ] **Task 2: Removed tables are gone everywhere (AC 4)**
-  - [ ] Add `eq(tables.isActive, true)` to every place that LISTS or ACCEPTS a table for new use:
+  - [x] `pnpm db:generate`, read the SQL, `pnpm db:migrate`. It will be 0039.
+- [x] **Task 2: Removed tables are gone everywhere (AC 4)**
+  - [x] Add `eq(tables.isActive, true)` to every place that LISTS or ACCEPTS a table for new use:
         `GET /api/tables` (grid query ~line 126), `/api/tables/[tableId]/sessions` (seat: 404 `TABLE_NOT_FOUND` for a
         removed one), `/api/tables/[tableId]/merge` (~125, ~135), `/api/sessions/[sessionId]/tables` (move picker /
         add table, ~136), `/api/tables/[tableId]/out-of-service`, `/api/config/tables/[tableId]/return-to-service`.
-  - [ ] Do NOT filter where a table is read for HISTORY: `receipt.service.ts` (~111, ~130), `order.service.ts` (~466),
+  - [x] Do NOT filter where a table is read for HISTORY: `receipt.service.ts` (~111, ~130), `order.service.ts` (~466),
         `unmerge`, `sessions/close`, the group-labels query in `/api/tables` (~185 — an open group can only contain
         active tables anyway, because removal is refused while in use).
-- [ ] **Task 3: Floor service (AC 2–5, 7, 8)**
-  - [ ] New `src/server/services/floor-admin.service.ts`, the same shape as `menu-admin.service.ts` (copy its
+- [x] **Task 3: Floor service (AC 2–5, 7, 8)**
+  - [x] New `src/server/services/floor-admin.service.ts`, the same shape as `menu-admin.service.ts` (copy its
         `versionedUpdate` / `insertRow` / `reorderRows` approach; share code only if it stays simple — two small
         services are fine). Functions: `createZone`, `updateZone`, `removeZone`, `createTable`, `updateTable`
         (label, capacity, zoneId), `setTableActive`, `reorderRows('zone' | 'table', …)`, `loadFloorForManage`.
-  - [ ] Rules in the service: names/labels trimmed; zone name 1–40, table label 1–20; capacity null or 1–30; label
+  - [x] Rules in the service: names/labels trimmed; zone name 1–40, table label 1–20; capacity null or 1–30; label
         unique ignoring case among active tables (check first for a clean `LabelTakenError`; the unique index is the
         backstop — map its violation to the same error); a table's zone must be an active zone of the tenant;
         a zone with active tables cannot be removed; a table with an open `order_session_tables` row
         (`released_at IS NULL`) or `status = 'occupied'` cannot be removed.
-  - [ ] Moving a table to another zone puts it at the end of that zone's order.
-  - [ ] `loadFloorForManage` returns zones (active) with tables (active, plus removed when asked), each table with
+  - [x] Moving a table to another zone puts it at the end of that zone's order.
+  - [x] `loadFloorForManage` returns zones (active) with tables (active, plus removed when asked), each table with
         `status`, `inUse` (open session), `capacity`, `version`.
-- [ ] **Task 4: API (AC 2–4, 7, 9)**
-  - [ ] `src/server/menu-admin/route.ts` is generic enough to reuse: add a `broadcast` argument to `menuWrite` (or a
+- [x] **Task 4: API (AC 2–4, 7, 9)**
+  - [x] `src/server/menu-admin/route.ts` is generic enough to reuse: add a `broadcast` argument to `menuWrite` (or a
         sibling `floorWrite`) so floor writes emit `floor:changed` instead of `menu:changed`, and map the new errors
         (`ZONE_NOT_EMPTY`, `TABLE_IN_USE`, `LABEL_TAKEN` → 409).
-  - [ ] Routes under `src/app/api/manage/floor/`: `GET ?removed=1`; `POST zones`, `PATCH zones/[id]`,
+  - [x] Routes under `src/app/api/manage/floor/`: `GET ?removed=1`; `POST zones`, `PATCH zones/[id]`,
         `DELETE zones/[id]?version=`; `POST zones/[id]/tables`; `PATCH tables/[id]` (label, capacity, zoneId),
         `DELETE tables/[id]?version=`, `POST tables/[id]/restore`; `POST reorder` `{ kind: 'zone' | 'table',
         parentId, ids }`.
-- [ ] **Task 5: Tell the tablets (AC 6)**
-  - [ ] `emitFloorChanged()` in `src/server/socket/events.ts` → `floor:changed`.
-  - [ ] `table-grid.tsx`: `useSocketEvent('floor:changed', …)` invalidates `TABLES_QUERY_KEY`. The order screen's
+- [x] **Task 5: Tell the tablets (AC 6)**
+  - [x] `emitFloorChanged()` in `src/server/socket/events.ts` → `floor:changed`.
+  - [x] `table-grid.tsx`: `useSocketEvent('floor:changed', …)` invalidates `TABLES_QUERY_KEY`. The order screen's
         table pickers (move / merge / add table) refetch on it too — find their query keys.
-- [ ] **Task 6: Manage → Floor screen (AC 1–5, 7)**
-  - [ ] Add `{ href: '/manage/floor', title: 'Floor', … }` to `MANAGE_SECTIONS` (after Menu) and a page at
+- [x] **Task 6: Manage → Floor screen (AC 1–5, 7)**
+  - [x] Add `{ href: '/manage/floor', title: 'Floor', … }` to `MANAGE_SECTIONS` (after Menu) and a page at
         `src/app/manage/(area)/floor/page.tsx` rendering a new `src/components/manage/floor-editor.tsx`.
-  - [ ] Layout like the menu editor: zones as a draggable list on the left (icon from `zoneIcon`, name, table count,
+  - [x] Layout like the menu editor: zones as a draggable list on the left (icon from `zoneIcon`, name, table count,
         rename / remove on the selected one, "+ Add zone"); the selected zone's tables as a draggable grid or list on
         the right (label, seats, Occupied / Out of service badge, Edit, Remove); "+ Add table". A small sheet edits a
         table: Label, Seats, Zone (select). "Show removed tables" switch with Restore.
-  - [ ] Reuse `SortableList`, the confirm dialog pattern, `call`/`run` error handling and the `id + version` keying
+  - [x] Reuse `SortableList`, the confirm dialog pattern, `call`/`run` error handling and the `id + version` keying
         from `menu-editor.tsx`. Extract shared bits into `src/components/manage/` if it keeps both files simpler.
-- [ ] **Task 7: Verify (all ACs)**
-  - [ ] New `src/server/services/verify-floor-admin.ts`, modelled on `verify-menu-admin.ts` (owner login, Manage
+- [x] **Task 7: Verify (all ACs)**
+  - [x] New `src/server/services/verify-floor-admin.ts`, modelled on `verify-menu-admin.ts` (owner login, Manage
         session opened in the database, no accepted sends). Everything it makes is named `ZZ …`, soft-removed at the
         end; its `config_changes` rows deleted with the guard off only around its own cleanup.
-  - [ ] Run the regressions in AC 10.
+  - [x] Run the regressions in AC 10.
 
 ## Dev Notes
 
@@ -193,14 +193,77 @@ it. Do not rely on `tables.status` alone.
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
 
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created.
+- **Migration 0039:** `zones.version/updated_at`; `tables.is_active/version/updated_at`; partial unique index
+  `idx_tables_tenant_label_active` on `(tenant_id, lower(label)) WHERE is_active`. Live data checked first: no duplicates.
+- **Removed tables (Trap 1):** `is_active` filter on `/api/tables`, seat, seat's extra tables, merge (anchor and targets),
+  attach/move (`sessions/[id]/tables`), out-of-service and return-to-service. History reads untouched. Also added to
+  `occupyTables`' UPDATE, so a removal racing a seating cannot leave an order on a removed table: removal UPDATEs the row
+  first (holding its lock), then checks in-use; a seating in flight blocks on that lock and fails once it commits.
+- **Service:** `floor-admin.service.ts` mirrors `menu-admin.service.ts` (versioned update, insert, reorder) and reuses its
+  error classes. In-use = open `order_session_tables` row OR `status = 'occupied'` (Trap 4 tested with status forced to
+  open). Restoring a table whose zone was removed goes to a zone the caller names (UI: "Restore to <zone on screen>").
+  Edits never write `status` / `unavailable_reason`.
+- **API:** `menuWrite` and a new `floorWrite` share one `manageWrite` (only the broadcast differs). New 409s:
+  `ZONE_NOT_EMPTY`, `TABLE_IN_USE`, `LABEL_TAKEN` (also mapped from the unique index, the backstop).
+- **Tablets:** `floor:changed` → `table-grid.tsx` invalidates `['tables']`. The Move / Merge / add-table pickers all
+  read that one query, so no other listener is needed.
+- **UI:** Manage → Floor (after Menu). Zones list left, selected zone's tables right, both drag-sortable; table sheet
+  (label, seats, zone); "Show removed tables" with Restore. Shared bits (`call`/`ApiError`, control styles,
+  `ConfirmDialog` with a `note`) extracted to `manage-ui.tsx`; the menu editor now imports them.
+- **Verify:** `verify-floor-admin.ts` 30/30 (all 12 testing cases, plus capacity/label length, out-of-service untouched,
+  removed list). Its cleanup hard-deletes its own ZZ zones/tables/sessions on a local DB (soft-removes elsewhere) and
+  puts the real zones back in their order. Regressions: verify-menu-admin 31/31, verify-order-number 15/15,
+  verify-receipt --paper-only 32/32, verify-bills 119/119, verify-options 33/33, verify-custom-charge 22/22, tsc clean,
+  lint 0 errors (1 pre-existing warning in `socket/index.ts`). verify-manage not run: it needs VERIFY_MANAGE_PASSWORD.
+- **Fixture fixes:** the verify scripts that pick a free table now require `t.is_active`; verify-bills' dish picker now
+  requires `m.is_active` (it was picking a soft-removed `ZZ Verify` dish left by verify-menu-admin — a 10.4 leftover).
+- UI not clicked through in a browser — left for the go-live test round.
 
 ### File List
+
+- src/server/db/schema.ts
+- src/server/db/migrations/0039_moaning_brother_voodoo.sql (new)
+- src/server/db/migrations/meta/0039_snapshot.json (new)
+- src/server/db/migrations/meta/_journal.json
+- src/app/api/tables/route.ts
+- src/app/api/tables/[tableId]/sessions/route.ts
+- src/app/api/tables/[tableId]/merge/route.ts
+- src/app/api/tables/[tableId]/out-of-service/route.ts
+- src/app/api/sessions/[sessionId]/tables/route.ts
+- src/app/api/config/tables/[tableId]/return-to-service/route.ts
+- src/server/services/table-session.service.ts
+- src/server/services/floor-admin.service.ts (new)
+- src/server/menu-admin/route.ts
+- src/app/api/manage/floor/route.ts (new)
+- src/app/api/manage/floor/zones/route.ts (new)
+- src/app/api/manage/floor/zones/[id]/route.ts (new)
+- src/app/api/manage/floor/zones/[id]/tables/route.ts (new)
+- src/app/api/manage/floor/tables/[id]/route.ts (new)
+- src/app/api/manage/floor/tables/[id]/restore/route.ts (new)
+- src/app/api/manage/floor/reorder/route.ts (new)
+- src/server/socket/events.ts
+- src/components/pos/table-grid.tsx
+- src/app/manage/(area)/sections.tsx
+- src/app/manage/(area)/floor/page.tsx (new)
+- src/components/manage/floor-editor.tsx (new)
+- src/components/manage/manage-ui.tsx (new)
+- src/components/manage/menu-editor.tsx
+- src/server/services/verify-floor-admin.ts (new)
+- src/server/print/verify-receipt.ts
+- src/server/services/verify-bills.ts
+- src/server/services/verify-custom-charge.ts
+- src/server/services/verify-options.ts
+- _bmad-output/implementation-artifacts/sprint-status.yaml
 
 ## Change Log
 
 - 2026-11-13: Story created (lite scope: zones and tables, go-live — Teran).
+- 2026-11-13: Implemented (migration 0039, floor service + API, `floor:changed`, Manage → Floor screen, verify script);
+  status → review.

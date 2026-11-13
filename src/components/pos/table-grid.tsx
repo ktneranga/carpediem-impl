@@ -774,6 +774,13 @@ export function TableGrid({
     void queryClient.invalidateQueries({ queryKey: COUNTER_QUERY_KEY })
   })
 
+  // A zone or table was added, renamed, moved, reordered, removed or restored
+  // in Manage → Floor (Story 10.3). The grid, the zone pills and the Move /
+  // Merge / add-table pickers all read this one query, so one refetch covers them.
+  useSocketEvent('floor:changed', () => {
+    void queryClient.invalidateQueries({ queryKey: TABLES_QUERY_KEY })
+  })
+
   // A payment, a LKR 0 bill, or a new round moved an order's payment state
   // (Teran, 2026-11-10). Patched onto every row still showing THAT order —
   // a merged group is several rows — and never onto a later party.

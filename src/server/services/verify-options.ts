@@ -120,7 +120,7 @@ async function makeSession(): Promise<{ sessionId: string; seatId: string }> {
   mine.seats.push(seat.id)
   const [table] = await sql(
     `SELECT t.id FROM tables t
-      WHERE NOT EXISTS (
+      WHERE t.is_active AND NOT EXISTS (
         SELECT 1 FROM order_session_tables ost
          WHERE ost.table_id = t.id AND ost.released_at IS NULL)
       LIMIT 1`,

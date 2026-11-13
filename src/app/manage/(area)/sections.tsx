@@ -10,6 +10,12 @@ export const MANAGE_SECTIONS = [
     what: 'Add, edit and price dishes and drinks, their options, and where each one prints.',
   },
   {
+    href: '/manage/floor',
+    title: 'Floor',
+    story: '10.3',
+    what: 'Add, rename, reorder and remove the zones and their tables.',
+  },
+  {
     href: '/manage/sold-out',
     title: 'Sold out',
     story: '8.3',

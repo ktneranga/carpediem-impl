@@ -83,7 +83,7 @@ async function api(cookie: string, path: string, init?: RequestInit): Promise<Js
  * send without an Alcohol choice is refused as OPTION_INVALID.
  */
 const SENDABLE_ITEM = `SELECT id, price_paisa FROM menu_items m
-  WHERE m.is_available
+  WHERE m.is_available AND m.is_active
     AND NOT EXISTS (
       SELECT 1 FROM modifier_groups g
        WHERE g.menu_item_id = m.id AND g.is_active AND g.is_required)
@@ -133,7 +133,7 @@ async function makeSession(
   if (withTable) {
     let [table] = await sql(
       `SELECT t.id FROM tables t
-        WHERE NOT EXISTS (
+        WHERE t.is_active AND NOT EXISTS (
           SELECT 1 FROM order_session_tables ost
            WHERE ost.table_id = t.id AND ost.released_at IS NULL)
         LIMIT 1`,

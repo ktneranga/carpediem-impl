@@ -153,6 +153,8 @@ export type OrderScreenProps = {
    * the send route decides again.
    */
   canAddCustomCharge?: boolean
+  /** Owner only: the staff menu offers Manage (Story 10.0). */
+  canManage?: boolean
 }
 
 /** FR9's destinations as a waiter says them, for the bottom bar. */
@@ -360,6 +362,7 @@ export function OrderScreen({
   initialBills,
   initialHasUnbilled,
   canAddCustomCharge = false,
+  canManage = false,
   tableLabel,
   orderLabel = null,
   tabLabel = null,
@@ -1425,8 +1428,9 @@ export function OrderScreen({
         staffName={staffName}
         clock={clock}
         onBack={() => router.push('/')}
-        // Also the only way off this screen for a waiter ending a shift.
+        // Switch user is also the only way off this screen for a waiter ending a shift.
         onStaffTap={signOut}
+        onManage={canManage ? () => window.location.assign('/manage') : undefined}
       />
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">

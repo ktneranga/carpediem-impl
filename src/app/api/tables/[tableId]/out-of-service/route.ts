@@ -75,7 +75,7 @@ export async function POST(
     const [table] = await db
       .select({ id: tables.id, tenantId: tables.tenantId, status: tables.status })
       .from(tables)
-      .where(eq(tables.id, tableId))
+      .where(and(eq(tables.id, tableId), eq(tables.isActive, true)))
       .limit(1)
 
     if (!table) {

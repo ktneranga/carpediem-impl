@@ -4,7 +4,14 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { staff } from '@/server/db/schema'
-import { emitMenuChanged } from '@/server/socket/events'
+import { isUniqueViolation } from '@/server/db/errors'
+import { emitFloorChanged, emitMenuChanged } from '@/server/socket/events'
+import {
+  LabelTakenError,
+  TABLE_LABEL_INDEX,
+  TableInUseError,
+  ZoneNotEmptyError,
+} from '@/server/services/floor-admin.service'
 import {
   CategoryNotEmptyError,
   MenuNotFoundError,
@@ -16,7 +23,9 @@ import {
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 /**
- * Shared by every `/api/manage/menu` route (Story 10.4).
+ * Shared by every `/api/manage/menu` route (Story 10.4) and every
+ * `/api/manage/floor` route (Story 10.3) — the two differ only in what they
+ * broadcast.
  *
  * The proxy has already required an owner POS session AND a live Manage
  * session (Story 10.0) for this prefix. Here: who is writing (for the change
@@ -53,17 +62,30 @@ export async function readBody<T>(request: Request, schema: z.ZodType<T>): Promi
   return parsed.success ? parsed.data : null
 }
 
-/** Runs one menu write: actor, transaction, broadcast, errors. */
-export async function menuWrite(
+type Write = (tx: Tx, actor: Actor) => Promise<unknown>
+
+/** Runs one menu write: actor, transaction, `menu:changed`, errors. */
+export function menuWrite(request: Request, write: Write, status = 200): Promise<NextResponse> {
+  return manageWrite(request, write, status, emitMenuChanged, 'menu')
+}
+
+/** Runs one floor write (zones, tables): actor, transaction, `floor:changed`, errors. */
+export function floorWrite(request: Request, write: Write, status = 200): Promise<NextResponse> {
+  return manageWrite(request, write, status, emitFloorChanged, 'floor')
+}
+
+async function manageWrite(
   request: Request,
-  write: (tx: Tx, actor: Actor) => Promise<unknown>,
-  status = 200,
+  write: Write,
+  status: number,
+  broadcast: () => void,
+  area: string,
 ): Promise<NextResponse> {
   try {
     const actor = await actorOf(request)
     if (!actor) return menuFail('UNAUTHENTICATED', 'Sign in required', 401)
     const data = await db.transaction((tx) => write(tx, actor))
-    emitMenuChanged()
+    broadcast()
     return NextResponse.json({ success: true, data: data ?? null }, { status })
   } catch (error) {
     if (error instanceof StaleVersionError) {
@@ -72,9 +94,18 @@ export async function menuWrite(
     if (error instanceof CategoryNotEmptyError) {
       return menuFail('CATEGORY_NOT_EMPTY', 'Move or remove the dishes in this category first.', 409)
     }
+    if (error instanceof ZoneNotEmptyError) {
+      return menuFail('ZONE_NOT_EMPTY', 'Move or remove the tables in this zone first.', 409)
+    }
+    if (error instanceof TableInUseError) return menuFail('TABLE_IN_USE', error.message, 409)
+    if (error instanceof LabelTakenError) return menuFail('LABEL_TAKEN', error.message, 409)
+    // The partial unique index is the backstop behind the label check (a race).
+    if (isUniqueViolation(error, TABLE_LABEL_INDEX)) {
+      return menuFail('LABEL_TAKEN', 'There is already a table with that label', 409)
+    }
     if (error instanceof MenuNotFoundError) return menuFail('NOT_FOUND', 'Not found', 404)
     if (error instanceof MenuRuleError) return menuFail('INVALID', error.message, 422)
-    console.error('[api/manage/menu] Write failed:', error)
+    console.error(`[api/manage/${area}] Write failed:`, error)
     return menuFail('INTERNAL_ERROR', 'Could not save the change', 500)
   }
 }

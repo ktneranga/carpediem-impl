@@ -123,7 +123,7 @@ export async function POST(
     const [anchor] = await db
       .select({ zoneId: tables.zoneId })
       .from(tables)
-      .where(eq(tables.id, anchorId))
+      .where(and(eq(tables.id, anchorId), eq(tables.isActive, true)))
       .limit(1)
 
     if (!anchor) {
@@ -133,7 +133,8 @@ export async function POST(
     const targets = await db
       .select({ id: tables.id, label: tables.label, zoneId: tables.zoneId, status: tables.status })
       .from(tables)
-      .where(inArray(tables.id, tableIds))
+      // Removed tables (Story 10.3) are not offered and cannot be merged in.
+      .where(and(inArray(tables.id, tableIds), eq(tables.isActive, true)))
 
     if (targets.length !== tableIds.length) {
       return fail('TABLE_NOT_FOUND', 'One of the tables does not exist', 404)

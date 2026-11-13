@@ -230,6 +230,9 @@ export const zones = pgTable('zones', {
   name:         text('name').notNull(),
   displayOrder: integer('display_order').notNull().default(0),
   isActive:     boolean('is_active').notNull().default(true),
+  /** Sync-ready (FR71): bumped by every Manage write, which also appends to `config_changes` (Story 10.3). */
+  version:      integer('version').notNull().default(1),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_zones_tenant_id').on(t.tenantId),
 ])
@@ -249,9 +252,20 @@ export const tables = pgTable('tables', {
    * This is the current state only; the history lives in table_status_events.
    */
   unavailableReason: text('unavailable_reason'),
+  /**
+   * Removed from Manage → Floor (Story 10.3). Nothing is deleted: sessions,
+   * bills and receipts still point at the row and keep naming it. Every query
+   * that offers a table for NEW use filters on this; history reads do not.
+   */
+  isActive:     boolean('is_active').notNull().default(true),
+  /** Sync-ready (FR71): bumped by every Manage write, which also appends to `config_changes`. */
+  version:      integer('version').notNull().default(1),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_tables_tenant_id').on(t.tenantId),
   index('idx_tables_zone_id').on(t.zoneId),
+  /** Waiters, tickets and bills name a table by its label: no two active ones alike, ignoring case. */
+  uniqueIndex('idx_tables_tenant_label_active').on(t.tenantId, sql`lower(${t.label})`).where(sql`${t.isActive}`),
 ])
 
 /**

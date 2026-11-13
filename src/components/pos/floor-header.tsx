@@ -1,7 +1,6 @@
 'use client'
 
 import { CashDrawerButton } from '@/components/pos/cash-drawer-button'
-import { StaffBadge } from '@/components/pos/staff-badge'
 import { StaffMenu } from '@/components/pos/staff-menu'
 import { cn } from '@/lib/utils'
 
@@ -95,16 +94,7 @@ export function FloorHeader({
 
         <div className="flex items-center gap-sp-2">
           {canOpenDrawer ? <CashDrawerButton onOpened={() => onDrawerOpened?.()} /> : null}
-          {onManage ? (
-            <StaffMenu
-              staffName={staffName}
-              clock={clock}
-              onManage={onManage}
-              onSwitchUser={onStaffTap}
-            />
-          ) : (
-            <StaffBadge staffName={staffName} clock={clock} onTap={onStaffTap} />
-          )}
+          <StaffMenu staffName={staffName} clock={clock} onManage={onManage} onSwitchUser={onStaffTap} />
         </div>
       </div>
     </header>

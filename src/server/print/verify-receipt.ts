@@ -478,7 +478,7 @@ async function part2() {
   // A paid table, then one more drink: it owes again.
   const [freeTable] = await sql(
     `SELECT t.id, t.label FROM tables t
-      WHERE t.status <> 'unavailable'
+      WHERE t.status <> 'unavailable' AND t.is_active
         AND NOT EXISTS (SELECT 1 FROM order_session_tables ost WHERE ost.table_id = t.id AND ost.released_at IS NULL)
       LIMIT 1`,
   )

@@ -121,6 +121,19 @@ export function emitMenuChanged(): void {
   }
 }
 
+/**
+ * The floor changed in Manage — a zone or table added, renamed, moved,
+ * reordered, removed or restored (Story 10.3). No payload: every tablet
+ * refetches its table grid and pickers.
+ */
+export function emitFloorChanged(): void {
+  try {
+    getIO().emit('floor:changed', {})
+  } catch (error) {
+    console.error('[socket] Failed to emit floor:changed:', error)
+  }
+}
+
 // ── Rooms ────────────────────────────────────────────────────────────────────
 //
 // Everything ABOVE is a broadcast to every connected (and, since Story 4.5,

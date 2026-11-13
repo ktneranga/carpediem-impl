@@ -2,7 +2,7 @@
 
 import { ArrowLeft } from 'lucide-react'
 import { createElement } from 'react'
-import { StaffBadge } from '@/components/pos/staff-badge'
+import { StaffMenu } from '@/components/pos/staff-menu'
 import { zoneIcon } from '@/lib/design'
 import { cn } from '@/lib/utils'
 
@@ -41,6 +41,7 @@ export function OrderHeader({
   clock,
   onBack,
   onStaffTap,
+  onManage,
 }: {
   /** "B1", "B1 + B3" for a merged group, or "Counter" for a counter sale. */
   tableLabel: string
@@ -58,6 +59,8 @@ export function OrderHeader({
   clock: string
   onBack: () => void
   onStaffTap: () => void
+  /** Owner only: Manage in the staff menu. */
+  onManage?: () => void
 }) {
   return (
     <header className="flex shrink-0 items-start justify-between gap-sp-3 border-b border-slate-200 bg-white px-sp-4 py-sp-3">
@@ -116,7 +119,7 @@ export function OrderHeader({
       {/* Was a plain "Nina 12:46" in a 56px pill while the floor drew the
           filled circle — the same control, two appearances, on two screens a
           waiter moves between constantly. One component now. */}
-      <StaffBadge staffName={staffName} clock={clock} onTap={onStaffTap} />
+      <StaffMenu staffName={staffName} clock={clock} onManage={onManage} onSwitchUser={onStaffTap} />
     </header>
   )
 }

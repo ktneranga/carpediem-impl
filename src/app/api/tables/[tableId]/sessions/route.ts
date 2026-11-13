@@ -143,7 +143,8 @@ export async function POST(
         zoneId: tables.zoneId,
       })
       .from(tables)
-      .where(eq(tables.id, tableId))
+      // A table removed in Manage (Story 10.3) cannot be opened, even by id from a stale tablet.
+      .where(and(eq(tables.id, tableId), eq(tables.isActive, true)))
       .limit(1)
 
     if (!table) {
@@ -167,7 +168,7 @@ export async function POST(
           status: tables.status,
         })
         .from(tables)
-        .where(inArray(tables.id, additionalTableIds))
+        .where(and(inArray(tables.id, additionalTableIds), eq(tables.isActive, true)))
 
       if (extras.length !== additionalTableIds.length) {
         return fail('TABLE_NOT_FOUND', 'One of the tables does not exist', 404)

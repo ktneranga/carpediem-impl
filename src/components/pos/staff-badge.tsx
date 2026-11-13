@@ -28,8 +28,11 @@ export function StaffBadge({
   staffName,
   clock,
   onTap,
+  menuOpen,
 }: {
   staffName: string
+  /** Whether the staff menu this badge opens is showing (for screen readers). */
+  menuOpen: boolean
   /** Wall clock, "12:46". Passed in so the whole screen ticks together. */
   clock: string
   onTap: () => void
@@ -46,7 +49,9 @@ export function StaffBadge({
       type="button"
       onClick={onTap}
       // Names, not roles. Accountability is a design feature.
-      aria-label={`Signed in as ${staffName}. Switch user.`}
+      aria-label={`Signed in as ${staffName}. Staff menu.`}
+      aria-haspopup="menu"
+      aria-expanded={menuOpen}
       className={cn(
         'flex min-h-touch-standard shrink-0 items-center gap-sp-2 rounded-control px-sp-2',
         'transition-transform duration-80 ease-standard active:scale-[0.97]',

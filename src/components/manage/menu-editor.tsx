@@ -4,6 +4,16 @@ import { createElement, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Plus, Trash2, Undo2, X } from 'lucide-react'
 import { SortableList } from '@/components/manage/sortable-list'
+import {
+  ApiError,
+  button,
+  call as callApi,
+  ConfirmDialog,
+  icon,
+  input,
+  primary,
+  secondary,
+} from '@/components/manage/manage-ui'
 import type { ManageCategory, ManageGroup, ManageItem, ManageOption } from '@/server/services/menu-admin.service'
 import { menuCategoryIcon, routeForDestination } from '@/lib/design'
 import { lkrFromPaisa, paisaFromLkrInput, signedLkrFromPaisa } from '@/lib/format'
@@ -36,6 +46,20 @@ function isDrinksCategory(category: ManageCategory): boolean {
   return active.length > 0 && active.every((item) => item.productionDestination === 'bar')
 }
 
+type Side = 'Food' | 'Drinks'
+
+/**
+ * Where the editor lists a category. Its dishes decide (`isDrinksCategory`);
+ * an EMPTY one stays on the side it was added from (Teran, 2026-11-13), so a
+ * new drinks category does not first appear under Food. That memory is this
+ * screen's only — the server has no notion of a side — so after a reload an
+ * empty category is listed under Food again until it has a dish.
+ */
+function sideOf(category: ManageCategory, addedTo: Record<string, Side>): Side {
+  if (category.items.some((item) => item.isActive)) return isDrinksCategory(category) ? 'Drinks' : 'Food'
+  return addedTo[category.id] ?? 'Food'
+}
+
 /** The station chip, in the same colour and icon as the order screen's. */
 function StationChip({ destination }: { destination: Destination }) {
   const route = routeForDestination(destination)
@@ -47,46 +71,7 @@ function StationChip({ destination }: { destination: Destination }) {
   )
 }
 
-class ApiError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
-    super(message)
-  }
-}
-
-async function call(method: string, url: string, body?: unknown) {
-  const response = await fetch(url, {
-    method,
-    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
-  const json = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null
-  if (!response.ok) {
-    if (response.status === 401) {
-      // The Manage session or the PIN session ended: back through the gate.
-      window.location.assign(`/manage/unlock?next=${encodeURIComponent('/manage/menu')}`)
-    }
-    throw new ApiError(json?.error?.code ?? 'ERROR', json?.error?.message ?? 'Could not save the change')
-  }
-  return json
-}
-
-const input = cn(
-  'h-11 rounded-control border border-slate-300 bg-white px-sp-3 text-fs-14 text-slate-900',
-  'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500',
-)
-const button = cn(
-  'inline-flex h-11 shrink-0 items-center justify-center gap-sp-1 rounded-control px-sp-3 text-fs-14 font-bold',
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:opacity-50',
-)
-const primary = cn(button, 'bg-brand-800 text-white')
-const secondary = cn(button, 'border border-slate-200 bg-white text-slate-900 hover:bg-slate-50')
-const icon = cn(
-  'inline-flex size-11 shrink-0 items-center justify-center rounded-control text-slate-600 hover:bg-slate-100',
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:opacity-30',
-)
+const call = (method: string, url: string, body?: unknown) => callApi(method, url, body, '/manage/menu')
 
 export function MenuEditor() {
   const queryClient = useQueryClient()
@@ -96,6 +81,8 @@ export function MenuEditor() {
   const [confirm, setConfirm] = useState<{ text: string; run: () => Promise<void> } | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  /** Empty categories added from the Drinks (or Food) side — see `sideOf`. */
+  const [addedTo, setAddedTo] = useState<Record<string, Side>>({})
 
   const queryKey = ['manage-menu', showRemoved] as const
   const { data: categories = [], isLoading } = useQuery({
@@ -156,8 +143,7 @@ export function MenuEditor() {
         <section aria-label="Categories" className="flex flex-col gap-sp-2 rounded-panel bg-white p-sp-3 lg:w-72 lg:shrink-0">
           <h2 className="px-sp-2 text-fs-14 font-bold tracking-micro text-slate-500 uppercase">Categories</h2>
           {(['Food', 'Drinks'] as const).map((side) => {
-            const list = categories.filter((category) => isDrinksCategory(category) === (side === 'Drinks'))
-            if (list.length === 0) return null
+            const list = categories.filter((category) => sideOf(category, addedTo) === side)
             return (
               <div key={side} className="flex flex-col gap-sp-1">
                 <h3 className="px-sp-2 pt-sp-2 text-fs-12 font-bold text-slate-500">{side}</h3>
@@ -171,7 +157,7 @@ export function MenuEditor() {
                   onReorder={(sideIds) => {
                     const queue = [...sideIds]
                     const ids = categories.map((category) =>
-                      isDrinksCategory(category) === (side === 'Drinks') ? queue.shift()! : category.id,
+                      sideOf(category, addedTo) === side ? queue.shift()! : category.id,
                     )
                     return reorder('category', null, ids)
                   }}
@@ -195,10 +181,23 @@ export function MenuEditor() {
                     />
                   )}
                 />
+                <AddCategory
+                  side={side}
+                  busy={busy}
+                  onAdd={async (name) => {
+                    const result = (await run('POST', '/api/manage/menu/categories', { name })) as { data?: { id: string } } | null
+                    const id = result?.data?.id
+                    if (id) {
+                      setAddedTo((current) => ({ ...current, [id]: side }))
+                      // Straight to it: the next step is its first dish.
+                      setSelectedId(id)
+                    }
+                    return result
+                  }}
+                />
               </div>
             )
           })}
-          <AddCategory busy={busy} onAdd={(name) => run('POST', '/api/manage/menu/categories', { name })} />
         </section>
 
         {/* ── Dishes ─────────────────────────────────────────────────────── */}
@@ -270,7 +269,7 @@ export function MenuEditor() {
           item={editing.mode === 'edit' ? editingItem : null}
           categories={categories}
           defaultCategoryId={selected.id}
-          defaultDestination={isDrinksCategory(selected) ? 'bar' : 'kitchen'}
+          defaultDestination={sideOf(selected, addedTo) === 'Drinks' ? 'bar' : 'kitchen'}
           busy={busy}
           run={run}
           reorder={reorder}
@@ -283,6 +282,7 @@ export function MenuEditor() {
       {confirm ? (
         <ConfirmDialog
           text={confirm.text}
+          note="Past orders and bills keep it. You can restore a removed dish."
           busy={busy}
           onCancel={() => setConfirm(null)}
           onConfirm={async () => {
@@ -411,7 +411,7 @@ function DishRow({
   )
 }
 
-function AddCategory({ busy, onAdd }: { busy: boolean; onAdd: (name: string) => Promise<unknown> }) {
+function AddCategory({ side, busy, onAdd }: { side: Side; busy: boolean; onAdd: (name: string) => Promise<unknown> }) {
   const [name, setName] = useState('')
   return (
     <form
@@ -421,7 +421,7 @@ function AddCategory({ busy, onAdd }: { busy: boolean; onAdd: (name: string) => 
         if (await onAdd(name)) setName('')
       }}
     >
-      <input aria-label="New category name" placeholder="New category" maxLength={60} className={cn(input, 'min-w-0 flex-1')} value={name} onChange={(e) => setName(e.target.value)} />
+      <input aria-label={`New ${side.toLowerCase()} category name`} placeholder={`New ${side.toLowerCase()} category`} maxLength={60} className={cn(input, 'min-w-0 flex-1')} value={name} onChange={(e) => setName(e.target.value)} />
       <button type="submit" className={secondary} disabled={busy || name.trim() === ''}>
         <Plus className="size-4" aria-hidden="true" /> Add
       </button>
@@ -807,29 +807,6 @@ function AddGroup({ busy, onAdd }: { busy: boolean; onAdd: (body: object) => Pro
         <Plus className="size-4" aria-hidden="true" /> Add group
       </button>
     </form>
-  )
-}
-
-function ConfirmDialog({ text, busy, onCancel, onConfirm }: { text: string; busy: boolean; onCancel: () => void; onConfirm: () => void }) {
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirm-title"
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-sp-4"
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') onCancel()
-      }}
-    >
-      <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2">
-        <h2 id="confirm-title" className="text-fs-20 font-extrabold text-slate-900">{text}</h2>
-        <p className="text-fs-14 text-slate-600">Past orders and bills keep it. You can restore a removed dish.</p>
-        <div className="flex gap-sp-3">
-          <button type="button" autoFocus className={cn(secondary, 'flex-1')} onClick={onCancel}>Cancel</button>
-          <button type="button" className={cn(primary, 'flex-1')} disabled={busy} onClick={onConfirm}>Remove</button>
-        </div>
-      </div>
-    </div>
   )
 }
 

@@ -134,7 +134,8 @@ export async function POST(
     const targets = await db
       .select({ id: tables.id, label: tables.label, zoneId: tables.zoneId, status: tables.status })
       .from(tables)
-      .where(inArray(tables.id, tableIds))
+      // Removed tables (Story 10.3) cannot take an order.
+      .where(and(inArray(tables.id, tableIds), eq(tables.isActive, true)))
 
     if (targets.length !== tableIds.length) {
       return fail('TABLE_NOT_FOUND', 'One of the tables does not exist', 404)

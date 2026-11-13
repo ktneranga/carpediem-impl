@@ -148,7 +148,7 @@ development_status:
   10-0-manage-area-and-owner-password: review  # added 2026-11-04 — go-live
   10-1-build-hamburgerdrawer-component: backlog
   10-2-implement-staff-account-management: backlog
-  10-3-implement-zone-table-and-station-configuration: ready-for-dev  # LITE (zones + tables) brought into go-live 2026-11-13 — stations later
+  10-3-implement-zone-table-and-station-configuration: review  # LITE (zones + tables) brought into go-live 2026-11-13 — stations later
   10-4-implement-menu-management: review
   10-5-implement-tenant-feature-flags-and-brand-customization: backlog
   10-6-implement-per-user-permissions: backlog  # added 2026-10-31

@@ -352,7 +352,9 @@ async function occupyTables(tx: Tx, tableIds: string[]): Promise<void> {
   const updated = await tx
     .update(tables)
     .set({ status: 'occupied' })
-    .where(and(inArray(tables.id, tableIds), ne(tables.status, 'unavailable')))
+    // is_active too (Story 10.3): a removal that commits while this seating is
+    // in flight holds the row lock; this UPDATE then re-reads it and refuses.
+    .where(and(inArray(tables.id, tableIds), ne(tables.status, 'unavailable'), eq(tables.isActive, true)))
     .returning({ id: tables.id })
 
   if (updated.length !== tableIds.length) {
