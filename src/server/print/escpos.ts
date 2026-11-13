@@ -20,7 +20,15 @@
  */
 import { lkrFromPaisa, percentFromBp } from '@/lib/format'
 import { dailyOrderLabel, orderReference } from '@/lib/order-number'
-import { isDrawerKickPayload, isReceiptPayload, type PrintPayload, type ReceiptPayload, type TicketPayload } from '@/types/tickets'
+import {
+  isDrawerKickPayload,
+  isReceiptPayload,
+  isTakingsPayload,
+  type PrintPayload,
+  type ReceiptPayload,
+  type TakingsPayload,
+  type TicketPayload,
+} from '@/types/tickets'
 import type { TicketLine } from '@/types/orders'
 
 // ── Commands ────────────────────────────────────────────────────────────────
@@ -634,12 +642,103 @@ export function buildReceipt(receipt: ReceiptPayload): Buffer {
   return Buffer.from(parts)
 }
 
+const NO_SALE_REASONS: Record<string, string> = { change: 'Change', float: 'Float', other: 'Other' }
+
+/**
+ * The end-of-day slip (Story 9.5), the owner's paper. Defensive like
+ * `buildReceipt`: a missing or wrong-typed field prints as zero or nothing,
+ * never throws (the job is jsonb and may outlive this code).
+ */
+export function buildTakings(payload: TakingsPayload): Buffer {
+  const parts: number[] = []
+  const command = (bytes: number[]) => parts.push(...bytes)
+  const emit = (text: string) => {
+    parts.push(...Buffer.from(foldToAscii(text), 'ascii'))
+    parts.push(0x0a)
+  }
+  const divider = () => emit('-'.repeat(PAPER_COLUMNS))
+  const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0)
+  const row = (left: string, amount: unknown) => {
+    for (const line of amountLines(left, receiptMoney(num(amount)))) emit(line)
+  }
+  const count = (left: string, value: unknown) => {
+    for (const line of amountLines(left, String(num(value)))) emit(line)
+  }
+  const t = (payload.takings ?? {}) as Partial<TakingsPayload['takings']>
+  const paid = (t.paid ?? {}) as Partial<TakingsPayload['takings']['paid']>
+  const date = typeof t.businessDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.businessDate) ? t.businessDate : ''
+
+  command(INIT)
+  command(ALIGN_CENTRE)
+  command(BOLD_ON)
+  for (const line of wrapLine(foldToAscii(payload.restaurantName) || 'End of day')) emit(line.trim())
+  emit('END OF DAY')
+  command(BOLD_OFF)
+  if (date) emit(`Business day ${date}`)
+  command(ALIGN_LEFT)
+  if (typeof payload.printedAt === 'string') {
+    emit(`Printed ${calendarDate(payload.printedAt, payload.timeZone)}  ${clockTime(payload.printedAt, payload.timeZone)}`)
+  }
+  const by = foldToAscii(payload.printedBy).trim()
+  if (by !== '') emit(`By: ${by}`)
+  divider()
+
+  count('Orders', t.orders)
+  row('Items', t.itemsPaisa)
+  if (num(t.compsPaisa) !== 0) row('Comps', t.compsPaisa)
+  row('Subtotal', t.subtotalPaisa)
+  row('Service charge', t.serviceChargePaisa)
+  row('Tax', t.taxPaisa)
+  command(BOLD_ON)
+  row('Total billed', t.billedPaisa)
+  command(BOLD_OFF)
+  divider()
+
+  row('Cash', paid.cashPaisa)
+  row('Card', paid.cardPaisa)
+  if (num(paid.transferPaisa) !== 0) row('Transfer', paid.transferPaisa)
+  command(SIZE_TALL)
+  command(BOLD_ON)
+  row('Total paid', paid.totalPaisa)
+  command(BOLD_OFF)
+  command(SIZE_NORMAL)
+
+  const unpaid = (t.closedUnpaid ?? {}) as Partial<TakingsPayload['takings']['closedUnpaid']>
+  if (num(unpaid.count) > 0) {
+    divider()
+    row(`Closed unpaid (${num(unpaid.count)})`, unpaid.owedPaisa)
+  }
+
+  const open = Array.isArray(t.openOrders) ? t.openOrders : []
+  divider()
+  emit(`Still open: ${open.length}`)
+  for (const order of open) {
+    const number = Number.isInteger(order?.dailyNumber) ? dailyOrderLabel(order.dailyNumber) : '#?'
+    const where = Array.isArray(order?.tables) ? order.tables.map((label) => foldToAscii(label)).join(' + ') : ''
+    for (const line of wrapLine(`${number}  ${where}`, 2)) emit(line)
+  }
+
+  const noSales = Array.isArray(t.noSales) ? t.noSales : []
+  divider()
+  emit(`No-sale drawer openings: ${noSales.length}`)
+  for (const opening of noSales) {
+    const time = typeof opening?.openedAt === 'string' ? clockTime(opening.openedAt, payload.timeZone) : ''
+    const why = opening?.reason === 'other' ? foldToAscii(opening.note) || 'Other' : NO_SALE_REASONS[opening?.reason] ?? ''
+    for (const line of wrapLine(`${time}  ${foldToAscii(opening?.staffName)}  ${why}`, 2)) emit(line)
+  }
+
+  command(feedLines(4))
+  command(CUT)
+  return Buffer.from(parts)
+}
+
 /**
  * The bytes for any queued job: a receipt, or — every job with no `kind`,
  * including all those written before Story 6.6 — a kitchen ticket.
  */
 export function buildPrintBytes(payload: PrintPayload): Buffer {
   if (isDrawerKickPayload(payload)) return buildDrawerKick()
+  if (isTakingsPayload(payload)) return buildTakings(payload)
   return isReceiptPayload(payload) ? buildReceipt(payload) : buildTicket(payload)
 }
 

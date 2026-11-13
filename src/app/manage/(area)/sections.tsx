@@ -27,13 +27,13 @@ export const MANAGE_SECTIONS = [
     href: '/manage/staff',
     title: 'Staff',
     story: '10.2',
-    what: 'Add staff, set their PINs and roles, and deactivate someone who has left.',
+    what: 'Add staff, set their jobs and PINs, and deactivate someone who has left.',
   },
   {
     href: '/manage/end-of-day',
     title: 'End of day',
     story: '9.5',
-    what: "The day's takings by payment method, and what the cash drawer should hold.",
+    what: "The day's takings by payment method, what is still open, and drawer openings.",
   },
 ] as const
 

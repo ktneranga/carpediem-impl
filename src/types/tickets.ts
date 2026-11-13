@@ -161,11 +161,57 @@ export type DrawerKickPayload = {
   opening: 'sale' | 'no_sale'
 }
 
-export type PrintPayload = TicketPayload | ReceiptPayload | DrawerKickPayload
+/**
+ * One business day's takings (Story 9.5) — the Manage screen's data and the
+ * body of the printed slip. Integer paisa throughout, all from what was
+ * recorded (bills, payments), never re-priced.
+ */
+export type Takings = {
+  /** `YYYY-MM-DD`, the business date. */
+  businessDate: string
+  /** Orders of the day with at least one item. */
+  orders: number
+  itemsPaisa: number
+  /** Negative (or 0). Nothing writes comps before Story 7.3. */
+  compsPaisa: number
+  subtotalPaisa: number
+  serviceChargePaisa: number
+  taxPaisa: number
+  billedPaisa: number
+  paid: { cashPaisa: number; cardPaisa: number; transferPaisa: number; totalPaisa: number }
+  /** Orders closed as walkout or abandoned, and what their bills still owed. */
+  closedUnpaid: { count: number; owedPaisa: number }
+  openOrders: { dailyNumber: number; tables: string[]; openedAt: string; openedBy: string }[]
+  noSales: { openedAt: string; staffName: string; reason: 'change' | 'float' | 'other'; note: string | null }[]
+}
+
+/**
+ * The end-of-day slip (Story 9.5), for the receipt printer. Self-contained like
+ * a receipt. `tableLabels` is `['End of day']` so a `printer:alert` names it.
+ * The owner's paper, never a guest's.
+ */
+export type TakingsPayload = {
+  kind: 'takings'
+  destination: 'cashier'
+  tableLabels: string[]
+  restaurantName: string
+  /** ISO, the database clock when Print was tapped. */
+  printedAt: string
+  timeZone?: string
+  printedBy: string | null
+  takings: Takings
+}
+
+export type PrintPayload = TicketPayload | ReceiptPayload | DrawerKickPayload | TakingsPayload
 
 /** Whether a stored payload is a receipt. A job with no `kind` is a ticket. */
 export function isReceiptPayload(payload: PrintPayload): payload is ReceiptPayload {
   return (payload as { kind?: unknown }).kind === 'receipt'
+}
+
+/** Whether a stored payload is the end-of-day slip (Story 9.5). */
+export function isTakingsPayload(payload: PrintPayload): payload is TakingsPayload {
+  return (payload as { kind?: unknown }).kind === 'takings'
 }
 
 /** Whether a stored payload is a cash-drawer kick (Story 6.7). */

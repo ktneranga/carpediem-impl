@@ -16,7 +16,7 @@
  * No `server-only` anywhere in this folder: the worker is loaded from
  * `server.ts`, outside Next, where that module throws at import time.
  */
-import { isDrawerKickPayload, isReceiptPayload, type PrintDestination, type PrintPayload, type ReceiptPayload, type TicketPayload } from '@/types/tickets'
+import { isDrawerKickPayload, isReceiptPayload, isTakingsPayload, type PrintDestination, type PrintPayload, type ReceiptPayload, type TicketPayload } from '@/types/tickets'
 import { percentFromBp } from '@/lib/format'
 import {
   calendarDate,
@@ -86,6 +86,14 @@ function renderReceiptText(receipt: ReceiptPayload): string {
 export function renderTicketText(payload: PrintPayload): string {
   if (isDrawerKickPayload(payload)) return `CASH DRAWER (${payload.opening === 'no_sale' ? 'no sale' : 'sale'})`
   if (isReceiptPayload(payload)) return renderReceiptText(payload)
+  if (isTakingsPayload(payload)) {
+    const t = payload.takings
+    return [
+      `END OF DAY ${t.businessDate}`,
+      `Orders ${t.orders}  ·  Billed ${t.billedPaisa}  ·  Paid ${t.paid.totalPaisa} (cash ${t.paid.cashPaisa}, card ${t.paid.cardPaisa})`,
+      `Still open ${t.openOrders.length}  ·  No-sale ${t.noSales.length}`,
+    ].join('\n')
+  }
   const ticket: TicketPayload = payload
   const lines: string[] = []
   const number = Number.isInteger(ticket.dailyNumber) ? ` ${dailyOrderLabel(ticket.dailyNumber!)}` : ''
