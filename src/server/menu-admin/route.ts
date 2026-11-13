@@ -23,12 +23,13 @@ import {
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 /**
- * Shared by every `/api/manage/menu` route (Story 10.4) and every
- * `/api/manage/floor` route (Story 10.3) — the two differ only in what they
- * broadcast.
+ * Shared by every `/api/manage/menu` route (Story 10.4), every
+ * `/api/manage/floor` route (Story 10.3) and the Sold out routes (Story 8.3) —
+ * they differ only in what they broadcast.
  *
  * The proxy has already required an owner POS session AND a live Manage
- * session (Story 10.0) for this prefix. Here: who is writing (for the change
+ * session (Story 10.0) for `/api/manage`; for Sold out, an owner or waiter
+ * POS session. Here: who is writing (for the change
  * log), which tenant (from the staff row, never from the request), one
  * transaction, one `menu:changed` broadcast after commit, and one mapping from
  * the service's errors to HTTP.
@@ -43,7 +44,7 @@ export const versionSchema = z.number().int().positive()
 
 export type Actor = { staffId: string; tenantId: string }
 
-async function actorOf(request: Request): Promise<Actor | null> {
+export async function actorOf(request: Request): Promise<Actor | null> {
   const staffId = request.headers.get('x-staff-id')
   if (!staffId) return null
   const [member] = await db.select({ tenantId: staff.tenantId }).from(staff).where(eq(staff.id, staffId)).limit(1)
@@ -62,11 +63,20 @@ export async function readBody<T>(request: Request, schema: z.ZodType<T>): Promi
   return parsed.success ? parsed.data : null
 }
 
-type Write = (tx: Tx, actor: Actor) => Promise<unknown>
+type Write<T = unknown> = (tx: Tx, actor: Actor) => Promise<T>
 
 /** Runs one menu write: actor, transaction, `menu:changed`, errors. */
 export function menuWrite(request: Request, write: Write, status = 200): Promise<NextResponse> {
   return manageWrite(request, write, status, emitMenuChanged, 'menu')
+}
+
+/**
+ * Runs one Sold out write (Story 8.3) — `/api/menu-items` and `/api/menu-options`,
+ * owner AND waiters, no Manage session. `broadcast` gets the write's result, so
+ * a dish toggle can send `menu:item_updated` from the row it returned.
+ */
+export function soldOutWrite<T>(request: Request, write: Write<T>, broadcast: (data: T) => void): Promise<NextResponse> {
+  return manageWrite(request, write, 200, broadcast, 'sold-out')
 }
 
 /** Runs one floor write (zones, tables): actor, transaction, `floor:changed`, errors. */
@@ -74,18 +84,18 @@ export function floorWrite(request: Request, write: Write, status = 200): Promis
   return manageWrite(request, write, status, emitFloorChanged, 'floor')
 }
 
-async function manageWrite(
+async function manageWrite<T>(
   request: Request,
-  write: Write,
+  write: Write<T>,
   status: number,
-  broadcast: () => void,
+  broadcast: (data: T) => void,
   area: string,
 ): Promise<NextResponse> {
   try {
     const actor = await actorOf(request)
     if (!actor) return menuFail('UNAUTHENTICATED', 'Sign in required', 401)
     const data = await db.transaction((tx) => write(tx, actor))
-    broadcast()
+    broadcast(data)
     return NextResponse.json({ success: true, data: data ?? null }, { status })
   } catch (error) {
     if (error instanceof StaleVersionError) {
@@ -116,9 +126,12 @@ export function versionParam(request: Request): number | null {
   return parsed.success ? parsed.data : null
 }
 
-/** Unwraps and checks a dynamic `[id]` segment. */
-export async function idParam(params: Promise<{ id: string }>): Promise<string | null> {
-  const parsed = idSchema.safeParse((await params).id)
+/** Unwraps and checks a dynamic `[id]` segment (or another name, e.g. `[itemId]`). */
+export async function idParam<K extends string = 'id'>(
+  params: Promise<Record<K, string>>,
+  name: K = 'id' as K,
+): Promise<string | null> {
+  const parsed = idSchema.safeParse((await params)[name])
   return parsed.success ? parsed.data : null
 }
 

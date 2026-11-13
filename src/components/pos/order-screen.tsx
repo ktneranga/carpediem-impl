@@ -155,6 +155,8 @@ export type OrderScreenProps = {
   canAddCustomCharge?: boolean
   /** Owner only: the staff menu offers Manage (Story 10.0). */
   canManage?: boolean
+  /** Owner and waiters (`canMarkSoldOut`, Story 8.3): the staff menu offers Sold out. */
+  canMarkSoldOut?: boolean
 }
 
 /** FR9's destinations as a waiter says them, for the bottom bar. */
@@ -363,6 +365,7 @@ export function OrderScreen({
   initialHasUnbilled,
   canAddCustomCharge = false,
   canManage = false,
+  canMarkSoldOut = false,
   tableLabel,
   orderLabel = null,
   tabLabel = null,
@@ -1431,6 +1434,7 @@ export function OrderScreen({
         // Switch user is also the only way off this screen for a waiter ending a shift.
         onStaffTap={signOut}
         onManage={canManage ? () => window.location.assign('/manage') : undefined}
+        onSoldOut={canMarkSoldOut ? () => router.push('/manage/sold-out') : undefined}
       />
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">

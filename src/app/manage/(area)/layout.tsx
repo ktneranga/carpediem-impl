@@ -1,14 +1,21 @@
+import { headers } from 'next/headers'
 import { ManageNav } from './manage-nav'
 
 /**
  * The Manage area (Story 10.0, AC 5). Reached only through the proxy's Manage
- * gate. Laptop-first: sections on the left from `md:`, a top row below it.
- * Light theme; 44px targets kept, it is used on tablets too.
+ * gate — except Sold out, which owner and waiters open without the password
+ * (Story 8.3). Laptop-first: sections on the left from `md:`, a top row below
+ * it. Light theme; 44px targets kept, it is used on tablets too.
+ *
+ * The role comes from the proxy's `x-staff-role` header (set from the
+ * validated session only); the nav shows a waiter just the sections they may
+ * open. The proxy still decides access — this only hides links.
  */
-export default function ManageAreaLayout({ children }: { children: React.ReactNode }) {
+export default async function ManageAreaLayout({ children }: { children: React.ReactNode }) {
+  const ownerView = (await headers()).get('x-staff-role') === 'owner'
   return (
     <div className="flex min-h-screen flex-col bg-slate-100 md:flex-row">
-      <ManageNav />
+      <ManageNav ownerView={ownerView} />
       <main className="min-w-0 flex-1 p-sp-4 md:p-sp-6">{children}</main>
     </div>
   )

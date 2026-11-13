@@ -97,8 +97,10 @@ export function MenuItemCard({
           ? isStaged
             ? 'border-brand-500 bg-white shadow-el-2 ring-1 ring-brand-500 ring-inset'
             : 'border-slate-200 bg-white shadow-el-1'
-          : // Off today: flat, no shadow. It is not a surface you can act on.
-            'border-slate-200 bg-slate-100',
+          : // Off today: flat, no shadow — not a surface you can act on — and
+            // RED (Teran, 2026-11-13), the same family as Sold out and the
+            // floor's "needs check", so it is seen across a grid, not missed.
+            'border-unavailable-edge bg-unavailable-body',
         addable && 'transition-transform duration-80 ease-standard active:scale-[0.98]',
         // NO focus ring on the article. It had `focus-within`, which fires on
         // a TAP as well as a keyboard focus — clicking a button focuses it —
@@ -145,7 +147,8 @@ export function MenuItemCard({
         <p
           className={cn(
             'flex items-center gap-sp-1 text-fs-12 font-bold tracking-micro uppercase',
-            item.available ? route.ink : 'text-slate-600',
+            // Off today is a solid red chip with white text (`-band` clears AA).
+            item.available ? route.ink : 'rounded-pill bg-unavailable-band px-sp-2 py-0.5 text-white',
           )}
         >
           {/* `createElement`, not `<Icon />` — the route record HOLDS a
@@ -182,9 +185,9 @@ export function MenuItemCard({
       <h3
         className={cn(
           'pointer-events-none relative z-10 text-fs-18 font-bold',
-          // An 86'd dish stays READABLE — slate-600 is 7.57:1 — and is struck
-          // through, which says "not today" without making the name a guess.
-          item.available ? 'text-slate-900' : 'text-slate-600 line-through',
+          // An 86'd dish stays READABLE — unavailable-ink on its tint — and is
+          // struck through, which says "not today" without making the name a guess.
+          item.available ? 'text-slate-900' : 'text-unavailable-ink line-through',
         )}
       >
         {item.name}
@@ -197,7 +200,7 @@ export function MenuItemCard({
         <p
           className={cn(
             'pointer-events-none text-fs-16 font-semibold tabular-nums',
-            item.available ? 'text-slate-900' : 'text-slate-600',
+            item.available ? 'text-slate-900' : 'text-unavailable-ink',
           )}
         >
           {price}

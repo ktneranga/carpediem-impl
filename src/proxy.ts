@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE_NAME, touchSession, validateSession } from '@/server/services/session.service'
 import { isRoleAllowed } from '@/server/auth/permissions'
-import { isManagePath, loginUrl, manageUnlockUrl } from '@/lib/return-to'
+import { loginUrl, manageUnlockUrl } from '@/lib/return-to'
+import { needsManageSession } from '@/server/auth/manage-gate'
 import {
   MANAGE_COOKIE_NAME,
   manageCookieOptions,
@@ -62,21 +63,8 @@ function forbidden(request: NextRequest): NextResponse {
   return NextResponse.redirect(new URL('/', request.url))
 }
 
-/**
- * Behind the Manage password (Story 10.0, FR70): the area and its API, except
- * the endpoints that get you IN (or out) — without those nobody could unlock.
- */
-const MANAGE_GATE_EXEMPT = new Set([
-  '/manage/unlock',
-  '/api/manage/unlock',
-  '/api/manage/password',
-  '/api/manage/lock',
-])
-
-function needsManageSession(pathname: string): boolean {
-  if (MANAGE_GATE_EXEMPT.has(pathname)) return false
-  return isManagePath(pathname) || pathname === '/api/manage' || pathname.startsWith('/api/manage/')
-}
+// Behind the Manage password (Story 10.0, FR70): `needsManageSession` in
+// `@/server/auth/manage-gate` — the way in, and Sold out (Story 8.3), are not.
 
 function manageLocked(request: NextRequest): NextResponse {
   if (request.nextUrl.pathname.startsWith('/api/')) {

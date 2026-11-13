@@ -19,7 +19,7 @@ import { zoneIcon } from '@/lib/design'
 import { cn } from '@/lib/utils'
 import type { TableGridRow } from '@/app/api/tables/route'
 import type { PaymentState, SessionPaymentChangedPayload, TableStatusChangedPayload } from '@/types/tables'
-import { canOpenCashDrawer, type StaffRole } from '@/server/auth/permissions'
+import { canMarkSoldOut, canOpenCashDrawer, type StaffRole } from '@/server/auth/permissions'
 
 const TABLES_QUERY_KEY = ['tables'] as const
 /**
@@ -1236,6 +1236,8 @@ export function TableGrid({
         // The owner's badge opens a small menu with Manage (Story 10.0).
         // Full navigation: the Manage pages are server-gated by the proxy.
         onManage={role === 'owner' ? () => window.location.assign('/manage') : undefined}
+        // Owner and waiters (Story 8.3). A client navigation: no password.
+        onSoldOut={canMarkSoldOut(role) ? () => router.push('/manage/sold-out') : undefined}
         canOpenDrawer={canOpenCashDrawer(role)}
         onDrawerOpened={() => showNotice('Drawer opening — recorded')}
       />

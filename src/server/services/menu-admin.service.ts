@@ -1,5 +1,5 @@
 import 'server-only'
-import { and, asc, eq, ne, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm'
 import { db } from '@/server/db'
 import { menuCategories, menuItems, modifierGroups, modifierOptions } from '@/server/db/schema'
 import { recordConfigChange } from '@/server/services/config-change.service'
@@ -463,6 +463,8 @@ export type ManageOption = {
   isDefault: boolean
   maxCount: number
   excludesGroupId: string | null
+  /** The sold-out switch (Story 8.3). */
+  isAvailable: boolean
 }
 export type ManageGroup = {
   id: string
@@ -480,6 +482,8 @@ export type ManageItem = {
   pricePaisa: number
   productionDestination: Destination
   isActive: boolean
+  /** The sold-out switch (Story 8.3). Not `isActive`, which is removed. */
+  isAvailable: boolean
   groups: ManageGroup[]
 }
 export type ManageCategory = { id: string; version: number; name: string; items: ManageItem[] }
@@ -503,6 +507,7 @@ export async function loadMenuForManage(
       pricePaisa: menuItems.pricePaisa,
       productionDestination: menuItems.productionDestination,
       isActive: menuItems.isActive,
+      isAvailable: menuItems.isAvailable,
     })
     .from(menuItems)
     .where(and(eq(menuItems.tenantId, tenantId), includeRemoved ? undefined : eq(menuItems.isActive, true)))
@@ -529,6 +534,7 @@ export async function loadMenuForManage(
       isDefault: modifierOptions.isDefault,
       maxCount: modifierOptions.maxCount,
       excludesGroupId: modifierOptions.excludesGroupId,
+      isAvailable: modifierOptions.isAvailable,
     })
     .from(modifierOptions)
     .where(and(eq(modifierOptions.tenantId, tenantId), eq(modifierOptions.isActive, true)))
@@ -550,4 +556,138 @@ export async function loadMenuForManage(
     ])
   }
   return categories.map((category) => ({ ...category, items: itemsByCategory.get(category.id) ?? [] }))
+}
+
+// ── Sold out (Story 8.3) ─────────────────────────────────────────────────────
+//
+// `is_available` is the sold-out switch; `is_active` (removed) is never touched
+// here. LAST WRITE WINS — no expected version: a boolean set twice is the same
+// result, and a STALE refusal mid-service would only slow a waiter down. A
+// change still bumps `version` (so an open Manage → Menu editor reloads before
+// its next save) and is logged in `config_changes` like every other write
+// (FR71). Setting the value it already has writes nothing and logs nothing.
+
+/** Active categories of this tenant — a dish in a removed one is off the menu. */
+const activeCategoryIds = (executor: Tx | typeof db, tenantId: string) =>
+  executor
+    .select({ id: menuCategories.id })
+    .from(menuCategories)
+    .where(and(eq(menuCategories.tenantId, tenantId), eq(menuCategories.isActive, true)))
+
+/** Active dishes in active categories of this tenant. */
+const activeItemIds = (executor: Tx | typeof db, tenantId: string) =>
+  executor
+    .select({ id: menuItems.id })
+    .from(menuItems)
+    .where(
+      and(
+        eq(menuItems.tenantId, tenantId),
+        eq(menuItems.isActive, true),
+        inArray(menuItems.categoryId, activeCategoryIds(executor, tenantId)),
+      ),
+    )
+
+/** Active groups of active dishes of this tenant. */
+const activeGroupIds = (executor: Tx | typeof db, tenantId: string) =>
+  executor
+    .select({ id: modifierGroups.id })
+    .from(modifierGroups)
+    .where(
+      and(
+        eq(modifierGroups.tenantId, tenantId),
+        eq(modifierGroups.isActive, true),
+        inArray(modifierGroups.menuItemId, activeItemIds(executor, tenantId)),
+      ),
+    )
+
+const bump = { version: sql`version + 1`, updatedAt: sql`now()` }
+
+/** A dish sold out (`available: false`) or back on. Returns the row as it now is. */
+export async function setItemAvailable(
+  tx: Tx,
+  a: { tenantId: string; staffId: string; id: string; available: boolean },
+) {
+  const live = and(
+    eq(menuItems.id, a.id),
+    eq(menuItems.tenantId, a.tenantId),
+    eq(menuItems.isActive, true),
+    inArray(menuItems.categoryId, activeCategoryIds(tx, a.tenantId)),
+  )
+  const [changed] = await tx
+    .update(menuItems)
+    .set({ isAvailable: a.available, ...bump } as never)
+    .where(and(live, ne(menuItems.isAvailable, a.available)))
+    .returning()
+  if (changed) {
+    await log(tx, 'item', changed as unknown as Row, a.tenantId, a.staffId)
+    return changed
+  }
+  const [current] = await tx.select().from(menuItems).where(live).limit(1)
+  if (!current) throw new MenuNotFoundError()
+  return current
+}
+
+/** An option sold out or back on. The option, its group and its dish must be active. */
+export async function setOptionAvailable(
+  tx: Tx,
+  a: { tenantId: string; staffId: string; id: string; available: boolean },
+) {
+  const live = and(
+    eq(modifierOptions.id, a.id),
+    eq(modifierOptions.tenantId, a.tenantId),
+    eq(modifierOptions.isActive, true),
+    inArray(modifierOptions.groupId, activeGroupIds(tx, a.tenantId)),
+  )
+  const [changed] = await tx
+    .update(modifierOptions)
+    .set({ isAvailable: a.available, ...bump } as never)
+    .where(and(live, ne(modifierOptions.isAvailable, a.available)))
+    .returning()
+  if (changed) {
+    await log(tx, 'option', changed as unknown as Row, a.tenantId, a.staffId)
+    return changed
+  }
+  const [current] = await tx.select().from(modifierOptions).where(live).limit(1)
+  if (!current) throw new MenuNotFoundError()
+  return current
+}
+
+/** Every active sold-out dish and option back on, in the caller's ONE transaction. Returns how many. */
+export async function resetAvailability(tx: Tx, a: { tenantId: string; staffId: string }) {
+  const items = await tx
+    .update(menuItems)
+    .set({ isAvailable: true, ...bump } as never)
+    .where(
+      and(
+        eq(menuItems.tenantId, a.tenantId),
+        eq(menuItems.isActive, true),
+        eq(menuItems.isAvailable, false),
+        inArray(menuItems.categoryId, activeCategoryIds(tx, a.tenantId)),
+      ),
+    )
+    .returning()
+  for (const row of items) await log(tx, 'item', row as unknown as Row, a.tenantId, a.staffId)
+  const options = await tx
+    .update(modifierOptions)
+    .set({ isAvailable: true, ...bump } as never)
+    .where(
+      and(
+        eq(modifierOptions.tenantId, a.tenantId),
+        eq(modifierOptions.isActive, true),
+        eq(modifierOptions.isAvailable, false),
+        inArray(modifierOptions.groupId, activeGroupIds(tx, a.tenantId)),
+      ),
+    )
+    .returning()
+  for (const row of options) await log(tx, 'option', row as unknown as Row, a.tenantId, a.staffId)
+  return { count: items.length + options.length }
+}
+
+/**
+ * The Sold out board: every active dish in menu order, with its active groups
+ * and options and each one's switch. The editor's own read — one menu query
+ * for Manage, not a third.
+ */
+export function loadSoldOutBoard(executor: Tx | typeof db, tenantId: string) {
+  return loadMenuForManage(executor, { tenantId, includeRemoved: false })
 }

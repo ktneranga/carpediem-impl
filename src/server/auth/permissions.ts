@@ -54,10 +54,19 @@ export const ROUTE_ROLES: RoutePolicy[] = [
 
   // The Manage area (Story 10.0, FR70). Owner only, AND behind the Manage
   // password — the proxy's second gate. Added BEFORE any route under them,
-  // because an unmatched prefix is default-allow. No manager role exists to
-  // give "Sold out" to; Story 8.3 gives that screen its own route outside.
+  // because an unmatched prefix is default-allow.
   { prefix: '/manage', roles: ['owner'] },
   { prefix: '/api/manage', roles: ['owner'] },
+
+  // Sold out (Story 8.3): the one Manage section a waiter may open, and it
+  // needs no Manage password (`manage-gate.ts`). Owner + waiter — no manager
+  // role exists, and a waiter is who hears "the fish is finished". Longest
+  // prefix wins over `/manage`. The APIs sit outside `/api/manage` so the
+  // password gate never applies to them. Added BEFORE the routes, because an
+  // unmatched prefix is default-allow. `canMarkSoldOut` below must say the same.
+  { prefix: '/manage/sold-out', roles: ['owner', 'waiter'] },
+  { prefix: '/api/menu-items', roles: ['owner', 'waiter'] },
+  { prefix: '/api/menu-options', roles: ['owner', 'waiter'] },
 
   // Kitchen display. Listed now even though Epic 5 builds the screen — access
   // policy belongs with the policy, not with whichever story adds the route.
@@ -204,4 +213,16 @@ export function canAddCustomCharge(role: StaffRole | null | undefined): boolean 
  */
 export function canOpenCashDrawer(role: StaffRole | null | undefined): boolean {
   return role === 'owner'
+}
+
+/**
+ * Whether this person may mark a dish or option sold out, and back on (Story
+ * 8.3). Owner and waiters; kitchen tells a waiter.
+ *
+ * Story 10.6 may grant it per person. It must change the `/manage/sold-out`,
+ * `/api/menu-items` and `/api/menu-options` entries in `ROUTE_ROLES` at the
+ * same time, or the menu item shows and the route refuses.
+ */
+export function canMarkSoldOut(role: StaffRole | null | undefined): boolean {
+  return role === 'owner' || role === 'waiter'
 }

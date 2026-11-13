@@ -4,7 +4,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm'
 import { dailyOrderLabel } from '@/lib/order-number'
 import { dishCount } from '@/server/orders/item-count'
 import { z } from 'zod'
-import { canAddCustomCharge, type StaffRole } from '@/server/auth/permissions'
+import { canAddCustomCharge, canMarkSoldOut, type StaffRole } from '@/server/auth/permissions'
 import { db } from '@/server/db'
 import { loadSubmittedRounds } from '@/server/orders/submitted-rounds'
 import { hasUnbilledItems, loadSessionBills } from '@/server/services/bill.service'
@@ -212,6 +212,7 @@ export default async function OrderPage({
       initialHasUnbilled={initialHasUnbilled}
       canAddCustomCharge={canAddCustomCharge(staffRole)}
       canManage={staffRole === 'owner'}
+      canMarkSoldOut={canMarkSoldOut(staffRole)}
     />
   )
 }

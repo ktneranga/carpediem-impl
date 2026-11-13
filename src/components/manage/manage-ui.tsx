@@ -52,17 +52,19 @@ export const icon = cn(
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:opacity-30',
 )
 
-/** Asks once before a remove. `note` says what happens to history. */
+/** Asks once before a remove (or another one-step action: `confirmLabel`). `note` says what happens. */
 export function ConfirmDialog({
   text,
   note,
   busy,
+  confirmLabel = 'Remove',
   onCancel,
   onConfirm,
 }: {
   text: string
   note: string
   busy: boolean
+  confirmLabel?: string
   onCancel: () => void
   onConfirm: () => void
 }) {
@@ -81,7 +83,7 @@ export function ConfirmDialog({
         <p className="text-fs-14 text-slate-600">{note}</p>
         <div className="flex gap-sp-3">
           <button type="button" autoFocus className={cn(secondary, 'flex-1')} onClick={onCancel}>Cancel</button>
-          <button type="button" className={cn(primary, 'flex-1')} disabled={busy} onClick={onConfirm}>Remove</button>
+          <button type="button" className={cn(primary, 'flex-1')} disabled={busy} onClick={onConfirm}>{confirmLabel}</button>
         </div>
       </div>
     </div>

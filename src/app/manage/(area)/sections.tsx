@@ -1,6 +1,7 @@
 /**
  * The Manage sections (Story 10.0, AC 5). Each page is a placeholder until its
- * own story replaces it.
+ * own story replaces it. `waiter: true` marks the ones a waiter may open (Story
+ * 8.3) — the nav shows a waiter only those; `ROUTE_ROLES` is what enforces it.
  */
 export const MANAGE_SECTIONS = [
   {
@@ -19,7 +20,8 @@ export const MANAGE_SECTIONS = [
     href: '/manage/sold-out',
     title: 'Sold out',
     story: '8.3',
-    what: "Today's dishes with a toggle each, to mark one sold out mid-service.",
+    what: 'Mark dishes and options sold out. Waiters can do this too, without the password.',
+    waiter: true,
   },
   {
     href: '/manage/staff',

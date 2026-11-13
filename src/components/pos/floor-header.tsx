@@ -37,6 +37,7 @@ export function FloorHeader({
   canOpenDrawer = false,
   onDrawerOpened,
   onManage,
+  onSoldOut,
 }: {
   occupiedCount: number
   openCount: number
@@ -57,6 +58,8 @@ export function FloorHeader({
    * Omitted, the badge switches user at once, as it always has.
    */
   onManage?: () => void
+  /** Owner and waiters (Story 8.3): Sold out in the badge menu. */
+  onSoldOut?: () => void
 }) {
   return (
     // h-18/72px, measured off the design — the white band above the zone bar.
@@ -94,7 +97,7 @@ export function FloorHeader({
 
         <div className="flex items-center gap-sp-2">
           {canOpenDrawer ? <CashDrawerButton onOpened={() => onDrawerOpened?.()} /> : null}
-          <StaffMenu staffName={staffName} clock={clock} onManage={onManage} onSwitchUser={onStaffTap} />
+          <StaffMenu staffName={staffName} clock={clock} onManage={onManage} onSoldOut={onSoldOut} onSwitchUser={onStaffTap} />
         </div>
       </div>
     </header>

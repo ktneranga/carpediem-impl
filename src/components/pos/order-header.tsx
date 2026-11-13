@@ -42,6 +42,7 @@ export function OrderHeader({
   onBack,
   onStaffTap,
   onManage,
+  onSoldOut,
 }: {
   /** "B1", "B1 + B3" for a merged group, or "Counter" for a counter sale. */
   tableLabel: string
@@ -61,6 +62,8 @@ export function OrderHeader({
   onStaffTap: () => void
   /** Owner only: Manage in the staff menu. */
   onManage?: () => void
+  /** Owner and waiters (Story 8.3): Sold out in the staff menu. */
+  onSoldOut?: () => void
 }) {
   return (
     <header className="flex shrink-0 items-start justify-between gap-sp-3 border-b border-slate-200 bg-white px-sp-4 py-sp-3">
@@ -119,7 +122,7 @@ export function OrderHeader({
       {/* Was a plain "Nina 12:46" in a 56px pill while the floor drew the
           filled circle — the same control, two appearances, on two screens a
           waiter moves between constantly. One component now. */}
-      <StaffMenu staffName={staffName} clock={clock} onManage={onManage} onSwitchUser={onStaffTap} />
+      <StaffMenu staffName={staffName} clock={clock} onManage={onManage} onSoldOut={onSoldOut} onSwitchUser={onStaffTap} />
     </header>
   )
 }

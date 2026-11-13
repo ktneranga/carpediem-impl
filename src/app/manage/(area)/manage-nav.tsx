@@ -12,7 +12,11 @@ const itemClass = cn(
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
 )
 
-export function ManageNav() {
+/**
+ * `ownerView` false (a waiter, in Sold out — Story 8.3): only the sections marked
+ * `waiter`, and no Lock — a waiter holds no Manage session to lock.
+ */
+export function ManageNav({ ownerView }: { ownerView: boolean }) {
   const pathname = usePathname()
   const [locking, setLocking] = useState(false)
 
@@ -32,7 +36,7 @@ export function ManageNav() {
 
       <nav aria-label="Manage sections" className="overflow-x-auto">
         <ul className="flex gap-sp-1 md:flex-col">
-          {MANAGE_SECTIONS.map((section) => {
+          {MANAGE_SECTIONS.filter((section) => ownerView || ('waiter' in section && section.waiter)).map((section) => {
             const current = pathname === section.href || pathname.startsWith(`${section.href}/`)
             return (
               <li key={section.href}>
@@ -57,15 +61,17 @@ export function ManageNav() {
           <ArrowLeft aria-hidden="true" className="size-4" />
           Back to floor
         </Link>
-        <button
-          type="button"
-          onClick={lock}
-          disabled={locking}
-          className={cn(itemClass, 'gap-sp-2 text-slate-600 hover:bg-slate-100 disabled:opacity-50')}
-        >
-          <Lock aria-hidden="true" className="size-4" />
-          Lock
-        </button>
+        {ownerView ? (
+          <button
+            type="button"
+            onClick={lock}
+            disabled={locking}
+            className={cn(itemClass, 'gap-sp-2 text-slate-600 hover:bg-slate-100 disabled:opacity-50')}
+          >
+            <Lock aria-hidden="true" className="size-4" />
+            Lock
+          </button>
+        ) : null}
       </div>
     </aside>
   )

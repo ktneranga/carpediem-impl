@@ -17,6 +17,8 @@ import {
 import type { ManageCategory, ManageGroup, ManageItem, ManageOption } from '@/server/services/menu-admin.service'
 import { menuCategoryIcon, routeForDestination } from '@/lib/design'
 import { lkrFromPaisa, paisaFromLkrInput, signedLkrFromPaisa } from '@/lib/format'
+import { isDrinksCategory } from '@/lib/menu-sections'
+import { useSocketEvent } from '@/hooks/use-socket'
 import { cn } from '@/lib/utils'
 
 /**
@@ -35,16 +37,6 @@ const DESTINATIONS: { value: Destination; label: string }[] = [
   { value: 'pizza_kitchen', label: 'Pizza kitchen' },
   { value: 'bar', label: 'Bar' },
 ]
-
-/**
- * A drinks category, the order screen's rule (`menu-browser.tsx`): a drink is a
- * dish the BAR makes. A category whose active dishes all print at the bar is
- * listed under Drinks; anything else, and an empty one, under Food.
- */
-function isDrinksCategory(category: ManageCategory): boolean {
-  const active = category.items.filter((item) => item.isActive)
-  return active.length > 0 && active.every((item) => item.productionDestination === 'bar')
-}
 
 type Side = 'Food' | 'Drinks'
 
@@ -89,6 +81,12 @@ export function MenuEditor() {
     queryKey,
     queryFn: async () =>
       ((await call('GET', `/api/manage/menu${showRemoved ? '?removed=1' : ''}`)) as { data: ManageCategory[] }).data,
+  })
+
+  // A dish sold out or back on elsewhere (Story 8.3) bumps its version: reload,
+  // or the owner's next save of that dish is refused as STALE.
+  useSocketEvent('menu:item_updated', () => {
+    void queryClient.invalidateQueries({ queryKey: ['manage-menu'] })
   })
 
   const selected = categories.find((c) => c.id === selectedId) ?? categories[0] ?? null
