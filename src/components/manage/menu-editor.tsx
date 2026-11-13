@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { createElement, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, Undo2, X } from 'lucide-react'
 import type { ManageCategory, ManageGroup, ManageItem, ManageOption } from '@/server/services/menu-admin.service'
+import { menuCategoryIcon, routeForDestination } from '@/lib/design'
 import { lkrFromPaisa, paisaFromLkrInput, signedLkrFromPaisa } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -23,7 +24,27 @@ const DESTINATIONS: { value: Destination; label: string }[] = [
   { value: 'pizza_kitchen', label: 'Pizza kitchen' },
   { value: 'bar', label: 'Bar' },
 ]
-const destinationLabel = (value: Destination) => DESTINATIONS.find((d) => d.value === value)?.label ?? value
+
+/**
+ * A drinks category, the order screen's rule (`menu-browser.tsx`): a drink is a
+ * dish the BAR makes. A category whose active dishes all print at the bar is
+ * listed under Drinks; anything else, and an empty one, under Food.
+ */
+function isDrinksCategory(category: ManageCategory): boolean {
+  const active = category.items.filter((item) => item.isActive)
+  return active.length > 0 && active.every((item) => item.productionDestination === 'bar')
+}
+
+/** The station chip, in the same colour and icon as the order screen's. */
+function StationChip({ destination }: { destination: Destination }) {
+  const route = routeForDestination(destination)
+  return (
+    <span className={cn('inline-flex items-center gap-sp-1 rounded-pill px-sp-2 py-0.5 text-fs-12 font-semibold text-white', route.chip)}>
+      {createElement(route.icon, { 'aria-hidden': true, className: 'size-3.5' })}
+      {route.short}
+    </span>
+  )
+}
 
 class ApiError extends Error {
   constructor(
@@ -133,8 +154,16 @@ export function MenuEditor() {
         {/* ── Categories ─────────────────────────────────────────────────── */}
         <section aria-label="Categories" className="flex flex-col gap-sp-2 rounded-panel bg-white p-sp-3 lg:w-72 lg:shrink-0">
           <h2 className="px-sp-2 text-fs-14 font-bold tracking-micro text-slate-500 uppercase">Categories</h2>
+          {(['Food', 'Drinks'] as const).map((side) => {
+            const list = categories.filter((category) => isDrinksCategory(category) === (side === 'Drinks'))
+            if (list.length === 0) return null
+            return (
+              <div key={side} className="flex flex-col gap-sp-1">
+                <h3 className="px-sp-2 pt-sp-2 text-fs-12 font-bold text-slate-500">{side}</h3>
           <ul className="flex gap-sp-1 overflow-x-auto lg:flex-col">
-            {categories.map((category, index) => (
+            {list.map((category) => {
+              const index = categories.indexOf(category)
+              return (
               <CategoryRow
                 key={category.id + category.version}
                 category={category}
@@ -154,15 +183,22 @@ export function MenuEditor() {
                   })
                 }
               />
-            ))}
+              )
+            })}
           </ul>
+              </div>
+            )
+          })}
           <AddCategory busy={busy} onAdd={(name) => run('POST', '/api/manage/menu/categories', { name })} />
         </section>
 
         {/* ── Dishes ─────────────────────────────────────────────────────── */}
         <section aria-label="Dishes" className="flex min-w-0 flex-1 flex-col gap-sp-2 rounded-panel bg-white p-sp-3">
           <div className="flex items-center justify-between gap-sp-3 px-sp-2">
-            <h2 className="text-fs-18 font-extrabold text-slate-900">{selected?.name ?? 'No categories yet'}</h2>
+            <h2 className="flex items-center gap-sp-2 text-fs-18 font-extrabold text-slate-900">
+              {selected ? <CategoryIcon name={selected.name} className="size-5 text-slate-500" /> : null}
+              {selected?.name ?? 'No categories yet'}
+            </h2>
             {selected ? (
               <button type="button" className={primary} onClick={() => setEditing({ mode: 'new' })}>
                 <Plus className="size-4" aria-hidden="true" /> Add dish
@@ -179,10 +215,10 @@ export function MenuEditor() {
                   <span className={cn('text-fs-16 font-bold', item.isActive ? 'text-slate-900' : 'text-slate-400 line-through')}>
                     {item.name}
                   </span>
-                  <span className="text-fs-12 text-slate-600">
-                    {destinationLabel(item.productionDestination)}
-                    {item.groups.length > 0 ? ` · ${item.groups.length} option group${item.groups.length === 1 ? '' : 's'}` : ''}
-                    {item.isActive ? '' : ' · removed'}
+                  <span className="flex flex-wrap items-center gap-sp-2 text-fs-12 text-slate-600">
+                    <StationChip destination={item.productionDestination} />
+                    {item.groups.length > 0 ? `${item.groups.length} option group${item.groups.length === 1 ? '' : 's'}` : ''}
+                    {item.isActive ? '' : 'removed'}
                   </span>
                 </div>
                 <span className="text-fs-16 font-bold tabular-nums text-slate-900">{lkrFromPaisa(item.pricePaisa)}</span>
@@ -231,6 +267,7 @@ export function MenuEditor() {
           item={editing.mode === 'edit' ? editingItem : null}
           categories={categories}
           defaultCategoryId={selected.id}
+          defaultDestination={isDrinksCategory(selected) ? 'bar' : 'kitchen'}
           busy={busy}
           run={run}
           move={move}
@@ -307,6 +344,7 @@ function CategoryRow({
               selected ? 'text-brand-800' : 'text-slate-700 hover:bg-slate-100',
             )}
           >
+            <CategoryIcon name={category.name} className="size-4 shrink-0 text-slate-500" />
             <span className="truncate">{category.name}</span>
             <span className="text-fs-12 text-slate-500">{category.items.filter((i) => i.isActive).length}</span>
           </button>
@@ -359,6 +397,7 @@ function ItemSheet({
   item,
   categories,
   defaultCategoryId,
+  defaultDestination,
   busy,
   run,
   move,
@@ -369,6 +408,7 @@ function ItemSheet({
   item: ManageItem | null
   categories: ManageCategory[]
   defaultCategoryId: string
+  defaultDestination: Destination
   busy: boolean
   run: Run
   move: Move
@@ -379,7 +419,7 @@ function ItemSheet({
   const [name, setName] = useState(item?.name ?? '')
   const [categoryId, setCategoryId] = useState(item?.categoryId ?? defaultCategoryId)
   const [price, setPrice] = useState(item ? String(item.pricePaisa / 100) : '')
-  const [destination, setDestination] = useState<Destination>(item?.productionDestination ?? 'kitchen')
+  const [destination, setDestination] = useState<Destination>(item?.productionDestination ?? defaultDestination)
   const pricePaisa = paisaFromLkrInput(price)
   const valid = name.trim() !== '' && pricePaisa !== null
 
@@ -453,7 +493,8 @@ function ItemSheet({
           <fieldset className="flex flex-col gap-sp-1 sm:col-span-2">
             <legend className="text-fs-14 font-semibold text-slate-700">Prints at</legend>
             <div className="flex gap-sp-1" role="radiogroup">
-              {DESTINATIONS.map((d) => (
+              {DESTINATIONS.map((d) => {
+                return (
                 <button
                   key={d.value}
                   type="button"
@@ -462,9 +503,11 @@ function ItemSheet({
                   onClick={() => setDestination(d.value)}
                   className={cn(button, 'flex-1 border', destination === d.value ? 'border-brand-800 bg-brand-800 text-white' : 'border-slate-200 text-slate-900')}
                 >
+                  {createElement(routeForDestination(d.value).icon, { 'aria-hidden': true, className: 'size-4' })}
                   {d.label}
                 </button>
-              ))}
+                )
+              })}
             </div>
           </fieldset>
           <div className="sm:col-span-2">
@@ -754,4 +797,11 @@ function ConfirmDialog({ text, busy, onCancel, onConfirm }: { text: string; busy
       </div>
     </div>
   )
+}
+
+/** The order screen's icon for a category, by its name (`menuCategoryIcon`). */
+// `createElement`, not `<Icon />`: the lookup RETURNS a component, and the
+// React Compiler refuses one created during render (same as `zoneIcon`).
+function CategoryIcon({ name, className }: { name: string; className?: string }) {
+  return createElement(menuCategoryIcon(name), { 'aria-hidden': true, className })
 }
