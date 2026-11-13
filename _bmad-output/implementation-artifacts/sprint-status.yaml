@@ -128,10 +128,10 @@ development_status:
   epic-7-retrospective: optional
 
   # ── Epic 8: Inventory Management ─────────────────────────────────────────
-  epic-8: backlog
+  epic-8: in-progress  # 8-3 only for go-live
   8-1-implement-portion-count-management: backlog
   8-2-implement-atomic-portion-decrement-and-auto-unavailable-flag: backlog
-  8-3-implement-manual-availability-toggle: backlog
+  8-3-implement-manual-availability-toggle: ready-for-dev  # owner + waiters, Manage → Sold out without the password (Teran 2026-11-13)
   epic-8-retrospective: optional
 
   # ── Epic 9: Owner Dashboard & Reporting ──────────────────────────────────
