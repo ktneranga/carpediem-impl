@@ -221,15 +221,15 @@ export function ModifierSheet({
         // field scrolls inside the card rather than running off the screen.
         className={cn(
           'flex max-h-full w-full max-w-2xl flex-col gap-sp-4 overflow-y-auto',
-          'rounded-card bg-white p-sp-4 shadow-el-4',
+          'rounded-card bg-white p-sp-4 shadow-el-4 night:bg-night-card',
         )}
       >
         <div className="flex items-start justify-between gap-sp-3">
           <div className="flex flex-col gap-sp-1">
-            <h2 className="text-fs-24 font-extrabold tracking-title text-slate-900">{item.name}</h2>
+            <h2 className="text-fs-24 font-extrabold tracking-title text-slate-900 night:text-night-text">{item.name}</h2>
             {/* Which person this lands on — the seat cards are behind the
                 backdrop, so without this the waiter would commit blind. */}
-            <p className="text-fs-14 font-semibold text-slate-600">
+            <p className="text-fs-14 font-semibold text-slate-600 night:text-night-second">
               {seatLabel ? `For ${seatLabel} · ` : ''}
               {lkrFromPaisa(unitPrice)} each
             </p>
@@ -241,7 +241,7 @@ export function ModifierSheet({
             aria-label={editing ? 'Close without saving' : 'Close without adding'}
             className={cn(
               'flex size-touch-waiter shrink-0 items-center justify-center rounded-waiter',
-              'border border-slate-200 bg-white text-slate-600',
+              'border border-slate-200 bg-white text-slate-600 night:border-night-hairline night:bg-night-card night:text-night-second',
               'transition-[transform,box-shadow] duration-80 ease-standard',
               'active:scale-[0.97] active:shadow-pressed',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
@@ -260,14 +260,14 @@ export function ModifierSheet({
             disabled={ruledOut.has(group.id)}
             className={cn('flex flex-col gap-sp-2', ruledOut.has(group.id) && 'opacity-40')}
           >
-            <legend className="mb-sp-2 flex items-center gap-sp-2 text-fs-12 font-semibold tracking-micro text-slate-600 uppercase">
+            <legend className="mb-sp-2 flex items-center gap-sp-2 text-fs-12 font-semibold tracking-micro text-slate-600 uppercase night:text-night-second">
               {group.name}
               {group.required ? (
-                <span className="rounded-pill bg-occupied-chip px-sp-2 py-0.5 text-fs-12 font-bold text-occupied-ink normal-case tracking-normal">
+                <span className="rounded-pill bg-occupied-chip px-sp-2 py-0.5 text-fs-12 font-bold text-occupied-ink normal-case tracking-normal night:bg-amber-500/20 night:text-amber-300">
                   Required
                 </span>
               ) : (
-                <span className="font-semibold normal-case tracking-normal text-slate-600">
+                <span className="font-semibold normal-case tracking-normal text-slate-600 night:text-night-second">
                   {ruledOut.has(group.id)
                     ? `not with ${ruledOut.get(group.id)}`
                     : group.selection === 'multi'
@@ -294,7 +294,7 @@ export function ModifierSheet({
                         'text-fs-16 font-bold',
                         count > 0
                           ? 'border-brand-800 bg-brand-800 text-white'
-                          : 'border-slate-200 bg-white text-slate-900',
+                          : 'border-slate-200 bg-white text-slate-900 night:border-night-hairline night:bg-night-card night:text-night-text',
                         option.available ? null : 'opacity-40',
                       )}
                     >
@@ -303,7 +303,7 @@ export function ModifierSheet({
                         <span
                           className={cn(
                             'text-fs-14 font-semibold tabular-nums',
-                            count > 0 ? 'text-white' : 'text-slate-600',
+                            count > 0 ? 'text-white' : 'text-slate-600 night:text-night-second',
                           )}
                         >
                           {delta} each
@@ -350,7 +350,7 @@ export function ModifierSheet({
                       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                       isOn
                         ? 'border-brand-800 bg-brand-800 text-white'
-                        : 'border-slate-200 bg-white text-slate-900',
+                        : 'border-slate-200 bg-white text-slate-900 night:border-night-hairline night:bg-night-card night:text-night-text',
                     )}
                   >
                     {option.name}
@@ -358,7 +358,7 @@ export function ModifierSheet({
                       <span
                         className={cn(
                           'text-fs-14 font-semibold tabular-nums',
-                          isOn ? 'text-white' : 'text-slate-600',
+                          isOn ? 'text-white' : 'text-slate-600 night:text-night-second',
                         )}
                       >
                         {delta}
@@ -374,7 +374,7 @@ export function ModifierSheet({
 
         {/* `ux:427` — "Quantity stepper (+/−) always visible." */}
         <div className="flex items-center justify-between gap-sp-3">
-          <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase">
+          <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase night:text-night-second">
             Quantity
           </span>
           <div className="flex items-center gap-sp-3">
@@ -386,7 +386,7 @@ export function ModifierSheet({
               aria-label="One fewer"
               className={cn(
                 'flex size-touch-waiter shrink-0 items-center justify-center rounded-waiter',
-                'border border-slate-200 bg-white text-slate-900',
+                'border border-slate-200 bg-white text-slate-900 night:border-night-hairline night:bg-night-card night:text-night-text',
                 'transition-[transform,box-shadow] duration-80 ease-standard',
                 'active:scale-[0.97] active:shadow-pressed',
                 'disabled:opacity-40 disabled:active:scale-100',
@@ -398,7 +398,7 @@ export function ModifierSheet({
 
             <output
               aria-live="polite"
-              className="min-w-12 text-center text-fs-24 font-extrabold tabular-nums text-slate-900"
+              className="min-w-12 text-center text-fs-24 font-extrabold tabular-nums text-slate-900 night:text-night-text"
             >
               {quantity}
             </output>
@@ -409,7 +409,7 @@ export function ModifierSheet({
               aria-label="One more"
               className={cn(
                 'flex size-touch-waiter shrink-0 items-center justify-center rounded-waiter',
-                'border border-slate-200 bg-white text-slate-900',
+                'border border-slate-200 bg-white text-slate-900 night:border-night-hairline night:bg-night-card night:text-night-text',
                 'transition-[transform,box-shadow] duration-80 ease-standard',
                 'active:scale-[0.97] active:shadow-pressed',
                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
@@ -421,7 +421,7 @@ export function ModifierSheet({
         </div>
 
         <label className="flex flex-col gap-sp-1">
-          <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase">
+          <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase night:text-night-second">
             Note for the kitchen
           </span>
           <input
@@ -432,8 +432,8 @@ export function ModifierSheet({
             placeholder="no ice, extra spicy, well done…"
             onChange={(event) => setModifierText(event.target.value)}
             className={cn(
-              'h-touch-waiter rounded-control border border-slate-200 bg-white px-sp-3',
-              'text-fs-16 text-slate-900 placeholder:text-slate-600',
+              'h-touch-waiter rounded-control border border-slate-200 bg-white px-sp-3 night:border-night-hairline night:bg-night-card',
+              'text-fs-16 text-slate-900 placeholder:text-slate-600 night:text-night-text',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
             )}
           />
@@ -443,7 +443,7 @@ export function ModifierSheet({
             until every required group has a choice — the server would refuse
             the WHOLE round otherwise — and it says which group is missing. */}
         {missingGroup ? (
-          <p role="status" className="text-fs-14 font-semibold text-occupied-ink">
+          <p role="status" className="text-fs-14 font-semibold text-occupied-ink night:text-amber-300">
             Choose {missingGroup.name.toLowerCase()} to add this.
           </p>
         ) : null}

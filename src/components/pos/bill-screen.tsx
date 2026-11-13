@@ -863,12 +863,12 @@ export function BillScreen({
   const inSplit = split.view === 'split' && draft !== null
 
   return (
-    <div className="h-app flex flex-col bg-slate-100">
+    <div className="h-app flex flex-col bg-slate-100 night:bg-night-app">
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="flex shrink-0 items-center justify-between gap-sp-3 border-b border-slate-200 bg-white px-sp-4 py-sp-3">
+      <header className="flex shrink-0 items-center justify-between gap-sp-3 border-b border-slate-200 bg-white px-sp-4 py-sp-3 night:border-night-hairline night:bg-night-card">
         <div className="flex min-w-0 items-center gap-sp-3">
           <button
             type="button"
@@ -876,7 +876,7 @@ export function BillScreen({
             aria-label="Back to the order"
             className={cn(
               'flex size-touch-kitchen shrink-0 items-center justify-center rounded-control',
-              'border border-slate-200 bg-white text-slate-900',
+              'border border-slate-200 bg-white text-slate-900 night:border-night-hairline night:bg-night-card night:text-night-text',
               'transition-transform duration-80 ease-standard active:scale-[0.97]',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
             )}
@@ -884,10 +884,10 @@ export function BillScreen({
             <ArrowLeft aria-hidden="true" strokeWidth={2.5} className="size-6" />
           </button>
           <div className="flex min-w-0 flex-col">
-            <h1 className="truncate text-fs-24 font-extrabold tracking-title text-slate-900">
+            <h1 className="truncate text-fs-24 font-extrabold tracking-title text-slate-900 night:text-night-text">
               Bill · {tableLabel}
             </h1>
-            <p className="truncate text-fs-12 font-semibold text-slate-600">
+            <p className="truncate text-fs-12 font-semibold text-slate-600 night:text-night-second">
               {orderLabel ? `${orderLabel} · ` : ''}
               {itemCount(allLines)} item{itemCount(allLines) === 1 ? '' : 's'} ·{' '}
               {inSplit
@@ -898,7 +898,7 @@ export function BillScreen({
           <span
             className={cn(
               'flex shrink-0 items-center gap-sp-1 rounded-pill px-sp-3 py-sp-1 text-fs-12 font-bold',
-              inSplit ? 'bg-brand-050 text-brand-700' : 'bg-slate-100 text-slate-700',
+              inSplit ? 'bg-brand-050 text-brand-700 night:bg-night-raised night:text-brand-300' : 'bg-slate-100 text-slate-700 night:bg-night-raised night:text-night-second',
             )}
           >
             {inSplit ? (
@@ -909,7 +909,7 @@ export function BillScreen({
             {inSplit ? 'Separate bills' : 'One bill'}
           </span>
           {inSplit ? (
-            <p className="hidden min-w-0 text-fs-12 text-slate-600 lg:block">
+            <p className="hidden min-w-0 text-fs-12 text-slate-600 lg:block night:text-night-second">
               Drag items between people, or tap an item then “Move here”
             </p>
           ) : null}
@@ -921,8 +921,8 @@ export function BillScreen({
               type="button"
               onClick={merge}
               className={cn(
-                'h-touch-standard rounded-control border border-slate-200 bg-white px-sp-4',
-                'text-fs-14 font-bold text-slate-900 active:scale-[0.97]',
+                'h-touch-standard rounded-control border border-slate-200 bg-white px-sp-4 night:border-night-hairline night:bg-night-card',
+                'text-fs-14 font-bold text-slate-900 active:scale-[0.97] night:text-night-text',
                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
               )}
             >
@@ -933,8 +933,8 @@ export function BillScreen({
             className={cn(
               'flex items-center gap-sp-2 rounded-pill px-sp-4 py-sp-2 text-fs-14 font-bold',
               outstanding > 0 || draftError
-                ? 'bg-occupied-chip text-occupied-ink'
-                : 'bg-open-chip text-open-ink',
+                ? 'bg-occupied-chip text-occupied-ink night:bg-amber-500/20 night:text-amber-300'
+                : 'bg-open-chip text-open-ink night:bg-green-500/20 night:text-green-400',
             )}
           >
             <span aria-hidden="true" className="size-2 rounded-pill bg-current" />
@@ -954,7 +954,7 @@ export function BillScreen({
         {notice || draftError ? (
           <p
             role="status"
-            className="rounded-control bg-occupied-chip px-sp-4 py-sp-3 text-fs-14 font-semibold text-occupied-ink"
+            className="rounded-control bg-occupied-chip px-sp-4 py-sp-3 text-fs-14 font-semibold text-occupied-ink night:bg-amber-500/20 night:text-amber-300"
           >
             {notice ?? draftError}
           </p>
@@ -990,7 +990,7 @@ export function BillScreen({
                 isOver={drag?.over === 'none'}
               >
                 <ItemList lines={unassigned} {...dragProps} />
-                <p className="shrink-0 border-t border-occupied-edge px-sp-3 py-sp-2 text-fs-12 font-semibold text-occupied-ink">
+                <p className="shrink-0 border-t border-occupied-edge px-sp-3 py-sp-2 text-fs-12 font-semibold text-occupied-ink night:text-amber-300">
                   Give every item to a person before settling the table.
                 </p>
               </Column>
@@ -1032,7 +1032,7 @@ export function BillScreen({
                   isOver={drag?.over === person.id}
                 >
                   {lines.length === 0 ? (
-                    <div className="m-sp-3 flex flex-1 items-center justify-center rounded-card border-2 border-dashed border-slate-200 text-fs-14 font-semibold text-slate-400">
+                    <div className="m-sp-3 flex flex-1 items-center justify-center rounded-card border-2 border-dashed border-slate-200 text-fs-14 font-semibold text-slate-400 night:border-night-hairline night:text-night-muted">
                       Drag items here
                     </div>
                   ) : (
@@ -1048,11 +1048,11 @@ export function BillScreen({
                       {...printProps(person.id, { kind: 'person', key: person.id, title: person.label, lines, totals })}
                     />
                   ) : (
-                    <div className="shrink-0 border-t border-slate-200 p-sp-3">
+                    <div className="shrink-0 border-t border-slate-200 p-sp-3 night:border-night-hairline">
                       <button
                         type="button"
                         onClick={() => removePerson(person.id)}
-                        className="h-touch-standard w-full rounded-control border border-slate-200 bg-white text-fs-14 font-bold text-slate-600 active:scale-[0.98]"
+                        className="h-touch-standard w-full rounded-control border border-slate-200 bg-white text-fs-14 font-bold text-slate-600 active:scale-[0.98] night:border-night-hairline night:bg-night-card night:text-night-second"
                       >
                         Remove person
                       </button>
@@ -1074,22 +1074,22 @@ export function BillScreen({
               className={cn(
                 // About two-thirds of a column, as drawn.
                 'flex min-w-48 shrink-0 basis-[calc(16%-12px)] flex-col items-center justify-center gap-sp-2 rounded-panel',
-                'border-2 border-dashed border-slate-300 bg-transparent p-sp-4 text-center',
+                'border-2 border-dashed border-slate-300 bg-transparent p-sp-4 text-center night:border-night-hairline',
                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                (selected || drag?.over === 'new') && 'border-brand-500 bg-brand-050',
+                (selected || drag?.over === 'new') && 'border-brand-500 bg-brand-050 night:bg-night-raised',
               )}
             >
-              <span className="flex size-12 items-center justify-center rounded-control bg-white shadow-el-1">
-                <Plus aria-hidden="true" className="size-6 text-brand-700" />
+              <span className="flex size-12 items-center justify-center rounded-control bg-white shadow-el-1 night:bg-night-card">
+                <Plus aria-hidden="true" className="size-6 text-brand-700 night:text-brand-300" />
               </span>
-              <span className="text-fs-16 font-bold text-slate-900">
+              <span className="text-fs-16 font-bold text-slate-900 night:text-night-text">
                 {selected ? 'Move to a new person' : 'Add person'}
               </span>
-              <span className="text-fs-12 text-slate-600">Drop an item here to start a new bill</span>
+              <span className="text-fs-12 text-slate-600 night:text-night-second">Drop an item here to start a new bill</span>
             </button>
           </div>
         ) : wholePayables.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center rounded-panel border border-dashed border-slate-200 bg-white p-sp-5 text-center text-fs-16 text-slate-600">
+          <div className="flex flex-1 items-center justify-center rounded-panel border border-dashed border-slate-200 bg-white p-sp-5 text-center text-fs-16 text-slate-600 night:border-night-hairline night:bg-night-card night:text-night-second">
             {allLines.length === 0
               ? 'Nothing has been sent to the kitchen yet, so there is nothing to bill.'
               : draftError
@@ -1139,7 +1139,7 @@ export function BillScreen({
 
         {paidBills.length > 0 ? (
           <section className="flex shrink-0 flex-col gap-sp-2">
-            <h2 className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">Paid</h2>
+            <h2 className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase night:text-night-second">Paid</h2>
             <ul className="flex flex-wrap gap-sp-2">
               {paidBills.map((bill) => {
                 const key = `receipt:${bill.billId}`
@@ -1147,7 +1147,7 @@ export function BillScreen({
                 return (
                   <li
                     key={bill.billId}
-                    className="flex items-center gap-sp-3 rounded-control bg-open-chip py-sp-1 pr-sp-1 pl-sp-3 text-fs-14 font-semibold text-open-ink"
+                    className="flex items-center gap-sp-3 rounded-control bg-open-chip py-sp-1 pr-sp-1 pl-sp-3 text-fs-14 font-semibold text-open-ink night:bg-green-500/20 night:text-green-400"
                   >
                     <span>
                       {bill.label} · {lkrFromPaisa(bill.totalPaisa)}
@@ -1168,8 +1168,8 @@ export function BillScreen({
                       aria-label={`Print another receipt for ${bill.label}`}
                       title="Print another receipt"
                       className={cn(
-                        'flex size-touch-standard items-center justify-center rounded-control text-open-ink',
-                        'hover:bg-white/60 active:scale-[0.95] disabled:opacity-60',
+                        'flex size-touch-standard items-center justify-center rounded-control text-open-ink night:text-green-400',
+                        'hover:bg-white/60 active:scale-[0.95] disabled:opacity-60 night:hover:bg-night-raised',
                         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                       )}
                     >
@@ -1190,12 +1190,12 @@ export function BillScreen({
         <div
           aria-hidden="true"
           style={{ left: drag.x - 130, top: drag.y - 28 }}
-          className="pointer-events-none fixed z-[60] flex w-64 -rotate-2 items-baseline justify-between gap-sp-2 rounded-card border-2 border-brand-500 bg-white p-sp-3 shadow-el-2"
+          className="pointer-events-none fixed z-[60] flex w-64 -rotate-2 items-baseline justify-between gap-sp-2 rounded-card border-2 border-brand-500 bg-white p-sp-3 shadow-el-2 night:bg-night-card"
         >
-          <span className="min-w-0 truncate text-fs-16 font-bold text-slate-900">
-            <span className="text-brand-700">{drag.count}×</span> {drag.line.name}
+          <span className="min-w-0 truncate text-fs-16 font-bold text-slate-900 night:text-night-text">
+            <span className="text-brand-700 night:text-brand-300">{drag.count}×</span> {drag.line.name}
           </span>
-          <span className="shrink-0 text-fs-14 font-bold tabular-nums text-slate-900">
+          <span className="shrink-0 text-fs-14 font-bold tabular-nums text-slate-900 night:text-night-text">
             {lkrFromPaisa(drag.count * drag.line.unitPricePaisa)}
           </span>
         </div>
@@ -1211,20 +1211,20 @@ export function BillScreen({
         leading={
           <div className="flex h-touch-waiter items-center gap-sp-5">
             <dl className="grid grid-cols-[auto_auto] gap-x-sp-4 gap-y-sp-1 text-fs-14">
-              <dt className="text-slate-600">Settled</dt>
-              <dd className="text-right font-bold tabular-nums text-open-ink">
+              <dt className="text-slate-600 night:text-night-second">Settled</dt>
+              <dd className="text-right font-bold tabular-nums text-open-ink night:text-green-400">
                 {lkrFromPaisa(settled)}
               </dd>
-              <dt className="font-semibold text-slate-900">Outstanding</dt>
-              <dd className="text-right font-bold tabular-nums text-slate-900">
+              <dt className="font-semibold text-slate-900 night:text-night-text">Outstanding</dt>
+              <dd className="text-right font-bold tabular-nums text-slate-900 night:text-night-text">
                 {lkrFromPaisa(outstanding)}
               </dd>
             </dl>
-            <div className="flex items-baseline gap-sp-2 border-l border-slate-200 pl-sp-5">
-              <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+            <div className="flex items-baseline gap-sp-2 border-l border-slate-200 pl-sp-5 night:border-night-hairline">
+              <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase night:text-night-second">
                 Bill
               </span>
-              <span className="text-fs-24 font-extrabold tabular-nums text-slate-900">
+              <span className="text-fs-24 font-extrabold tabular-nums text-slate-900 night:text-night-text">
                 {lkrFromPaisa(billTotal)}
               </span>
             </div>
@@ -1242,7 +1242,7 @@ export function BillScreen({
             'h-touch-waiter min-w-40 rounded-waiter px-sp-5 text-fs-16 font-bold',
             'transition-transform duration-80 ease-standard active:scale-[0.97]',
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-            allPaid ? 'bg-brand-800 text-white shadow-el-2' : 'bg-slate-100 text-slate-400',
+            allPaid ? 'bg-brand-800 text-white shadow-el-2' : 'bg-slate-100 text-slate-400 night:bg-night-raised night:text-night-muted',
           )}
         >
           {closing ? 'Closing…' : allPaid ? 'All paid · Close table' : 'Close table'}
@@ -1326,21 +1326,21 @@ export function BillScreen({
 
 function SplitCard({ onSplit }: { onSplit: () => void }) {
   return (
-    <section className="flex shrink-0 flex-col gap-sp-3 rounded-panel border-2 border-dashed border-slate-300 p-sp-4">
+    <section className="flex shrink-0 flex-col gap-sp-3 rounded-panel border-2 border-dashed border-slate-300 p-sp-4 night:border-night-hairline">
       <div className="flex items-center gap-sp-3">
-        <span className="flex size-10 items-center justify-center rounded-control bg-brand-050">
-          <Users aria-hidden="true" className="size-5 text-brand-700" />
+        <span className="flex size-10 items-center justify-center rounded-control bg-brand-050 night:bg-night-raised">
+          <Users aria-hidden="true" className="size-5 text-brand-700 night:text-brand-300" />
         </span>
-        <h3 className="text-fs-16 font-extrabold text-slate-900">Paying separately?</h3>
+        <h3 className="text-fs-16 font-extrabold text-slate-900 night:text-night-text">Paying separately?</h3>
       </div>
-      <p className="text-fs-14 text-slate-600">
+      <p className="text-fs-14 text-slate-600 night:text-night-second">
         Split into one bill per person, then drag each item to whoever is paying for it.
       </p>
       <button
         type="button"
         onClick={onSplit}
         className={cn(
-          'h-touch-kitchen rounded-waiter border border-brand-300 bg-brand-050 text-fs-16 font-bold text-brand-700',
+          'h-touch-kitchen rounded-waiter border border-brand-300 bg-brand-050 text-fs-16 font-bold text-brand-700 night:border-brand-500/50 night:bg-night-raised night:text-brand-300',
           'active:scale-[0.98]',
           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
         )}
@@ -1385,23 +1385,23 @@ function Column({
         // stays the floor so a small tablet scrolls rather than crushes.
         'flex min-w-72 shrink-0 basis-[calc(25%-12px)] flex-col overflow-hidden rounded-panel',
         tone === 'pending'
-          ? 'border-2 border-dashed border-occupied-edge bg-occupied-body'
-          : 'border border-slate-200 bg-white shadow-el-1',
+          ? 'border-2 border-dashed border-occupied-edge bg-occupied-body night:bg-night-occupied-body'
+          : 'border border-slate-200 bg-white shadow-el-1 night:border-night-hairline night:bg-night-card',
         // The design marks the target with a brand edge along the top.
         isOver && 'border-t-4 border-t-brand-500',
       )}
     >
-      <header className="flex shrink-0 items-center justify-between gap-sp-2 border-b border-slate-200 px-sp-3 py-sp-3">
+      <header className="flex shrink-0 items-center justify-between gap-sp-2 border-b border-slate-200 px-sp-3 py-sp-3 night:border-night-hairline">
         <div className="flex min-w-0 items-center gap-sp-2">
-          <h2 className="truncate text-fs-16 font-extrabold text-slate-900">{title}</h2>
+          <h2 className="truncate text-fs-16 font-extrabold text-slate-900 night:text-night-text">{title}</h2>
           {badge ? (
-            <span className="shrink-0 rounded-pill bg-occupied-chip px-sp-2 py-0.5 text-fs-12 font-bold tracking-micro text-occupied-ink uppercase">
+            <span className="shrink-0 rounded-pill bg-occupied-chip px-sp-2 py-0.5 text-fs-12 font-bold tracking-micro text-occupied-ink uppercase night:bg-amber-500/20 night:text-amber-300">
               {badge}
             </span>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-sp-1">
-          <span className="text-fs-16 font-extrabold tabular-nums text-slate-900">
+          <span className="text-fs-16 font-extrabold tabular-nums text-slate-900 night:text-night-text">
             {lkrFromPaisa(total)}
           </span>
           {onRemove ? (
@@ -1409,7 +1409,7 @@ function Column({
               type="button"
               onClick={onRemove}
               aria-label={`Remove ${title}`}
-              className="flex size-9 items-center justify-center rounded-control text-slate-400 hover:text-slate-700"
+              className="flex size-9 items-center justify-center rounded-control text-slate-400 hover:text-slate-700 night:text-night-muted night:hover:text-night-text"
             >
               <X aria-hidden="true" className="size-4" />
             </button>
@@ -1455,10 +1455,10 @@ function ItemList({
         const content = (
           <>
             <span className="flex w-full items-baseline justify-between gap-sp-2">
-              <span className="min-w-0 truncate text-fs-16 font-bold text-slate-900">
-                <span className="text-brand-700">{line.quantity}×</span> {line.name}
+              <span className="min-w-0 truncate text-fs-16 font-bold text-slate-900 night:text-night-text">
+                <span className="text-brand-700 night:text-brand-300">{line.quantity}×</span> {line.name}
               </span>
-              <span className="shrink-0 text-fs-14 font-bold tabular-nums text-slate-900">
+              <span className="shrink-0 text-fs-14 font-bold tabular-nums text-slate-900 night:text-night-text">
                 {lkrFromPaisa(line.amountPaisa)}
               </span>
             </span>
@@ -1466,12 +1466,12 @@ function ItemList({
               <StationChip destination={line.destination} />
               {/* Everything on a bill has gone to the kitchen — that is what
                   makes it billable — and the design says so on the card. */}
-              <span className="text-fs-12 font-bold tracking-micro text-open-ink uppercase">Sent</span>
+              <span className="text-fs-12 font-bold tracking-micro text-open-ink uppercase night:text-green-400">Sent</span>
               {lineDetail(line) ? (
-                <span className="truncate text-fs-12 text-slate-600">{lineDetail(line)}</span>
+                <span className="truncate text-fs-12 text-slate-600 night:text-night-second">{lineDetail(line)}</span>
               ) : null}
               {onPress ? (
-                <GripVertical aria-hidden="true" className="ml-auto size-4 shrink-0 text-slate-400" />
+                <GripVertical aria-hidden="true" className="ml-auto size-4 shrink-0 text-slate-400 night:text-night-muted" />
               ) : null}
             </span>
           </>
@@ -1498,16 +1498,16 @@ function ItemList({
                 className={cn(
                   // `touch-none`: on a tablet a finger on a card drags it rather
                   // than scrolling the column. The column scrolls from its gaps.
-                  'flex w-full cursor-grab touch-none flex-col items-start gap-sp-1 rounded-card border bg-white p-sp-3 text-left select-none',
+                  'flex w-full cursor-grab touch-none flex-col items-start gap-sp-1 rounded-card border bg-white p-sp-3 text-left select-none night:bg-night-card',
                   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                  isSelected ? 'border-brand-500 ring-2 ring-brand-500' : 'border-slate-200',
+                  isSelected ? 'border-brand-500 ring-2 ring-brand-500' : 'border-slate-200 night:border-night-hairline',
                   draggingKey === line.orderEventId && 'opacity-50',
                 )}
               >
                 {content}
               </button>
             ) : (
-              <div className="flex flex-col gap-sp-1 rounded-card border border-slate-200 bg-white p-sp-3">
+              <div className="flex flex-col gap-sp-1 rounded-card border border-slate-200 bg-white p-sp-3 night:border-night-hairline night:bg-night-card">
                 {content}
               </div>
             )}
@@ -1515,8 +1515,8 @@ function ItemList({
                 stepper in the card would be a button inside a button. Starts at
                 all of them; step down to split one off. */}
             {isSelected && onCount && line.quantity > 1 ? (
-              <div className="mt-sp-1 flex items-center justify-between gap-sp-2 rounded-control bg-brand-050 px-sp-3 py-sp-1">
-                <span className="text-fs-14 font-semibold text-brand-700">
+              <div className="mt-sp-1 flex items-center justify-between gap-sp-2 rounded-control bg-brand-050 px-sp-3 py-sp-1 night:bg-night-raised">
+                <span className="text-fs-14 font-semibold text-brand-700 night:text-brand-300">
                   Move {selected!.count} of {line.quantity}
                 </span>
                 <span className="flex items-center gap-sp-1">
@@ -1525,7 +1525,7 @@ function ItemList({
                     aria-label="Move one fewer"
                     disabled={selected!.count <= 1}
                     onClick={() => onCount(selected!.count - 1)}
-                    className="flex size-10 items-center justify-center rounded-control bg-white text-fs-18 font-bold text-brand-700 disabled:opacity-40"
+                    className="flex size-10 items-center justify-center rounded-control bg-white text-fs-18 font-bold text-brand-700 disabled:opacity-40 night:bg-night-card night:text-brand-300"
                   >
                     −
                   </button>
@@ -1534,7 +1534,7 @@ function ItemList({
                     aria-label="Move one more"
                     disabled={selected!.count >= line.quantity}
                     onClick={() => onCount(selected!.count + 1)}
-                    className="flex size-10 items-center justify-center rounded-control bg-white text-fs-18 font-bold text-brand-700 disabled:opacity-40"
+                    className="flex size-10 items-center justify-center rounded-control bg-white text-fs-18 font-bold text-brand-700 disabled:opacity-40 night:bg-night-card night:text-brand-300"
                   >
                     +
                   </button>
@@ -1577,13 +1577,13 @@ function CloseAfterPaymentDialog({
         if (event.key === 'Escape') onKeepOpen()
       }}
     >
-      <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2">
+      <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2 night:bg-night-card">
         <div className="flex flex-col gap-sp-1">
-          <span className="text-fs-12 font-bold tracking-micro text-open-ink uppercase">All paid</span>
-          <h2 id="close-after-payment-title" className="text-fs-24 font-extrabold text-slate-900">
+          <span className="text-fs-12 font-bold tracking-micro text-open-ink uppercase night:text-green-400">All paid</span>
+          <h2 id="close-after-payment-title" className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">
             Close {tableLabel}?
           </h2>
-          <p className="text-fs-14 text-slate-600">
+          <p className="text-fs-14 text-slate-600 night:text-night-second">
             Keep it open if the guests are still at the table. You can close it later from the floor.
           </p>
         </div>
@@ -1593,7 +1593,7 @@ function CloseAfterPaymentDialog({
             autoFocus
             onClick={onKeepOpen}
             className={cn(
-              'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white text-fs-16 font-bold text-slate-900',
+              'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white text-fs-16 font-bold text-slate-900 night:border-night-hairline night:bg-night-card night:text-night-text',
               'active:scale-[0.98]',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
             )}
@@ -1645,7 +1645,7 @@ function PrintBillButton({
       disabled={disabled || state === 'sending'}
       className={cn(
         size === 'waiter' ? 'h-touch-waiter text-fs-16' : 'h-touch-kitchen text-fs-14',
-        'flex items-center justify-center gap-sp-2 rounded-waiter border border-slate-200 bg-white font-bold text-slate-900',
+        'flex items-center justify-center gap-sp-2 rounded-waiter border border-slate-200 bg-white font-bold text-slate-900 night:border-night-hairline night:bg-night-card night:text-night-text',
         'active:scale-[0.98] disabled:opacity-60 disabled:active:scale-100',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
       )}
@@ -1672,9 +1672,9 @@ function ColumnFooter({
   printDisabled?: boolean
 }) {
   return (
-    <div className="flex shrink-0 flex-col gap-sp-2 border-t border-slate-200 bg-slate-50 p-sp-3">
+    <div className="flex shrink-0 flex-col gap-sp-2 border-t border-slate-200 bg-slate-50 p-sp-3 night:border-night-hairline night:bg-night-raised">
       {totals.serviceChargeBp > 0 ? (
-        <div className="flex justify-between text-fs-12 text-slate-600">
+        <div className="flex justify-between text-fs-12 text-slate-600 night:text-night-second">
           <span>{lkrFromPaisa(totals.subtotalPaisa)} + service</span>
           <span className="tabular-nums">{lkrFromPaisa(totals.serviceChargePaisa)}</span>
         </div>
@@ -1703,7 +1703,7 @@ function StationChip({ destination }: { destination: ProductionDestination | nul
   return (
     <span
       className={cn(
-        'shrink-0 rounded-pill bg-slate-100 px-sp-2 py-0.5 text-fs-12 font-bold tracking-micro uppercase',
+        'shrink-0 rounded-pill bg-slate-100 px-sp-2 py-0.5 text-fs-12 font-bold tracking-micro uppercase night:bg-night-raised',
         route.ink,
       )}
     >
@@ -1742,32 +1742,32 @@ function groupLines(lines: BillScreenLine[]): BillScreenLine[] {
 function LinesCard({ title, lines: ungrouped }: { title: string; lines: BillScreenLine[] }) {
   const lines = groupLines(ungrouped)
   return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-panel bg-white shadow-el-1">
-      <header className="flex shrink-0 items-baseline justify-between gap-sp-3 border-b border-slate-200 px-sp-5 py-sp-4">
-        <h2 className="text-fs-18 font-extrabold text-slate-900">{title}</h2>
-        <span className="text-fs-14 font-semibold text-slate-600">
+    <section className="flex min-h-0 flex-1 flex-col rounded-panel bg-white shadow-el-1 night:bg-night-card">
+      <header className="flex shrink-0 items-baseline justify-between gap-sp-3 border-b border-slate-200 px-sp-5 py-sp-4 night:border-night-hairline">
+        <h2 className="text-fs-18 font-extrabold text-slate-900 night:text-night-text">{title}</h2>
+        <span className="text-fs-14 font-semibold text-slate-600 night:text-night-second">
           {lines.length} line{lines.length === 1 ? '' : 's'} · {itemCount(lines)} item
           {itemCount(lines) === 1 ? '' : 's'}
         </span>
       </header>
       {/* Read aloud to a guest and checked by them across the table, so the
           rows are sized for that: 18px names, 64px rows. */}
-      <ul className="min-h-0 flex-1 divide-y divide-slate-200 overflow-y-auto px-sp-5">
+      <ul className="min-h-0 flex-1 divide-y divide-slate-200 overflow-y-auto px-sp-5 night:divide-night-hairline">
         {lines.map((line) => (
           <li key={line.orderEventId} className="flex min-h-16 items-center gap-sp-4 py-sp-3">
-            <span className="w-10 shrink-0 text-fs-18 font-extrabold text-brand-700 tabular-nums">
+            <span className="w-10 shrink-0 text-fs-18 font-extrabold text-brand-700 tabular-nums night:text-brand-300">
               {line.quantity}×
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-fs-18 font-bold text-slate-900">
+              <span className="block truncate text-fs-18 font-bold text-slate-900 night:text-night-text">
                 {line.name}
               </span>
               {lineDetail(line) ? (
-                <span className="block truncate text-fs-14 text-slate-600">{lineDetail(line)}</span>
+                <span className="block truncate text-fs-14 text-slate-600 night:text-night-second">{lineDetail(line)}</span>
               ) : null}
             </span>
             <StationChip destination={line.destination} />
-            <span className="w-28 shrink-0 text-right text-fs-18 font-extrabold tabular-nums text-slate-900">
+            <span className="w-28 shrink-0 text-right text-fs-18 font-extrabold tabular-nums text-slate-900 night:text-night-text">
               {lkrFromPaisa(line.amountPaisa)}
             </span>
           </li>
@@ -1794,7 +1794,7 @@ function TotalsCard({
 }) {
   const due = totals.totalPaisa - paidPaisa
   return (
-    <section className="flex shrink-0 flex-col gap-sp-2 rounded-panel bg-white p-sp-4 shadow-el-1">
+    <section className="flex shrink-0 flex-col gap-sp-2 rounded-panel bg-white p-sp-4 shadow-el-1 night:bg-night-card">
       <Row label="Subtotal" value={totals.subtotalPaisa} />
       {totals.serviceChargeBp > 0 ? (
         <Row label={`Service ${percentFromBp(totals.serviceChargeBp)}%`} value={totals.serviceChargePaisa} />
@@ -1802,9 +1802,9 @@ function TotalsCard({
       {totals.taxBp > 0 ? (
         <Row label={`Tax ${percentFromBp(totals.taxBp)}%`} value={totals.taxPaisa} />
       ) : null}
-      <div className="mt-sp-1 flex items-baseline justify-between gap-sp-3 border-t border-slate-200 pt-sp-3">
-        <span className="text-fs-16 font-bold text-slate-900">Total</span>
-        <span className="text-fs-32 font-extrabold tabular-nums text-slate-900">
+      <div className="mt-sp-1 flex items-baseline justify-between gap-sp-3 border-t border-slate-200 pt-sp-3 night:border-night-hairline">
+        <span className="text-fs-16 font-bold text-slate-900 night:text-night-text">Total</span>
+        <span className="text-fs-32 font-extrabold tabular-nums text-slate-900 night:text-night-text">
           {lkrFromPaisa(totals.totalPaisa)}
         </span>
       </div>
@@ -1837,8 +1837,8 @@ function TotalsCard({
 function Row({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-baseline justify-between gap-sp-3 text-fs-14">
-      <span className="text-slate-600">{label}</span>
-      <span className="font-semibold tabular-nums text-slate-900">{lkrFromPaisa(value)}</span>
+      <span className="text-slate-600 night:text-night-second">{label}</span>
+      <span className="font-semibold tabular-nums text-slate-900 night:text-night-text">{lkrFromPaisa(value)}</span>
     </div>
   )
 }
@@ -1969,23 +1969,23 @@ function PaymentDialog({
       aria-labelledby="payment-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
     >
-      <div className="flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-panel bg-white shadow-el-2">
+      <div className="flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-panel bg-white shadow-el-2 night:bg-night-card">
         {/* ── Header ───────────────────────────────────────────────────── */}
-        <header className="flex shrink-0 items-start justify-between gap-sp-4 border-b border-slate-200 px-sp-5 py-sp-4">
+        <header className="flex shrink-0 items-start justify-between gap-sp-4 border-b border-slate-200 px-sp-5 py-sp-4 night:border-night-hairline">
           <div className="flex min-w-0 flex-col">
-            <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+            <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase night:text-night-second">
               Settle
             </span>
-            <h2 id="payment-title" className="truncate text-fs-24 font-extrabold text-slate-900">
+            <h2 id="payment-title" className="truncate text-fs-24 font-extrabold text-slate-900 night:text-night-text">
               {title}
             </h2>
           </div>
           <div className="flex shrink-0 items-start gap-sp-4">
             <div className="flex flex-col items-end">
-              <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+              <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase night:text-night-second">
                 To pay
               </span>
-              <span className="text-fs-32 font-extrabold tabular-nums text-slate-900">
+              <span className="text-fs-32 font-extrabold tabular-nums text-slate-900 night:text-night-text">
                 {lkrFromPaisa(duePaisa)}
               </span>
             </div>
@@ -1995,8 +1995,8 @@ function PaymentDialog({
               onClick={onCancel}
               aria-label="Close"
               className={cn(
-                'flex size-touch-standard items-center justify-center rounded-control border border-slate-200 bg-white',
-                'text-slate-900 active:scale-[0.97] disabled:opacity-40',
+                'flex size-touch-standard items-center justify-center rounded-control border border-slate-200 bg-white night:border-night-hairline night:bg-night-card',
+                'text-slate-900 active:scale-[0.97] disabled:opacity-40 night:text-night-text',
                 focusRing,
               )}
             >
@@ -2007,9 +2007,9 @@ function PaymentDialog({
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row">
           {/* ── Left: method and the sum ─────────────────────────────────── */}
-          <section className="flex shrink-0 flex-col gap-sp-4 border-slate-200 bg-slate-50 p-sp-5 md:w-96 md:border-r">
+          <section className="flex shrink-0 flex-col gap-sp-4 border-slate-200 bg-slate-50 p-sp-5 md:w-96 md:border-r night:border-night-hairline night:bg-night-sunken">
             <div className="flex flex-col gap-sp-2">
-              <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+              <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase night:text-night-second">
                 Method
               </span>
               <div role="group" aria-label="How the guest is paying" className="grid grid-cols-2 gap-sp-2">
@@ -2032,8 +2032,8 @@ function PaymentDialog({
                       'active:scale-[0.97]',
                       focusRing,
                       method === key
-                        ? 'border-brand-500 bg-brand-050 text-brand-700'
-                        : 'border-slate-200 bg-white text-slate-700',
+                        ? 'border-brand-500 bg-brand-050 text-brand-700 night:bg-night-raised night:text-brand-300'
+                        : 'border-slate-200 bg-white text-slate-700 night:border-night-hairline night:bg-night-card night:text-night-second',
                     )}
                   >
                     <Icon aria-hidden="true" className="size-5" />
@@ -2043,28 +2043,28 @@ function PaymentDialog({
               </div>
             </div>
 
-            <dl className="mt-auto flex flex-col gap-sp-2 border-t border-slate-200 pt-sp-4 text-fs-14 md:mt-0">
+            <dl className="mt-auto flex flex-col gap-sp-2 border-t border-slate-200 pt-sp-4 text-fs-14 md:mt-0 night:border-night-hairline">
               <div className="flex justify-between">
-                <dt className="text-slate-600">Bill</dt>
-                <dd className="font-semibold tabular-nums text-slate-900">{lkrFromPaisa(duePaisa)}</dd>
+                <dt className="text-slate-600 night:text-night-second">Bill</dt>
+                <dd className="font-semibold tabular-nums text-slate-900 night:text-night-text">{lkrFromPaisa(duePaisa)}</dd>
               </div>
               {method === 'split' && hasCash && cash < duePaisa ? (
                 <>
                   <div className="flex justify-between">
-                    <dt className="text-slate-600">Cash</dt>
-                    <dd className="font-semibold tabular-nums text-slate-900">{lkrFromPaisa(cash)}</dd>
+                    <dt className="text-slate-600 night:text-night-second">Cash</dt>
+                    <dd className="font-semibold tabular-nums text-slate-900 night:text-night-text">{lkrFromPaisa(cash)}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-slate-600">Card</dt>
-                    <dd className="font-semibold tabular-nums text-slate-900">
+                    <dt className="text-slate-600 night:text-night-second">Card</dt>
+                    <dd className="font-semibold tabular-nums text-slate-900 night:text-night-text">
                       {lkrFromPaisa(stillNeeded)}
                     </dd>
                   </div>
                 </>
               ) : null}
               <div className="flex justify-between pt-sp-1">
-                <dt className="font-bold text-slate-900">Total</dt>
-                <dd className="font-extrabold tabular-nums text-slate-900">{lkrFromPaisa(duePaisa)}</dd>
+                <dt className="font-bold text-slate-900 night:text-night-text">Total</dt>
+                <dd className="font-extrabold tabular-nums text-slate-900 night:text-night-text">{lkrFromPaisa(duePaisa)}</dd>
               </div>
             </dl>
 
@@ -2072,7 +2072,7 @@ function PaymentDialog({
             <label
               className={cn(
                 'flex min-h-touch-standard cursor-pointer items-center gap-sp-3 rounded-control border-2 px-sp-3 py-sp-2',
-                noReceipt ? 'border-brand-500 bg-brand-050' : 'border-slate-200 bg-white',
+                noReceipt ? 'border-brand-500 bg-brand-050 night:bg-night-raised' : 'border-slate-200 bg-white night:border-night-hairline night:bg-night-card',
               )}
             >
               <input
@@ -2082,8 +2082,8 @@ function PaymentDialog({
                 className="size-5 shrink-0 accent-brand-700"
               />
               <span className="flex flex-col">
-                <span className="text-fs-16 font-bold text-slate-900">No receipt</span>
-                <span className="text-fs-12 text-slate-600">The guest doesn&rsquo;t want one. You can still print it later.</span>
+                <span className="text-fs-16 font-bold text-slate-900 night:text-night-text">No receipt</span>
+                <span className="text-fs-12 text-slate-600 night:text-night-second">The guest doesn&rsquo;t want one. You can still print it later.</span>
               </span>
             </label>
           </section>
@@ -2095,10 +2095,10 @@ function PaymentDialog({
                 <div className="grid grid-cols-2 gap-sp-3">
                   <div
                     aria-live="polite"
-                    className="flex flex-col rounded-waiter border-2 border-brand-500 bg-white px-sp-4 py-sp-3"
+                    className="flex flex-col rounded-waiter border-2 border-brand-500 bg-white px-sp-4 py-sp-3 night:bg-night-card"
                   >
                     <span className="flex items-center justify-between gap-sp-2">
-                      <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+                      <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase night:text-night-second">
                         {method === 'split' ? 'Cash part' : 'Received'}
                       </span>
                       {/* Clear (Teran, 2026-10-25): back to empty in one tap,
@@ -2115,8 +2115,8 @@ function PaymentDialog({
                           className={cn(
                             // The standard 44px touch floor, even tucked in
                             // a corner: a missed Clear is a wrong amount.
-                            'h-touch-standard rounded-control border border-slate-200 bg-white px-sp-4',
-                            'text-fs-12 font-bold text-slate-700 active:scale-[0.97]',
+                            'h-touch-standard rounded-control border border-slate-200 bg-white px-sp-4 night:border-night-hairline night:bg-night-card',
+                            'text-fs-12 font-bold text-slate-700 active:scale-[0.97] night:text-night-second',
                             focusRing,
                           )}
                         >
@@ -2124,18 +2124,18 @@ function PaymentDialog({
                         </button>
                       ) : null}
                     </span>
-                    <span className="text-fs-32 font-extrabold tabular-nums text-slate-900">
+                    <span className="text-fs-32 font-extrabold tabular-nums text-slate-900 night:text-night-text">
                       {received === null ? 'LKR —' : lkrFromPaisa(received)}
                     </span>
                   </div>
-                  <div className="flex flex-col rounded-waiter bg-slate-100 px-sp-4 py-sp-3">
-                    <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+                  <div className="flex flex-col rounded-waiter bg-slate-100 px-sp-4 py-sp-3 night:bg-night-raised">
+                    <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase night:text-night-second">
                       {method === 'split' ? 'Card part' : change > 0 ? 'Change' : 'Still needed'}
                     </span>
                     <span
                       className={cn(
                         'text-fs-32 font-extrabold tabular-nums',
-                        method === 'cash' && change > 0 ? 'text-open-ink' : 'text-slate-600',
+                        method === 'cash' && change > 0 ? 'text-open-ink night:text-green-400' : 'text-slate-600 night:text-night-second',
                       )}
                     >
                       {lkrFromPaisa(method === 'cash' && change > 0 ? change : stillNeeded)}
@@ -2159,8 +2159,8 @@ function PaymentDialog({
                         option.set()
                       }}
                       className={cn(
-                        'h-touch-standard min-w-24 rounded-control border border-brand-300 bg-brand-050 px-sp-4',
-                        'text-fs-14 font-bold text-brand-700 active:scale-[0.97]',
+                        'h-touch-standard min-w-24 rounded-control border border-brand-300 bg-brand-050 px-sp-4 night:border-brand-500/50 night:bg-night-raised',
+                        'text-fs-14 font-bold text-brand-700 active:scale-[0.97] night:text-brand-300',
                         focusRing,
                       )}
                     >
@@ -2177,8 +2177,8 @@ function PaymentDialog({
                       onClick={() => press(key)}
                       aria-label={key === 'back' ? 'Delete last digit' : key}
                       className={cn(
-                        'flex h-touch-kitchen items-center justify-center rounded-waiter border border-slate-200 bg-white',
-                        'text-fs-24 font-bold text-slate-900 active:scale-[0.97] active:bg-slate-100',
+                        'flex h-touch-kitchen items-center justify-center rounded-waiter border border-slate-200 bg-white night:border-night-hairline night:bg-night-card',
+                        'text-fs-24 font-bold text-slate-900 active:scale-[0.97] active:bg-slate-100 night:text-night-text night:active:bg-night-raised',
                         focusRing,
                       )}
                     >
@@ -2188,31 +2188,31 @@ function PaymentDialog({
                 </div>
               </>
             ) : (
-              <div className="flex flex-1 flex-col items-center justify-center gap-sp-3 rounded-waiter bg-slate-100 p-sp-5 text-center">
+              <div className="flex flex-1 flex-col items-center justify-center gap-sp-3 rounded-waiter bg-slate-100 p-sp-5 text-center night:bg-night-raised">
                 {method === 'transfer' ? (
                   <>
-                    <Landmark aria-hidden="true" className="size-10 text-brand-700" />
-                    <p className="text-fs-18 font-semibold text-slate-900">
+                    <Landmark aria-hidden="true" className="size-10 text-brand-700 night:text-brand-300" />
+                    <p className="text-fs-18 font-semibold text-slate-900 night:text-night-text">
                       Check that <strong className="tabular-nums">{lkrFromPaisa(duePaisa)}</strong> has
                       reached the bank account.
                     </p>
-                    <p className="text-fs-14 text-slate-600">Confirm here once you have seen it arrive.</p>
+                    <p className="text-fs-14 text-slate-600 night:text-night-second">Confirm here once you have seen it arrive.</p>
                   </>
                 ) : (
                   <>
-                    <CreditCard aria-hidden="true" className="size-10 text-brand-700" />
-                    <p className="text-fs-18 font-semibold text-slate-900">
+                    <CreditCard aria-hidden="true" className="size-10 text-brand-700 night:text-brand-300" />
+                    <p className="text-fs-18 font-semibold text-slate-900 night:text-night-text">
                       Charge <strong className="tabular-nums">{lkrFromPaisa(duePaisa)}</strong> on the
                       card machine.
                     </p>
-                    <p className="text-fs-14 text-slate-600">Confirm here once it is approved.</p>
+                    <p className="text-fs-14 text-slate-600 night:text-night-second">Confirm here once it is approved.</p>
                   </>
                 )}
               </div>
             )}
 
             {error ? (
-              <p role="alert" className="text-fs-14 font-semibold text-unavailable-ink">
+              <p role="alert" className="text-fs-14 font-semibold text-unavailable-ink night:text-red-300">
                 {error}
               </p>
             ) : null}
@@ -2242,9 +2242,9 @@ function PaymentDialog({
                 'active:scale-[0.98] disabled:active:scale-100',
                 focusRing,
                 busy || (tenders === null && !cashShort)
-                  ? 'bg-slate-100 text-slate-400'
+                  ? 'bg-slate-100 text-slate-400 night:bg-night-raised night:text-night-muted'
                   : cashShort
-                    ? 'border-2 border-brand-500 bg-brand-050 text-brand-700'
+                    ? 'border-2 border-brand-500 bg-brand-050 text-brand-700 night:bg-night-raised night:text-brand-300'
                     : 'bg-brand-800 text-white shadow-el-2',
               )}
             >

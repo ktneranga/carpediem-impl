@@ -95,12 +95,12 @@ export function MenuItemCard({
         // same two pixels, nothing moves.
         item.available
           ? isStaged
-            ? 'border-brand-500 bg-white shadow-el-2 ring-1 ring-brand-500 ring-inset'
-            : 'border-slate-200 bg-white shadow-el-1'
+            ? 'border-brand-500 bg-white shadow-el-2 ring-1 ring-brand-500 ring-inset night:bg-night-card'
+            : 'border-slate-200 bg-white shadow-el-1 night:border-night-hairline night:bg-night-card'
           : // Off today: flat, no shadow — not a surface you can act on — and
             // RED (Teran, 2026-11-13), the same family as Sold out and the
             // floor's "needs check", so it is seen across a grid, not missed.
-            'border-unavailable-edge bg-unavailable-body',
+            'border-unavailable-edge bg-unavailable-body night:bg-night-unavailable-body',
         addable && 'transition-transform duration-80 ease-standard active:scale-[0.98]',
         // NO focus ring on the article. It had `focus-within`, which fires on
         // a TAP as well as a keyboard focus — clicking a button focuses it —
@@ -187,7 +187,7 @@ export function MenuItemCard({
           'pointer-events-none relative z-10 text-fs-18 font-bold',
           // An 86'd dish stays READABLE — unavailable-ink on its tint — and is
           // struck through, which says "not today" without making the name a guess.
-          item.available ? 'text-slate-900' : 'text-unavailable-ink line-through',
+          item.available ? 'text-slate-900 night:text-night-text' : 'text-unavailable-ink line-through night:text-red-300',
         )}
       >
         {item.name}
@@ -200,7 +200,7 @@ export function MenuItemCard({
         <p
           className={cn(
             'pointer-events-none text-fs-16 font-semibold tabular-nums',
-            item.available ? 'text-slate-900' : 'text-unavailable-ink',
+            item.available ? 'text-slate-900 night:text-night-text' : 'text-unavailable-ink night:text-red-300',
           )}
         >
           {price}
@@ -227,9 +227,9 @@ export function MenuItemCard({
               // rare one shrank to a corner. It is still a full standard
               // target, and the card behind it is the 56px one.
               'flex size-touch-standard shrink-0 items-center justify-center rounded-control',
-              '-m-sp-2 text-slate-600',
+              '-m-sp-2 text-slate-600 night:text-night-second',
               'transition-[transform,background-color] duration-80 ease-standard',
-              'active:scale-[0.94] active:bg-slate-100',
+              'active:scale-[0.94] active:bg-slate-100 night:active:bg-night-raised',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
             )}
           >

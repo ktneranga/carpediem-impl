@@ -109,8 +109,8 @@ export function ActionStripShell({
         // confirmation dialogs are z-50 and still cover it, which is right —
         // they are modal and this is not.
         'sticky bottom-0 z-20 flex min-h-24 flex-wrap items-center justify-between gap-sp-4',
-        'border-t border-slate-200 px-sp-4 py-sp-3 shadow-el-3',
-        muted ? 'bg-slate-100' : 'bg-white',
+        'border-t border-slate-200 px-sp-4 py-sp-3 shadow-el-3 night:border-night-hairline',
+        muted ? 'bg-slate-100 night:bg-night-raised' : 'bg-white night:bg-night-card',
       )}
     >
       {leading}
@@ -121,7 +121,7 @@ export function ActionStripShell({
           {/* slate-600, not slate-400 (2.56:1): on the order screen this eyebrow
               says "NOT SENT", the one fact that must never be misread. */}
           {eyebrow ? (
-            <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase">
+            <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase night:text-night-second">
               {eyebrow}
             </span>
           ) : null}
@@ -130,17 +130,17 @@ export function ActionStripShell({
               <span
                 className={cn(
                   'truncate text-fs-18 font-bold tracking-title',
-                  muted ? 'text-slate-600' : 'text-slate-900',
+                  muted ? 'text-slate-600 night:text-night-second' : 'text-slate-900 night:text-night-text',
                 )}
               >
                 {label}
               </span>
             ) : null}
             {secondary ? (
-              <span className="truncate text-fs-14 font-semibold text-slate-500">{secondary}</span>
+              <span className="truncate text-fs-14 font-semibold text-slate-500 night:text-night-muted">{secondary}</span>
             ) : null}
           </span>
-          {detail ? <span className="truncate text-fs-14 text-slate-600">{detail}</span> : null}
+          {detail ? <span className="truncate text-fs-14 text-slate-600 night:text-night-second">{detail}</span> : null}
         </div>
       </div>
 
@@ -188,7 +188,7 @@ export const primaryButtonClass = cn(
 export const billButtonClass = cn(
   'flex h-touch-waiter min-w-40 items-center justify-center gap-sp-2 rounded-waiter px-sp-5',
   'text-fs-16 font-bold tracking-title',
-  'border border-brand-500 bg-brand-050 text-brand-700 shadow-el-1',
+  'border border-brand-500 bg-brand-050 text-brand-700 shadow-el-1 night:bg-night-raised night:text-brand-300',
   'transition-[transform,box-shadow] duration-80 ease-standard',
   'active:scale-[0.97] active:shadow-pressed',
   'disabled:opacity-40 disabled:active:scale-100',
@@ -198,7 +198,7 @@ export const billButtonClass = cn(
 /** The secondary action. Same height, quieter weight. */
 export const secondaryButtonClass = cn(
   'h-touch-waiter min-w-32 rounded-waiter px-sp-4 text-fs-16 font-semibold',
-  'border border-slate-200 bg-white text-slate-600 shadow-el-1',
+  'border border-slate-200 bg-white text-slate-600 shadow-el-1 night:border-night-hairline night:bg-night-card night:text-night-second',
   'transition-[transform,box-shadow] duration-80 ease-standard',
   'active:scale-[0.97] active:shadow-pressed',
   'disabled:opacity-40 disabled:active:scale-100',

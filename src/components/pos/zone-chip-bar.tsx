@@ -92,7 +92,7 @@ export function ZoneChipBar({
   // brand-800, not brand-500: white text on brand-500 is 3.9:1 and fails AA at
   // these sizes — the same trap the --*-band tokens exist to avoid.
   const activeTab = 'border-brand-800 bg-brand-800'
-  const inactiveTab = 'border-slate-200 bg-white'
+  const inactiveTab = 'border-slate-200 bg-white night:border-night-hairline night:bg-night-card'
 
   const AllIcon = ALL_ZONES_ICON
   // Counter mode overrides the zone filter entirely, so "All zones" is only
@@ -124,7 +124,7 @@ export function ZoneChipBar({
           // the same mark that labels the zone's block of cards and sits on
           // every card in it, so a waiter can jump tab -> heading -> card
           // without rereading any of the words.
-          className={cn('size-5 shrink-0', isActive ? 'text-white' : 'text-brand-700')}
+          className={cn('size-5 shrink-0', isActive ? 'text-white' : 'text-brand-700 night:text-brand-300')}
           strokeWidth={2}
         />
         <span
@@ -132,7 +132,7 @@ export function ZoneChipBar({
             'text-fs-16 font-semibold whitespace-nowrap',
             // slate-700 unselected, measured — slate-900 made every tab look
             // half-chosen, which is the one thing a filter bar must not do.
-            isActive ? 'text-white' : 'text-slate-700',
+            isActive ? 'text-white' : 'text-slate-700 night:text-night-second',
           )}
         >
           {name}
@@ -143,7 +143,7 @@ export function ZoneChipBar({
               'rounded-pill px-sp-2 py-0.5 text-fs-12 font-bold tabular-nums whitespace-nowrap',
               // Measured off the design: white at ~18% over brand-800.
               // A solid brand-900 badge read as a second, darker control.
-              isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600',
+              isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600 night:bg-night-raised night:text-night-second',
             )}
           >
             {count}

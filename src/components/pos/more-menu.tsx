@@ -66,7 +66,7 @@ export function MoreMenu({
             role="menu"
             className={cn(
               'absolute bottom-full left-0 z-20 mb-sp-2 min-w-60 overflow-hidden',
-              'rounded-waiter border border-slate-200 bg-white shadow-el-2',
+              'rounded-waiter border border-slate-200 bg-white shadow-el-2 night:border-night-hairline night:bg-night-card',
             )}
           >
             {items.map((item, index) => (
@@ -85,10 +85,10 @@ export function MoreMenu({
                   'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',
                   // A destructive item is separated by a rule as well as
                   // coloured, so it is not reached by muscle memory alone.
-                  index > 0 && 'border-t border-slate-200',
+                  index > 0 && 'border-t border-slate-200 night:border-night-hairline',
                   item.danger
-                    ? 'text-unavailable-band active:bg-unavailable-body'
-                    : 'text-slate-900 active:bg-slate-100',
+                    ? 'text-unavailable-band active:bg-unavailable-body night:text-red-400 night:active:bg-night-unavailable-body'
+                    : 'text-slate-900 active:bg-slate-100 night:text-night-text night:active:bg-night-raised',
                 )}
               >
                 {item.label}

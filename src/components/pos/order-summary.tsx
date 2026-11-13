@@ -72,7 +72,7 @@ export function OrderSummary({
     .replace(/\.0$/, '')
 
   return (
-    <div className="flex shrink-0 flex-col gap-sp-2 border-t border-slate-200 bg-white px-sp-4 py-sp-3">
+    <div className="flex shrink-0 flex-col gap-sp-2 border-t border-slate-200 bg-white px-sp-4 py-sp-3 night:border-night-hairline night:bg-night-card">
       <Row label="Sent" value={sentPaisa} />
       <Row label="Not sent" value={notSentPaisa} />
       {serviceChargeBp > 0 ? (
@@ -80,9 +80,9 @@ export function OrderSummary({
       ) : null}
       {taxRatePercent > 0 ? <Row label={`Tax ${taxRatePercent}%`} value={taxPaisa} /> : null}
 
-      <div className="flex items-baseline justify-between gap-sp-3 border-t border-slate-200 pt-sp-2">
+      <div className="flex items-baseline justify-between gap-sp-3 border-t border-slate-200 pt-sp-2 night:border-night-hairline">
         <span className="flex items-center gap-sp-1">
-          <span className="text-fs-16 font-bold text-slate-900">Table total</span>
+          <span className="text-fs-16 font-bold text-slate-900 night:text-night-text">Table total</span>
           {onAddCharge ? (
             <button
               type="button"
@@ -92,9 +92,9 @@ export function OrderSummary({
               className={cn(
                 // A 44px target around a 20px glyph; the negative margin keeps
                 // the row the height of its text.
-                '-my-sp-3 flex size-touch-standard items-center justify-center rounded-pill text-slate-600',
+                '-my-sp-3 flex size-touch-standard items-center justify-center rounded-pill text-slate-600 night:text-night-second',
                 'transition-[transform,background-color] duration-80 ease-standard',
-                'hover:bg-slate-100 active:scale-[0.94] active:bg-slate-100',
+                'hover:bg-slate-100 active:scale-[0.94] active:bg-slate-100 night:hover:bg-night-raised night:active:bg-night-raised',
                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
               )}
             >
@@ -102,7 +102,7 @@ export function OrderSummary({
             </button>
           ) : null}
         </span>
-        <span className="text-fs-24 font-extrabold tabular-nums text-slate-900">
+        <span className="text-fs-24 font-extrabold tabular-nums text-slate-900 night:text-night-text">
           {lkrFromPaisa(totalPaisa)}
         </span>
       </div>
@@ -113,8 +113,8 @@ export function OrderSummary({
 function Row({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-baseline justify-between gap-sp-3">
-      <span className="text-fs-14 text-slate-600">{label}</span>
-      <span className="text-fs-14 font-semibold tabular-nums text-slate-900">
+      <span className="text-fs-14 text-slate-600 night:text-night-second">{label}</span>
+      <span className="text-fs-14 font-semibold tabular-nums text-slate-900 night:text-night-text">
         {lkrFromPaisa(value)}
       </span>
     </div>

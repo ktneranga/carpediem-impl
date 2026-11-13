@@ -64,7 +64,7 @@ export function MenuCategoryChips({
         onClick={chip.onClick}
         className={cn(
           'flex h-touch-kitchen shrink-0 items-center gap-sp-2 rounded-pill border px-sp-5',
-          'border-brand-300 bg-brand-050 text-fs-16 font-bold whitespace-nowrap text-brand-700',
+          'border-brand-300 bg-brand-050 text-fs-16 font-bold whitespace-nowrap text-brand-700 night:border-brand-500/50 night:bg-night-raised night:text-brand-300',
           'transition-transform duration-120 ease-standard active:scale-[0.97]',
           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
         )}
@@ -106,7 +106,7 @@ export function MenuCategoryChips({
               // white on 500 is 3.9:1 and fails AA.
               isActive
                 ? 'border-brand-800 bg-brand-800 text-white'
-                : 'border-slate-200 bg-white text-slate-700',
+                : 'border-slate-200 bg-white text-slate-700 night:border-night-hairline night:bg-night-card night:text-night-second',
             )}
           >
             {chip.name}

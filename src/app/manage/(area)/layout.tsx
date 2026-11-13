@@ -1,5 +1,4 @@
 import { headers } from 'next/headers'
-import { ManageThemeRoot } from '@/components/manage/theme-root'
 import { ManageNav } from './manage-nav'
 
 /**
@@ -21,7 +20,6 @@ export default async function ManageAreaLayout({ children }: { children: React.R
   const unlocked = owner && list.get('x-manage-unlocked') === '1'
   return (
     <div className="flex min-h-screen flex-col bg-slate-100 night:bg-night-app md:flex-row">
-      <ManageThemeRoot />
       <ManageNav owner={owner} unlocked={unlocked} />
       <main className="min-w-0 flex-1 p-sp-4 md:p-sp-6">{children}</main>
     </div>

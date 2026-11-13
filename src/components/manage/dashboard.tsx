@@ -6,7 +6,7 @@ import { call as callApi } from '@/components/manage/manage-ui'
 import { AuditList, CompsByReason, PaymentSplit, RevenueChart, StatTiles, TopItems } from '@/components/manage/dashboard/insight-panels'
 import { Panel, PanelSkeleton, tone } from '@/components/manage/dashboard/panel'
 import { CashCountButton, LiveCards, SUMMARY_KEY } from '@/components/manage/dashboard/summary-cards'
-import { useManageTheme } from '@/components/manage/theme'
+import { useTheme } from '@/components/theme/theme'
 import { useSocketEvent, useSocketStatus } from '@/hooks/use-socket'
 import type { Insights, Period } from '@/server/services/insights.service'
 import { cn } from '@/lib/utils'
@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
  * by hour or day with its peak, four stat tiles (recorded revenue vs the same
  * span before, cash gap, covers, comps), payment split, top items, comps by
  * reason, unclosed orders and corrections — and on Today, what needs attention
- * now. Light and dark follow the Manage area's theme (the toggle is in the menu).
+ * now. Light and dark follow the app-wide theme (the Dark mode switch).
  */
 
 const PERIODS: { value: Period; label: string; word: string }[] = [
@@ -39,7 +39,7 @@ function periodTitle(data: Insights) {
 export function Dashboard() {
   const queryClient = useQueryClient()
   const live = useSocketStatus()
-  const { dark } = useManageTheme()
+  const { dark } = useTheme()
   const [period, setPeriod] = useState<Period>('today')
   const includesToday = period !== 'yesterday'
 

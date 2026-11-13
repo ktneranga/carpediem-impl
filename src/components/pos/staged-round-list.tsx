@@ -108,7 +108,7 @@ export function StagedRoundList({
 }) {
   if (lines.length === 0) {
     return (
-      <p className="rounded-waiter border border-dashed border-slate-200 p-sp-4 text-center text-fs-14 text-slate-600">
+      <p className="rounded-waiter border border-dashed border-slate-200 p-sp-4 text-center text-fs-14 text-slate-600 night:border-night-hairline night:text-night-second">
         Tap a dish to start the round.
       </p>
     )
@@ -126,14 +126,14 @@ export function StagedRoundList({
   const dishCount = lines.reduce((total, line) => total + line.quantity, 0)
 
   const stepperButton = cn(
-    'flex size-touch-standard items-center justify-center rounded-control text-slate-900',
+    'flex size-touch-standard items-center justify-center rounded-control text-slate-900 night:text-night-text',
     'transition-transform duration-80 ease-standard active:scale-[0.92]',
     'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500',
   )
 
   return (
     <section aria-label="Items not yet sent" className="flex flex-col gap-sp-2">
-      <h2 className="text-fs-12 font-bold tracking-micro text-unsent-ink uppercase">
+      <h2 className="text-fs-12 font-bold tracking-micro text-unsent-ink uppercase night:text-amber-300">
         Not sent · {dishCount} item{dishCount === 1 ? '' : 's'}
       </h2>
 
@@ -160,8 +160,8 @@ export function StagedRoundList({
               className={cn(
                 'flex flex-col gap-sp-2 rounded-control border px-sp-3 py-sp-2',
                 problem
-                  ? 'border-2 border-unavailable-edge bg-unavailable-body'
-                  : 'border-unsent-edge bg-unsent-body',
+                  ? 'border-2 border-unavailable-edge bg-unavailable-body night:bg-night-unavailable-body'
+                  : 'border-unsent-edge bg-unsent-body night:bg-amber-500/10',
               )}
             >
               <div className="flex items-center gap-sp-2">
@@ -177,7 +177,7 @@ export function StagedRoundList({
                     aria-label={`Change ${line.name}: note, options or quantity`}
                     className={cn(
                       stepperButton,
-                      'shrink-0 border border-slate-200 bg-white text-brand-800',
+                      'shrink-0 border border-slate-200 bg-white text-brand-800 night:border-night-hairline night:bg-night-card night:text-brand-300',
                     )}
                   >
                     <Pencil aria-hidden="true" strokeWidth={2.5} className="size-4" />
@@ -198,13 +198,13 @@ export function StagedRoundList({
                     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                   )}
                 >
-                  <span className="flex items-center gap-sp-2 text-fs-16 font-bold text-slate-900">
+                  <span className="flex items-center gap-sp-2 text-fs-16 font-bold text-slate-900 night:text-night-text">
                     <span className="truncate">{line.name}</span>
                     {/* A typed charge, not a dish (Story 4.9) — it goes to no
                         station, so the waiter should not look for it on a
                         ticket. slate-600, not 400: 400 fails AA on the row. */}
                     {line.customName !== undefined ? (
-                      <span className="shrink-0 rounded-pill border border-slate-200 px-sp-2 text-fs-12 font-semibold text-slate-600">
+                      <span className="shrink-0 rounded-pill border border-slate-200 px-sp-2 text-fs-12 font-semibold text-slate-600 night:border-night-hairline night:text-night-second">
                         Custom
                       </span>
                     ) : null}
@@ -213,7 +213,7 @@ export function StagedRoundList({
                       line. The note is here so it can be checked before it
                       goes; it wraps rather than truncates, because a clipped
                       "no nuts — sev…" is worse than a taller row. */}
-                  <span className="text-fs-12 font-semibold text-slate-600">
+                  <span className="text-fs-12 font-semibold text-slate-600 night:text-night-second">
                     {details.map((detail, index) => (
                       <span key={index}>
                         {index > 0 ? ' · ' : ''}
@@ -225,7 +225,7 @@ export function StagedRoundList({
                   </span>
                 </button>
 
-                <div className="flex shrink-0 items-center rounded-control border border-slate-200 bg-white">
+                <div className="flex shrink-0 items-center rounded-control border border-slate-200 bg-white night:border-night-hairline night:bg-night-card">
                   <button
                     type="button"
                     onClick={() =>
@@ -248,7 +248,7 @@ export function StagedRoundList({
 
                   <output
                     aria-label={`Quantity of ${line.name}`}
-                    className="min-w-5 text-center text-fs-16 font-bold tabular-nums text-slate-900"
+                    className="min-w-5 text-center text-fs-16 font-bold tabular-nums text-slate-900 night:text-night-text"
                   >
                     {line.quantity}
                   </output>
@@ -270,7 +270,7 @@ export function StagedRoundList({
 
               {problem ? (
                 <div className="flex flex-col gap-sp-2">
-                  <p className="flex items-start gap-sp-2 text-fs-14 font-bold text-unavailable-ink">
+                  <p className="flex items-start gap-sp-2 text-fs-14 font-bold text-unavailable-ink night:text-red-300">
                     <AlertTriangle aria-hidden="true" strokeWidth={2} className="mt-0.5 size-4 shrink-0" />
                     {problem.kind === 'seat-gone'
                       ? // AC-7: names the seat that vanished, from the label
@@ -321,8 +321,8 @@ export function StagedRoundList({
                           type="button"
                           onClick={() => onReassign(line.lineId, seat)}
                           className={cn(
-                            'h-touch-kitchen rounded-control border border-slate-200 bg-white px-sp-3',
-                            'text-fs-14 font-semibold whitespace-nowrap text-slate-900',
+                            'h-touch-kitchen rounded-control border border-slate-200 bg-white px-sp-3 night:border-night-hairline night:bg-night-card',
+                            'text-fs-14 font-semibold whitespace-nowrap text-slate-900 night:text-night-text',
                             'transition-transform duration-80 ease-standard active:scale-[0.97]',
                             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                           )}

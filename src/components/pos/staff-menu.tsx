@@ -3,13 +3,15 @@
 import { useEffect, useState } from 'react'
 import { Ban, LogOut, Settings } from 'lucide-react'
 import { StaffBadge } from '@/components/pos/staff-badge'
+import { ThemeToggle } from '@/components/theme/theme-switch'
 import { cn } from '@/lib/utils'
 
 /**
  * The staff badge in the top-right corner of every screen: a tap opens a small
  * menu instead of signing out at once (Teran, 2026-11-13). Switch user for
  * everyone; Manage above it for the owner (Story 10.0, AC 1); Sold out between
- * them for owner and waiters (Story 8.3).
+ * them for owner and waiters (Story 8.3); the Dark mode switch at the foot, the
+ * same setting as Manage's (Teran, 2026-11-13).
  *
  * Open state in `useState` and outside-tap detection by `closest()` in an
  * effect — no ref read during render (this repo's React Compiler lint).
@@ -51,7 +53,7 @@ export function StaffMenu({
 
   const itemClass = cn(
     'flex min-h-touch-standard w-full items-center gap-sp-2 rounded-control px-sp-3',
-    'text-left text-fs-14 font-semibold text-slate-900 hover:bg-slate-100',
+    'text-left text-fs-14 font-semibold text-slate-900 hover:bg-slate-100 night:text-night-text night:hover:bg-night-raised',
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
   )
 
@@ -62,7 +64,7 @@ export function StaffMenu({
         <div
           role="menu"
           aria-label="Staff menu"
-          className="absolute right-0 top-full z-40 mt-sp-1 w-48 rounded-control border border-slate-200 bg-white p-sp-1 shadow-lg"
+          className="absolute right-0 top-full z-40 mt-sp-1 w-56 rounded-control border border-slate-200 bg-white p-sp-1 shadow-lg night:border-night-hairline night:bg-night-card"
         >
           {onManage ? (
             <button
@@ -74,7 +76,7 @@ export function StaffMenu({
                 onManage()
               }}
             >
-              <Settings aria-hidden="true" className="size-4 text-slate-600" />
+              <Settings aria-hidden="true" className="size-4 text-slate-600 night:text-night-second" />
               Manage
             </button>
           ) : null}
@@ -88,7 +90,7 @@ export function StaffMenu({
                 onSoldOut()
               }}
             >
-              <Ban aria-hidden="true" className="size-4 text-slate-600" />
+              <Ban aria-hidden="true" className="size-4 text-slate-600 night:text-night-second" />
               Availability
             </button>
           ) : null}
@@ -101,9 +103,13 @@ export function StaffMenu({
               onSwitchUser()
             }}
           >
-            <LogOut aria-hidden="true" className="size-4 text-slate-600" />
+            <LogOut aria-hidden="true" className="size-4 text-slate-600 night:text-night-second" />
             Switch user
           </button>
+          {/* One setting for POS and Manage: flipping it here changes both. */}
+          <div role="none" className="mt-sp-1 border-t border-slate-200 pt-sp-1 night:border-night-hairline">
+            <ThemeToggle withLabel className="border-0" />
+          </div>
         </div>
       ) : null}
     </div>

@@ -66,7 +66,7 @@ export function OrderHeader({
   onSoldOut?: () => void
 }) {
   return (
-    <header className="flex shrink-0 items-start justify-between gap-sp-3 border-b border-slate-200 bg-white px-sp-4 py-sp-3">
+    <header className="flex shrink-0 items-start justify-between gap-sp-3 border-b border-slate-200 bg-white px-sp-4 py-sp-3 night:border-night-hairline night:bg-night-card">
       <div className="flex min-w-0 items-center gap-sp-3">
         <button
           type="button"
@@ -75,7 +75,7 @@ export function OrderHeader({
           className={cn(
             // The 56px touch token: the floor for every waiter control.
             'flex size-touch-kitchen shrink-0 items-center justify-center rounded-control',
-            'border border-slate-200 bg-white text-slate-900',
+            'border border-slate-200 bg-white text-slate-900 night:border-night-hairline night:bg-night-card night:text-night-text',
             'transition-[transform,box-shadow] duration-80 ease-standard',
             'active:scale-[0.97] active:shadow-pressed',
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
@@ -105,14 +105,14 @@ export function OrderHeader({
 
         <div className="flex min-w-0 flex-col">
           <div className="flex flex-wrap items-baseline gap-x-sp-3 gap-y-sp-1">
-            <h1 className="text-fs-24 font-extrabold tracking-title text-slate-900">
+            <h1 className="text-fs-24 font-extrabold tracking-title text-slate-900 night:text-night-text">
               {tableLabel}
             </h1>
-            <p className="text-fs-14 text-slate-600">{contextLine}</p>
+            <p className="text-fs-14 text-slate-600 night:text-night-second">{contextLine}</p>
           </div>
 
           {activeSeatLabel ? (
-            <p className="text-fs-12 font-bold tracking-micro text-brand-700 uppercase">
+            <p className="text-fs-12 font-bold tracking-micro text-brand-700 uppercase night:text-brand-300">
               {activeSeatLabel} selected — taps land here
             </p>
           ) : null}

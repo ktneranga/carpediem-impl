@@ -165,7 +165,7 @@ export function FloorActionStrip({
   // on a bar tab alike.
   const billButton = cn(
     'flex h-touch-waiter items-center gap-sp-2 rounded-waiter px-sp-5',
-    'border border-brand-500 bg-brand-050 text-fs-16 font-bold text-brand-700',
+    'border border-brand-500 bg-brand-050 text-fs-16 font-bold text-brand-700 night:bg-night-raised night:text-brand-300',
     'transition-[transform,box-shadow] duration-80 ease-standard',
     'active:scale-[0.97] active:shadow-pressed disabled:opacity-40',
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
@@ -347,8 +347,8 @@ export function FloorActionStrip({
               if (event.key === 'Enter') submitReason(customReason)
             }}
             className={cn(
-              'h-touch-waiter w-48 rounded-waiter border border-slate-200 px-sp-3',
-              'text-fs-16 text-slate-900 placeholder:text-slate-400',
+              'h-touch-waiter w-48 rounded-waiter border border-slate-200 px-sp-3 night:border-night-hairline',
+              'text-fs-16 text-slate-900 placeholder:text-slate-400 night:text-night-text',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
             )}
           />
@@ -447,7 +447,7 @@ export function FloorActionStrip({
             ) : null}
           </>
         ) : (
-          <p className="text-fs-14 text-slate-600">Kitchen staff cannot open the order screen.</p>
+          <p className="text-fs-14 text-slate-600 night:text-night-second">Kitchen staff cannot open the order screen.</p>
         )}
       </Shell>
     )
@@ -484,7 +484,7 @@ export function FloorActionStrip({
             {busy ? 'Working…' : 'Return to service'}
           </button>
         ) : (
-          <p className="text-fs-14 text-slate-600">Only an owner can return this table to service.</p>
+          <p className="text-fs-14 text-slate-600 night:text-night-second">Only an owner can return this table to service.</p>
         )}
       </Shell>
     )
@@ -587,7 +587,7 @@ export function FloorActionStrip({
             ) : null}
           </>
         ) : (
-          <p className="text-fs-14 text-slate-600">Kitchen staff cannot open the order screen.</p>
+          <p className="text-fs-14 text-slate-600 night:text-night-second">Kitchen staff cannot open the order screen.</p>
         )}
       </Shell>
     )
@@ -601,7 +601,7 @@ export function FloorActionStrip({
         zoneName={table.zoneName}
         detail="Ready to seat"
       >
-        <p className="text-fs-14 text-slate-600">Kitchen staff cannot seat or hold tables.</p>
+        <p className="text-fs-14 text-slate-600 night:text-night-second">Kitchen staff cannot seat or hold tables.</p>
       </Shell>
     )
   }
@@ -696,7 +696,7 @@ function Shell({
 /** The same tile the card carries, so the strip and the card read as one thing. */
 function zoneTile(zoneName: string) {
   return (
-    <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-brand-050 text-brand-500">
+    <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-brand-050 text-brand-500 night:bg-night-raised">
       {/* `createElement`, not `<Icon />` — see table-card.tsx. */}
       {createElement(zoneIcon(zoneName), {
         'aria-hidden': 'true',

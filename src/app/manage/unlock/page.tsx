@@ -4,7 +4,6 @@ import { db } from '@/server/db'
 import { staff } from '@/server/db/schema'
 import { getManagePasswordState } from '@/server/services/manage-password.service'
 import { safeManagePath } from '@/lib/return-to'
-import { ManageThemeRoot } from '@/components/manage/theme-root'
 import { UnlockForm } from './unlock-form'
 
 /**
@@ -30,7 +29,6 @@ export default async function ManageUnlockPage({
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 px-sp-4 py-sp-6 night:bg-night-app">
-      <ManageThemeRoot />
       <UnlockForm mode={state.isSet ? 'unlock' : 'set'} next={next} lockedForSeconds={state.lockedForSeconds} />
     </main>
   )

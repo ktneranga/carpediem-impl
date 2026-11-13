@@ -291,7 +291,7 @@ export function MenuBrowser({
         <Search
           aria-hidden="true"
           strokeWidth={2.2}
-          className="pointer-events-none absolute top-1/2 left-sp-4 size-5 -translate-y-1/2 text-slate-600"
+          className="pointer-events-none absolute top-1/2 left-sp-4 size-5 -translate-y-1/2 text-slate-600 night:text-night-second"
         />
         <input
           type="search"
@@ -300,9 +300,9 @@ export function MenuBrowser({
           placeholder="Search menu"
           aria-label="Search the menu"
           className={cn(
-            'h-touch-kitchen w-full rounded-control border border-slate-200 bg-white',
+            'h-touch-kitchen w-full rounded-control border border-slate-200 bg-white night:border-night-hairline night:bg-night-card',
             'pr-sp-4 pl-11',
-            'text-fs-16 text-slate-900 placeholder:text-slate-600',
+            'text-fs-16 text-slate-900 placeholder:text-slate-600 night:text-night-text',
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
           )}
         />
@@ -359,26 +359,26 @@ export function MenuBrowser({
       {isError && categories ? (
         <p
           role="status"
-          className="shrink-0 rounded-control bg-occupied-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-occupied-ink"
+          className="shrink-0 rounded-control bg-occupied-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-occupied-ink night:bg-amber-500/20 night:text-amber-300"
         >
           Menu may be out of date — {error instanceof Error ? error.message : 'refresh failed'}.
         </p>
       ) : null}
 
       {isPending ? (
-        <p className="text-fs-16 text-slate-600">Loading the menu…</p>
+        <p className="text-fs-16 text-slate-600 night:text-night-second">Loading the menu…</p>
       ) : isError && !categories ? (
         // The server's own wording. `fetchMenu` goes to the trouble of reading it
         // out of the response; telling every failure — a 403, a 503
         // NOT_PROVISIONED, a database outage — to "check the network" threw that
         // away and sent the waiter to look at the Wi-Fi.
-        <p role="alert" className="text-fs-16 font-semibold text-unavailable-ink">
+        <p role="alert" className="text-fs-16 font-semibold text-unavailable-ink night:text-red-300">
           {error instanceof Error && error.message
             ? error.message
             : 'Could not load the menu. Check the tablet is on the restaurant network.'}
         </p>
       ) : matchCount === 0 ? (
-        <p className="text-fs-16 text-slate-600">{emptyMessage()}</p>
+        <p className="text-fs-16 text-slate-600 night:text-night-second">{emptyMessage()}</p>
       ) : (
         // Only the GRID scrolls. The search field and chips above it are
         // `shrink-0`, so the primary navigation path stays on screen at any menu
@@ -399,7 +399,7 @@ export function MenuBrowser({
                 <div key={category.id} className="flex flex-col gap-sp-2">
                   {/* The heading stays even while searching, so a match is always
                       attributable to a category — AC-3's last clause. */}
-                  <h2 className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase">
+                  <h2 className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase night:text-night-second">
                     {category.name}
                   </h2>
 

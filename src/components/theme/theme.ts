@@ -1,24 +1,30 @@
 'use client'
 
 import { useSyncExternalStore } from 'react'
+import { OLD_THEME_KEY as OLD_KEY, THEME_KEY } from '@/components/theme/theme-script'
 
 /**
- * The Manage area's light / dark choice (Teran, 2026-11-13). `auto` follows
- * the device. Kept in this browser only (localStorage) — a per-viewer
- * convenience; if storage is blocked Manage simply follows the device.
+ * Light / dark for the WHOLE app — POS and Manage alike (Teran, 2026-11-13: one
+ * setting, so moving between the floor and Manage never changes the look).
+ *
+ * `auto` (nothing stored) follows the device. The Dark mode switch stores
+ * `light` or `dark` for this browser (localStorage) — a per-device convenience;
+ * if storage is blocked the app simply follows the device. Another tab of the
+ * same browser follows a change at once (`storage` event).
  *
  * Dark uses the design system's night tokens (`night:` variant,
- * `[data-theme="night"]`, globals.css). `ManageThemeRoot` puts the attribute
- * on <html> while a Manage screen is open; the POS never gets it.
+ * `[data-theme="night"]` on <html>, globals.css). `THEME_SCRIPT` (theme-script.ts) sets that
+ * attribute before the first paint; `ThemeRoot` keeps it in step afterwards.
  */
 
 export type ThemeChoice = 'auto' | 'light' | 'dark'
-const KEY = 'cdrms-manage-theme'
+
 const listeners = new Set<() => void>()
+let current: ThemeChoice | null = null
 
 function readChoice(): ThemeChoice {
   try {
-    const value = window.localStorage.getItem(KEY)
+    const value = window.localStorage.getItem(THEME_KEY) ?? window.localStorage.getItem(OLD_KEY)
     return value === 'light' || value === 'dark' ? value : 'auto'
   } catch {
     return 'auto'
@@ -27,8 +33,9 @@ function readChoice(): ThemeChoice {
 
 export function setThemeChoice(choice: ThemeChoice) {
   try {
-    if (choice === 'auto') window.localStorage.removeItem(KEY)
-    else window.localStorage.setItem(KEY, choice)
+    if (choice === 'auto') window.localStorage.removeItem(THEME_KEY)
+    else window.localStorage.setItem(THEME_KEY, choice)
+    window.localStorage.removeItem(OLD_KEY)
   } catch {
     // Not saved; it still applies until the page is left.
   }
@@ -36,15 +43,21 @@ export function setThemeChoice(choice: ThemeChoice) {
   for (const listener of listeners) listener()
 }
 
-let current: ThemeChoice | null = null
-
 function subscribe(listener: () => void) {
   listeners.add(listener)
   const media = window.matchMedia('(prefers-color-scheme: dark)')
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === THEME_KEY || event.key === null) {
+      current = readChoice()
+      listener()
+    }
+  }
   media.addEventListener('change', listener)
+  window.addEventListener('storage', onStorage)
   return () => {
     listeners.delete(listener)
     media.removeEventListener('change', listener)
+    window.removeEventListener('storage', onStorage)
   }
 }
 
@@ -55,7 +68,7 @@ function snapshot(): string {
   return `${current}|${dark ? 'dark' : 'light'}`
 }
 
-export function useManageTheme(): { choice: ThemeChoice; dark: boolean } {
+export function useTheme(): { choice: ThemeChoice; dark: boolean } {
   const value = useSyncExternalStore(subscribe, snapshot, () => 'auto|light')
   const [choice, resolved] = value.split('|') as [ThemeChoice, string]
   return { choice, dark: resolved === 'dark' }

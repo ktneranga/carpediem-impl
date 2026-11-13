@@ -1380,11 +1380,11 @@ export function OrderScreen({
 
   if (sessionClosed || signedOut) {
     return (
-      <div className="min-h-app flex flex-col items-center justify-center gap-sp-4 bg-slate-100 p-sp-5 text-center">
-        <p className="text-fs-24 font-extrabold tracking-title text-slate-900">
+      <div className="min-h-app flex flex-col items-center justify-center gap-sp-4 bg-slate-100 p-sp-5 text-center night:bg-night-app">
+        <p className="text-fs-24 font-extrabold tracking-title text-slate-900 night:text-night-text">
           {sessionClosed ? `${displayLabel} was closed on another device` : 'You were signed out'}
         </p>
-        <p className="text-fs-16 text-slate-600">
+        <p className="text-fs-16 text-slate-600 night:text-night-second">
           {sessionClosed
             ? 'Nothing on this screen can be sent. Anything not yet sent from this tablet was not saved to the order.'
             : 'Sign in again to carry on. Anything not yet sent is still on this tablet.'}
@@ -1418,7 +1418,7 @@ export function OrderScreen({
   // static position. The floor screen hit that exact problem.
   return (
     // `slate-100` is the system's app background.
-    <div className="min-h-app flex flex-col bg-slate-100 md:h-app">
+    <div className="min-h-app flex flex-col bg-slate-100 md:h-app night:bg-night-app">
       <OrderHeader
         tableLabel={displayLabel}
         contextLine={contextLine}
@@ -1458,7 +1458,7 @@ export function OrderScreen({
         {/* ── The order ────────────────────────────────────────────────────── */}
         <aside
           aria-label="This order"
-          className="flex min-h-0 flex-col border-t border-slate-200 bg-white md:min-w-80 md:flex-[1_1_0%] md:border-t-0 md:border-l"
+          className="flex min-h-0 flex-col border-t border-slate-200 bg-white md:min-w-80 md:flex-[1_1_0%] md:border-t-0 md:border-l night:border-night-hairline night:bg-night-card"
         >
           {/* Seats, pinned at the top of the column: "who is this for?" is the
               question before every tap, so it must not scroll away. */}
@@ -1474,7 +1474,7 @@ export function OrderScreen({
               about it yet. */}
           {/* No switch on a bar tab: it is always one bill (2026-10-30). */}
           {barTab ? null : (
-          <section className="shrink-0 border-b border-slate-200 p-sp-4">
+          <section className="shrink-0 border-b border-slate-200 p-sp-4 night:border-night-hairline">
               {/* A segmented control, as drawn: one slate-100 trough with a
                   white pill sliding between two halves. It was two separately
                   bordered buttons, which read as two things to pick from rather
@@ -1486,7 +1486,7 @@ export function OrderScreen({
               <div
                 role="group"
                 aria-label="How this order is billed"
-                className="flex gap-1 rounded-control bg-slate-100 p-1"
+                className="flex gap-1 rounded-control bg-slate-100 p-1 night:bg-night-raised"
               >
                 {([
                   { mode: 'one' as const, icon: Receipt, label: 'One bill' },
@@ -1508,7 +1508,7 @@ export function OrderScreen({
                         'text-fs-16 font-bold transition-colors duration-120 ease-standard',
                         'disabled:opacity-60',
                         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                        active ? 'bg-white text-brand-700 shadow-el-1' : 'text-slate-600',
+                        active ? 'bg-white text-brand-700 shadow-el-1 night:bg-night-card night:text-brand-300' : 'text-slate-600 night:text-night-second',
                       )}
                     >
                       <Icon aria-hidden="true" strokeWidth={2.2} className="size-5 shrink-0" />
@@ -1546,7 +1546,7 @@ export function OrderScreen({
               sideways now, so the section cannot grow with the seat count and
               has nothing to cap. The editor and the confirmation below it are
               bounded by their own content. */}
-          <section className="flex shrink-0 flex-col gap-sp-3 border-b border-slate-200 p-sp-4">
+          <section className="flex shrink-0 flex-col gap-sp-3 border-b border-slate-200 p-sp-4 night:border-night-hairline">
             <SeatSelector
               seats={seats}
               activeSeatId={activeSeatId}
@@ -1575,7 +1575,7 @@ export function OrderScreen({
 
           {/* The note editor and seat notices, uncapped. `empty:hidden` drops
               the wrapper — and its border — when neither is showing. */}
-          <div className="flex shrink-0 flex-col gap-sp-3 border-b border-slate-200 p-sp-4 empty:hidden">
+          <div className="flex shrink-0 flex-col gap-sp-3 border-b border-slate-200 p-sp-4 empty:hidden night:border-night-hairline">
             {isEditingSeat && activeSeat ? (
               // A real form, so the tablet keyboard's Enter saves the note.
               <form
@@ -1584,10 +1584,10 @@ export function OrderScreen({
                   if (seatBusy) return
                   updateNoteMutation.mutate({ seatId: activeSeat.id, seatNote: noteDraft })
                 }}
-                className="flex flex-col gap-sp-2 rounded-waiter border border-slate-200 bg-slate-100 p-sp-3"
+                className="flex flex-col gap-sp-2 rounded-waiter border border-slate-200 bg-slate-100 p-sp-3 night:border-night-hairline night:bg-night-raised"
               >
                 <label className="flex flex-col gap-sp-1">
-                  <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+                  <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase night:text-night-second">
                     Note for {activeSeat.seatLabel} — staff only
                   </span>
                   <input
@@ -1597,8 +1597,8 @@ export function OrderScreen({
                     placeholder="red shirt, curly hair…"
                     onChange={(event) => setNoteDraft(event.target.value)}
                     className={cn(
-                      'h-touch-kitchen rounded-control border border-slate-200 bg-white px-sp-3',
-                      'text-fs-16 text-slate-900 placeholder:text-slate-400',
+                      'h-touch-kitchen rounded-control border border-slate-200 bg-white px-sp-3 night:border-night-hairline night:bg-night-card',
+                      'text-fs-16 text-slate-900 placeholder:text-slate-400 night:text-night-text',
                       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                     )}
                   />
@@ -1606,18 +1606,18 @@ export function OrderScreen({
 
                 {/* Said out loud, because the person typing it would otherwise
                     assume it prints. Epic 6 enforces it where the bill is built. */}
-                <p className="text-fs-12 text-slate-600">
+                <p className="text-fs-12 text-slate-600 night:text-night-second">
                   Shown to staff and on kitchen tickets. Never printed on a guest&apos;s bill.
                 </p>
 
                 {/* `seats.length > 1` gates BOTH branches, so a refetch that
                     drops the other seat cannot leave "Yes, remove" on screen. */}
                 {confirmingSeatRemoval && seats.length > 1 ? (
-                  <div className="flex flex-col gap-sp-2 rounded-control border-2 border-unavailable-edge bg-unavailable-body p-sp-3">
+                  <div className="flex flex-col gap-sp-2 rounded-control border-2 border-unavailable-edge bg-unavailable-body p-sp-3 night:bg-night-unavailable-body">
                     {/* Says what is true. `nextSeatLabel` is highest + 1, so
                         removing the LAST seat and re-adding returns the same
                         number; "a new one gets a new number" was false. */}
-                    <p className="text-fs-14 font-bold text-unavailable-ink">
+                    <p className="text-fs-14 font-bold text-unavailable-ink night:text-red-300">
                       Remove {activeSeat.seatLabel}? This cannot be undone.
                     </p>
                     <div className="flex gap-sp-2">
@@ -1638,7 +1638,7 @@ export function OrderScreen({
                         type="button"
                         onClick={() => setConfirmingSeatRemoval(false)}
                         className={cn(
-                          'h-touch-kitchen flex-1 rounded-control border border-slate-200 bg-white text-fs-14 font-semibold text-slate-600',
+                          'h-touch-kitchen flex-1 rounded-control border border-slate-200 bg-white text-fs-14 font-semibold text-slate-600 night:border-night-hairline night:bg-night-card night:text-night-second',
                           'transition-transform duration-80 ease-standard active:scale-[0.97]',
                           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                         )}
@@ -1665,7 +1665,7 @@ export function OrderScreen({
                       type="button"
                       onClick={closeSeatEditor}
                       className={cn(
-                        'h-touch-kitchen flex-1 rounded-control border border-slate-200 bg-white text-fs-14 font-semibold text-slate-600',
+                        'h-touch-kitchen flex-1 rounded-control border border-slate-200 bg-white text-fs-14 font-semibold text-slate-600 night:border-night-hairline night:bg-night-card night:text-night-second',
                         'transition-transform duration-80 ease-standard active:scale-[0.97]',
                         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                       )}
@@ -1680,8 +1680,8 @@ export function OrderScreen({
                         disabled={seatBusy}
                         onClick={() => setConfirmingSeatRemoval(true)}
                         className={cn(
-                          'h-touch-kitchen shrink-0 rounded-control border border-unavailable-edge bg-white px-sp-3',
-                          'text-fs-14 font-semibold text-unavailable-ink',
+                          'h-touch-kitchen shrink-0 rounded-control border border-unavailable-edge bg-white px-sp-3 night:bg-night-card',
+                          'text-fs-14 font-semibold text-unavailable-ink night:text-red-300',
                           'transition-transform duration-80 ease-standard active:scale-[0.97]',
                           'disabled:opacity-40 disabled:active:scale-100',
                           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
@@ -1700,7 +1700,7 @@ export function OrderScreen({
             {seatNotice || seatsError || ordersError || billStateError ? (
               <p
                 role="status"
-                className="rounded-control bg-occupied-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-occupied-ink"
+                className="rounded-control bg-occupied-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-occupied-ink night:bg-amber-500/20 night:text-amber-300"
               >
                 {seatNotice ??
                   (seatsError
@@ -1720,7 +1720,7 @@ export function OrderScreen({
             // With the seat section hidden, its notice still needs somewhere to go.
             <p
               role="status"
-              className="m-sp-4 mb-0 rounded-control bg-occupied-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-occupied-ink"
+              className="m-sp-4 mb-0 rounded-control bg-occupied-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-occupied-ink night:bg-amber-500/20 night:text-amber-300"
             >
               {seatNotice}
             </p>
@@ -1747,7 +1747,7 @@ export function OrderScreen({
             {notice ? (
               <p
                 role="status"
-                className="rounded-control bg-occupied-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-occupied-ink"
+                className="rounded-control bg-occupied-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-occupied-ink night:bg-amber-500/20 night:text-amber-300"
               >
                 {notice}
               </p>
@@ -1759,11 +1759,11 @@ export function OrderScreen({
             <div
               role="alertdialog"
               aria-label="Confirm clearing the round"
-              className="flex shrink-0 flex-col gap-sp-2 border-t-2 border-unavailable-edge bg-unavailable-body p-sp-4"
+              className="flex shrink-0 flex-col gap-sp-2 border-t-2 border-unavailable-edge bg-unavailable-body p-sp-4 night:bg-night-unavailable-body"
             >
               {/* Nothing staged is in the database, so nothing can bring these
                   back. One tap used to discard the whole round. */}
-              <p className="text-fs-14 font-bold text-unavailable-ink">
+              <p className="text-fs-14 font-bold text-unavailable-ink night:text-red-300">
                 Clear all {stagedItemCount} unsent items? This cannot be undone.
               </p>
               <div className="flex gap-sp-2">
@@ -1782,7 +1782,7 @@ export function OrderScreen({
                   type="button"
                   onClick={() => setConfirmingClear(false)}
                   className={cn(
-                    'h-touch-kitchen flex-1 rounded-control border border-slate-200 bg-white text-fs-14 font-semibold text-slate-600',
+                    'h-touch-kitchen flex-1 rounded-control border border-slate-200 bg-white text-fs-14 font-semibold text-slate-600 night:border-night-hairline night:bg-night-card night:text-night-second',
                     'transition-transform duration-80 ease-standard active:scale-[0.97]',
                     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                   )}
@@ -1864,11 +1864,11 @@ export function OrderScreen({
           aria-labelledby="walkout-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
         >
-          <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel border-2 border-unavailable-edge bg-white p-sp-5 shadow-el-2">
-            <h2 id="walkout-title" className="text-fs-24 font-extrabold text-unavailable-ink">
+          <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel border-2 border-unavailable-edge bg-white p-sp-5 shadow-el-2 night:bg-night-card">
+            <h2 id="walkout-title" className="text-fs-24 font-extrabold text-unavailable-ink night:text-red-300">
               Close {displayLabel} as a walkout?
             </h2>
-            <p className="text-fs-16 text-slate-600">
+            <p className="text-fs-16 text-slate-600 night:text-night-second">
               {/* Every clause label-agnostic — a counter sale has no table to
                   release. */}
               {tableLabel ? 'This table has' : 'This order has'} {liveItemCount} item
@@ -1881,8 +1881,8 @@ export function OrderScreen({
                 disabled={busy}
                 onClick={() => setConfirmingWalkout(false)}
                 className={cn(
-                  'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white',
-                  'text-fs-18 font-bold text-slate-900 shadow-el-1 active:scale-[0.97]',
+                  'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white night:border-night-hairline night:bg-night-card',
+                  'text-fs-18 font-bold text-slate-900 shadow-el-1 active:scale-[0.97] night:text-night-text',
                   'disabled:opacity-40 disabled:active:scale-100',
                   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                 )}
@@ -1914,11 +1914,11 @@ export function OrderScreen({
           aria-labelledby="one-bill-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
         >
-          <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2">
-            <h2 id="one-bill-title" className="text-fs-24 font-extrabold text-slate-900">
+          <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2 night:bg-night-card">
+            <h2 id="one-bill-title" className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">
               Switch to one bill?
             </h2>
-            <p className="text-fs-16 text-slate-600">
+            <p className="text-fs-16 text-slate-600 night:text-night-second">
               Everything on this table will go on one bill, and the seats will be hidden. Nothing
               is deleted — switch back to Separate bills and each person&apos;s items are still on
               their seat.
@@ -1928,8 +1928,8 @@ export function OrderScreen({
                 type="button"
                 onClick={() => setConfirmingOneBill(false)}
                 className={cn(
-                  'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white',
-                  'text-fs-18 font-bold text-slate-900 shadow-el-1 active:scale-[0.97]',
+                  'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white night:border-night-hairline night:bg-night-card',
+                  'text-fs-18 font-bold text-slate-900 shadow-el-1 active:scale-[0.97] night:text-night-text',
                   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                 )}
               >

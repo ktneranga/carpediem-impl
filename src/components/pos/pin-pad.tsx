@@ -108,10 +108,10 @@ export function PINPad({ onSubmit, error, disabled = false, label, hint }: PINPa
   // 96px keys. Press is scale 0.97 plus a 6% darken and a drop to the pressed
   // shadow — never a colour change, which reads as a state rather than a touch.
   const keyClasses = cn(
-    'size-24 rounded-waiter border border-slate-200 bg-white shadow-el-1',
-    'text-fs-24 font-bold text-slate-900 tabular-nums leading-none',
+    'size-24 rounded-waiter border border-slate-200 bg-white shadow-el-1 night:border-night-hairline night:bg-night-card',
+    'text-fs-24 font-bold text-slate-900 tabular-nums leading-none night:text-night-text',
     'transition-[transform,box-shadow,background-color] duration-80 ease-standard',
-    'active:scale-[0.97] active:bg-slate-100 active:shadow-pressed',
+    'active:scale-[0.97] active:bg-slate-100 active:shadow-pressed night:active:bg-night-raised',
     'disabled:opacity-40 disabled:active:scale-100 disabled:active:bg-white',
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
   )
@@ -119,7 +119,7 @@ export function PINPad({ onSubmit, error, disabled = false, label, hint }: PINPa
   /** Clear and backspace are recessive: they sit on the app ground, not a card. */
   const utilityKeyClasses = cn(
     keyClasses,
-    'bg-slate-100 text-fs-12 font-semibold tracking-micro text-slate-600 uppercase shadow-none',
+    'bg-slate-100 text-fs-12 font-semibold tracking-micro text-slate-600 uppercase shadow-none night:bg-night-raised night:text-night-second',
   )
 
   return (
@@ -128,8 +128,8 @@ export function PINPad({ onSubmit, error, disabled = false, label, hint }: PINPa
         <div className="flex flex-col items-center gap-sp-1">
           {/* 24px title and a slate-600 hint, measured off the login design;
               the hint was slate-400, below AA on the grey. */}
-          <p className="text-fs-24 font-extrabold tracking-title text-slate-900">{label}</p>
-          {hint ? <p className="text-fs-14 text-slate-600">{hint}</p> : null}
+          <p className="text-fs-24 font-extrabold tracking-title text-slate-900 night:text-night-text">{label}</p>
+          {hint ? <p className="text-fs-14 text-slate-600 night:text-night-second">{hint}</p> : null}
         </div>
       ) : null}
 
@@ -155,7 +155,7 @@ export function PINPad({ onSubmit, error, disabled = false, label, hint }: PINPa
                   'size-4 rounded-pill border-2 transition-colors duration-80 ease-standard',
                   index < pin.length
                     ? 'border-brand-500 bg-brand-500'
-                    : 'border-slate-300 bg-transparent',
+                    : 'border-slate-300 bg-transparent night:border-night-hairline',
                 )}
               />
             ))}
@@ -170,7 +170,7 @@ export function PINPad({ onSubmit, error, disabled = false, label, hint }: PINPa
           role="alert"
           className={cn(
             'min-h-5 text-fs-12 font-semibold',
-            visibleError ? 'text-unavailable-ink' : 'text-transparent',
+            visibleError ? 'text-unavailable-ink night:text-red-300' : 'text-transparent',
           )}
         >
           {visibleError ?? ' '}
@@ -239,7 +239,7 @@ export function PINPad({ onSubmit, error, disabled = false, label, hint }: PINPa
         became fixed. That day is today.
       */}
 
-      <p className="flex items-center gap-sp-1 text-fs-12 font-semibold text-slate-600">
+      <p className="flex items-center gap-sp-1 text-fs-12 font-semibold text-slate-600 night:text-night-second">
         <Lock aria-hidden="true" className="size-3.5" strokeWidth={2.2} />
         {PIN_LENGTH} digits · signs in automatically · no keyboard, ever
       </p>

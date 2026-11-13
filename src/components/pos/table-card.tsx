@@ -212,12 +212,12 @@ export function TableCard({
         // Body tint carries the status; the hatch keeps `unavailable` legible
         // if hue fails entirely (glare, greyscale, colour blindness).
         status === 'unavailable'
-          ? 'hatch-unavailable bg-slate-100'
+          ? 'hatch-unavailable bg-slate-100 night:bg-night-raised'
           : stale
-            ? 'bg-unavailable-body'
+            ? 'bg-unavailable-body night:bg-night-unavailable-body'
             : status === 'occupied'
-              ? 'bg-occupied-body'
-              : 'bg-white',
+              ? 'bg-occupied-body night:bg-night-occupied-body'
+              : 'bg-white night:bg-night-card',
         // Selection is a RING, not a recolour: the status tint has to survive
         // being selected, or the waiter loses the one fact they selected it for.
         selected
@@ -227,12 +227,12 @@ export function TableCard({
             : cn(
                 'shadow-el-1',
                 status === 'unavailable'
-                  ? 'border-slate-200'
+                  ? 'border-slate-200 night:border-night-hairline'
                   : stale
                     ? 'border-unavailable-edge'
                     : status === 'occupied'
-                      ? 'border-occupied-line'
-                      : 'border-slate-200',
+                      ? 'border-occupied-line night:border-amber-500/50'
+                      : 'border-slate-200 night:border-night-hairline',
               ),
       )}
     >
@@ -245,12 +245,12 @@ export function TableCard({
             // Filled while the table is in use, tinted while it is free. The
             // fill is what reads from across the room.
             status === 'unavailable'
-              ? 'bg-slate-200 text-slate-400'
+              ? 'bg-slate-200 text-slate-400 night:bg-night-hairline night:text-night-muted'
               : stale
                 ? 'bg-unavailable-edge text-white'
                 : status === 'occupied'
                   ? 'bg-occupied-edge text-white'
-                  : 'bg-brand-050 text-brand-500',
+                  : 'bg-brand-050 text-brand-500 night:bg-night-raised',
           )}
         >
           {/* `createElement`, not `<ZoneIcon />`: `zoneIcon()` RETURNS a
@@ -268,30 +268,30 @@ export function TableCard({
         {status === 'occupied' ? (
           stale ? (
             <span className="flex flex-col items-end gap-0.5 pt-0.5">
-              <span className="flex items-center gap-sp-1 text-fs-12 font-bold text-unavailable-band">
+              <span className="flex items-center gap-sp-1 text-fs-12 font-bold text-unavailable-band night:text-red-400">
                 <AlertTriangle aria-hidden="true" strokeWidth={2.5} className="size-3.5 shrink-0" />
                 Open {elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : '—'}
               </span>
               {orderLabel ? (
-                <span className="text-fs-12 font-semibold tabular-nums text-unavailable-band">
+                <span className="text-fs-12 font-semibold tabular-nums text-unavailable-band night:text-red-400">
                   {orderLabel}
                 </span>
               ) : null}
             </span>
           ) : (
             <span className="flex flex-col items-end gap-0.5 pt-0.5">
-              <span className="text-fs-12 font-bold tabular-nums text-occupied-ink">
+              <span className="text-fs-12 font-bold tabular-nums text-occupied-ink night:text-amber-300">
                 {elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : '—'}
               </span>
               {orderLabel ? (
-                <span className="text-fs-12 font-semibold tabular-nums text-occupied-ink">
+                <span className="text-fs-12 font-semibold tabular-nums text-occupied-ink night:text-amber-300">
                   {orderLabel}
                 </span>
               ) : null}
             </span>
           )
         ) : status === 'unavailable' ? (
-          <Ban aria-hidden="true" strokeWidth={2.2} className="mt-0.5 size-4 shrink-0 text-slate-400" />
+          <Ban aria-hidden="true" strokeWidth={2.2} className="mt-0.5 size-4 shrink-0 text-slate-400 night:text-night-muted" />
         ) : (
           // A free table's whole message is "nothing here yet", so the dot is
           // the entire top-right. It is never alone: "N seats" sits below it.
@@ -304,18 +304,18 @@ export function TableCard({
 
       {/* The label, and underneath it whatever this state has to say. */}
       <span className="flex flex-col gap-0.5">
-        <span className="truncate text-fs-24 font-extrabold tracking-title text-slate-900">
+        <span className="truncate text-fs-24 font-extrabold tracking-title text-slate-900 night:text-night-text">
           {title}
         </span>
 
         {status === 'occupied' ? (
           stale ? (
-            <span className="truncate text-fs-12 font-bold text-unavailable-band">
+            <span className="truncate text-fs-12 font-bold text-unavailable-band night:text-red-400">
               Still open? Check
             </span>
           ) : (
             <span className="flex items-baseline justify-between gap-sp-2">
-              <span className="truncate text-fs-12 font-semibold tabular-nums text-occupied-ink">
+              <span className="truncate text-fs-12 font-semibold tabular-nums text-occupied-ink night:text-amber-300">
                 {coverCount != null
                   ? `${coverCount}/${capacity ?? coverCount} guests`
                   : itemCount !== undefined
@@ -328,27 +328,27 @@ export function TableCard({
               {paymentState === 'paid' ? (
                 // Paid, guests still here: green on the amber card, the
                 // floor's own "free" colour, so it reads as "done" at a glance.
-                <span className="flex shrink-0 items-center gap-0.5 rounded-pill bg-open-chip px-sp-2 text-fs-12 font-extrabold text-open-ink">
+                <span className="flex shrink-0 items-center gap-0.5 rounded-pill bg-open-chip px-sp-2 text-fs-12 font-extrabold text-open-ink night:bg-green-500/20 night:text-green-400">
                   <Check aria-hidden="true" strokeWidth={3} className="size-3" />
                   Paid
                 </span>
               ) : paymentState === 'part' ? (
-                <span className="shrink-0 rounded-pill bg-occupied-chip px-sp-2 text-fs-12 font-extrabold text-occupied-ink">
+                <span className="shrink-0 rounded-pill bg-occupied-chip px-sp-2 text-fs-12 font-extrabold text-occupied-ink night:bg-amber-500/20 night:text-amber-300">
                   Part paid
                 </span>
               ) : totalPaisa ? (
-                <span className="shrink-0 text-fs-12 font-extrabold tabular-nums text-occupied-ink">
+                <span className="shrink-0 text-fs-12 font-extrabold tabular-nums text-occupied-ink night:text-amber-300">
                   {lkrCompact(totalPaisa)}
                 </span>
               ) : null}
             </span>
           )
         ) : status === 'unavailable' ? (
-          <span className="truncate text-fs-12 font-semibold text-slate-600">
+          <span className="truncate text-fs-12 font-semibold text-slate-600 night:text-night-second">
             {unavailableReason || 'Out of service'}
           </span>
         ) : (
-          <span className="text-fs-12 font-semibold tabular-nums text-slate-600">
+          <span className="text-fs-12 font-semibold tabular-nums text-slate-600 night:text-night-second">
             {capacity != null ? `${capacity} seats` : 'Ready to seat'}
           </span>
         )}
@@ -357,7 +357,7 @@ export function TableCard({
             waiter looking at `B1 +2` otherwise has to open the card to find out
             where the party is sitting. */}
         {isMerged ? (
-          <span className="flex items-center gap-sp-1 truncate text-fs-12 font-semibold text-slate-600">
+          <span className="flex items-center gap-sp-1 truncate text-fs-12 font-semibold text-slate-600 night:text-night-second">
             <Split aria-hidden="true" strokeWidth={2.5} className="size-3 shrink-0" />
             <span className="truncate">
               {showFullGroup

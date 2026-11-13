@@ -1251,7 +1251,7 @@ export function TableGrid({
           thing that scrolls and changes. Flush to the edges — it carries its
           own padding so the band runs the full width rather than stopping
           inside the main column's gutter. */}
-      <div className="shrink-0 border-b border-slate-200 bg-white px-sp-4 py-sp-3">
+      <div className="shrink-0 border-b border-slate-200 bg-white px-sp-4 py-sp-3 night:border-night-hairline night:bg-night-card">
         <ZoneChipBar
           zones={zones}
           activeZoneId={activeZoneId}
@@ -1298,7 +1298,7 @@ export function TableGrid({
         {!socketConnected ? (
           <p
             role="status"
-            className="rounded-control bg-occupied-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-occupied-ink"
+            className="rounded-control bg-occupied-chip px-sp-3 py-sp-2 text-fs-14 font-semibold text-occupied-ink night:bg-amber-500/20 night:text-amber-300"
           >
             Live updates disconnected — table status may be out of date.
           </p>
@@ -1310,9 +1310,9 @@ export function TableGrid({
         {notice ? (
           <div
             role="status"
-            className="flex flex-wrap items-center justify-between gap-sp-3 rounded-control bg-occupied-chip px-sp-3 py-sp-2"
+            className="flex flex-wrap items-center justify-between gap-sp-3 rounded-control bg-occupied-chip px-sp-3 py-sp-2 night:bg-amber-500/20"
           >
-            <span className="text-fs-14 font-semibold text-occupied-ink">{notice.text}</span>
+            <span className="text-fs-14 font-semibold text-occupied-ink night:text-amber-300">{notice.text}</span>
             {notice.action ? (
               // Full waiter-height touch target, not a text link. This is the
               // recovery path for an action taken on a shared tablet with wet
@@ -1327,7 +1327,7 @@ export function TableGrid({
                   setNotice(null)
                   run?.()
                 }}
-                className="h-touch-waiter rounded-waiter border border-occupied-ink/30 bg-white px-sp-4 text-fs-14 font-bold text-occupied-ink active:scale-[0.97]"
+                className="h-touch-waiter rounded-waiter border border-occupied-ink/30 bg-white px-sp-4 text-fs-14 font-bold text-occupied-ink active:scale-[0.97] night:border-amber-300/30 night:bg-night-card night:text-amber-300"
               >
                 {notice.action.label}
               </button>
@@ -1367,7 +1367,7 @@ export function TableGrid({
               }}
               className={cn(
                 'flex h-touch-waiter items-center justify-center gap-sp-2 rounded-control',
-                'border-2 border-dashed border-brand-500 bg-white text-brand-700',
+                'border-2 border-dashed border-brand-500 bg-white text-brand-700 night:bg-night-card night:text-brand-300',
                 'text-fs-16 font-bold tracking-title',
                 'transition-[transform,box-shadow] duration-120 ease-standard',
                 'active:scale-[0.99] active:shadow-pressed disabled:opacity-40',
@@ -1405,7 +1405,7 @@ export function TableGrid({
 
               if (tabs.length === 0) {
                 return (
-                  <p className="text-fs-16 text-slate-600">No open bar tabs. Tap + to start one.</p>
+                  <p className="text-fs-16 text-slate-600 night:text-night-second">No open bar tabs. Tap + to start one.</p>
                 )
               }
 
@@ -1413,13 +1413,13 @@ export function TableGrid({
                 <>
               {/* The list's own header: how many, and which end is on top. */}
               <div className="flex items-center justify-between gap-sp-3">
-                <span className="text-fs-14 font-bold text-slate-600">
+                <span className="text-fs-14 font-bold text-slate-600 night:text-night-second">
                   {showingLate ? 'Late unpaid tabs' : 'Open tabs'} · {shown.length}
                 </span>
                 <div
                   role="group"
                   aria-label="Order the tabs"
-                  className="flex gap-1 rounded-control bg-slate-100 p-1"
+                  className="flex gap-1 rounded-control bg-slate-100 p-1 night:bg-night-raised"
                 >
                   {([
                     { key: 'newest' as const, label: 'Newest first' },
@@ -1437,7 +1437,7 @@ export function TableGrid({
                       className={cn(
                         'h-touch-standard rounded-control px-sp-4 text-fs-14 font-bold',
                         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
-                        tabOrder === key ? 'bg-white text-brand-700 shadow-el-1' : 'text-slate-600',
+                        tabOrder === key ? 'bg-white text-brand-700 shadow-el-1 night:bg-night-card night:text-brand-300' : 'text-slate-600 night:text-night-second',
                       )}
                     >
                       {label}
@@ -1473,14 +1473,14 @@ export function TableGrid({
                           'active:scale-[0.99] active:shadow-pressed',
                           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                           isSelected
-                            ? cn('border-brand-500 shadow-selected', isLate ? 'bg-unavailable-body' : 'bg-white')
+                            ? cn('border-brand-500 shadow-selected', isLate ? 'bg-unavailable-body night:bg-night-unavailable-body' : 'bg-white night:bg-night-card')
                             : isLate
-                              ? 'border-unavailable-edge bg-unavailable-body shadow-el-1'
-                              : 'border-slate-200 bg-white shadow-el-1',
+                              ? 'border-unavailable-edge bg-unavailable-body shadow-el-1 night:bg-night-unavailable-body'
+                              : 'border-slate-200 bg-white shadow-el-1 night:border-night-hairline night:bg-night-card',
                         )}
                       >
                         <span className="flex min-w-0 flex-col">
-                          <span className="truncate text-fs-16 font-bold tracking-title text-slate-900">
+                          <span className="truncate text-fs-16 font-bold tracking-title text-slate-900 night:text-night-text">
                             {label}
                           </span>
                           {/* The table card's wording: most of the time the
@@ -1491,29 +1491,29 @@ export function TableGrid({
                           {counter.paymentState === 'paid' ? (
                             // Paid, guest still at the bar: the tab is done
                             // and waiting to be closed (Teran, 2026-11-10).
-                            <span className="truncate text-fs-12 font-extrabold text-open-ink">
+                            <span className="truncate text-fs-12 font-extrabold text-open-ink night:text-green-400">
                               {dailyOrderLabel(counter.dailyNumber)} · ✓ Paid
                             </span>
                           ) : isLate ? (
-                            <span className="truncate text-fs-12 font-bold text-unavailable-band">
+                            <span className="truncate text-fs-12 font-bold text-unavailable-band night:text-red-400">
                               {dailyOrderLabel(counter.dailyNumber)} · Still open? Check
                             </span>
                           ) : (
-                            <span className="truncate text-fs-12 font-semibold tabular-nums text-slate-600">
+                            <span className="truncate text-fs-12 font-semibold tabular-nums text-slate-600 night:text-night-second">
                               {dailyOrderLabel(counter.dailyNumber)}
                             </span>
                           )}
                         </span>
 
                         <span className="flex shrink-0 items-center gap-sp-3">
-                          <span className="text-fs-14 tabular-nums text-slate-600">
+                          <span className="text-fs-14 tabular-nums text-slate-600 night:text-night-second">
                             {minutes !== undefined ? elapsed(minutes) : '—'} ·{' '}
                             {counter.itemCount > 0
                               ? `${counter.itemCount} item${counter.itemCount === 1 ? '' : 's'}`
                               : 'No items yet'}{' '}
                             · {counter.openedByName}
                           </span>
-                          <span aria-hidden className="text-fs-18 text-slate-400">
+                          <span aria-hidden className="text-fs-18 text-slate-400 night:text-night-muted">
                             ›
                           </span>
                         </span>
@@ -1543,8 +1543,8 @@ export function TableGrid({
                     'transition-transform duration-120 ease-standard active:scale-[0.99]',
                     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                     showingLate
-                      ? 'border-brand-500 bg-brand-050 text-brand-700'
-                      : 'border-unavailable-edge bg-unavailable-body text-unavailable-ink',
+                      ? 'border-brand-500 bg-brand-050 text-brand-700 night:bg-night-raised night:text-brand-300'
+                      : 'border-unavailable-edge bg-unavailable-body text-unavailable-ink night:bg-night-unavailable-body night:text-red-300',
                   )}
                 >
                   <span className="flex items-center gap-sp-2 text-fs-16 font-bold">
@@ -1563,14 +1563,14 @@ export function TableGrid({
             })()}
           </div>
         ) : isPending ? (
-          <p className="text-fs-16 text-slate-600">Loading tables…</p>
+          <p className="text-fs-16 text-slate-600 night:text-night-second">Loading tables…</p>
         ) : isError && !tables ? (
           // `isError && !tables`, not `isError` alone. In TanStack Query v5 the
           // status flips to 'error' even when cached data is still present, so
           // checking isError first replaced a whole populated floor plan with one
           // red sentence the moment any background refetch failed. Keep showing
           // the grid we have; the degraded banner above says it may be stale.
-          <p role="alert" className="text-fs-16 font-semibold text-unavailable-ink">
+          <p role="alert" className="text-fs-16 font-semibold text-unavailable-ink night:text-red-300">
             Cannot reach the restaurant server. Check the tablet is on the restaurant network.
           </p>
         ) : visibleTables.length === 0 ? (
@@ -1578,7 +1578,7 @@ export function TableGrid({
           // restaurant has no tables at all instructs a recovery the screen makes
           // impossible — there is no other zone, because the chip bar is derived
           // from the tables that do not exist.
-          <p className="text-fs-16 text-slate-600">
+          <p className="text-fs-16 text-slate-600 night:text-night-second">
             {activeZoneId
               ? 'No tables in this zone. Pick another zone above.'
               : 'No tables are set up yet. Add zones and tables in settings, or run the seed.'}
@@ -1605,7 +1605,7 @@ export function TableGrid({
                         The icon is the zone's identity and repeats the tile on
                         every card in the block beneath it; in slate it read as
                         decoration beside the heading instead. */}
-                    <span className="flex self-center text-brand-700">
+                    <span className="flex self-center text-brand-700 night:text-brand-300">
                       {/* `createElement`, not `<Icon />` — `zoneIcon()` returns a
                           component, and using that result as JSX is what the
                           compiler's "cannot create components during render"
@@ -1616,11 +1616,11 @@ export function TableGrid({
                         className: 'size-5 shrink-0',
                       })}
                     </span>
-                    <h2 className="text-fs-16 font-bold text-slate-900">{section.zoneName}</h2>
+                    <h2 className="text-fs-16 font-bold text-slate-900 night:text-night-text">{section.zoneName}</h2>
                     {/* The design draws this in slate-400. Kept one step
                         darker: slate-400 on white is 2.56:1 and fails AA, the
                         same reason the action strip's eyebrow is slate-600. */}
-                    <span className="text-fs-12 font-semibold tabular-nums text-slate-500">
+                    <span className="text-fs-12 font-semibold tabular-nums text-slate-500 night:text-night-muted">
                       {section.occupied} of {section.total} occupied
                     </span>
                   </header>
@@ -1787,13 +1787,13 @@ export function TableGrid({
               setNamingTab(false)
               counterSale.mutate(tabNameDraft)
             }}
-            className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2"
+            className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2 night:bg-night-card"
           >
-            <h2 id="new-tab-title" className="text-fs-24 font-extrabold text-slate-900">
+            <h2 id="new-tab-title" className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">
               New bar tab
             </h2>
             <label className="flex flex-col gap-sp-1">
-              <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase">
+              <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase night:text-night-second">
                 Who is it for? — staff only
               </span>
               <input
@@ -1804,12 +1804,12 @@ export function TableGrid({
                 placeholder="white shirt, bald man…"
                 onChange={(event) => setTabNameDraft(event.target.value)}
                 className={cn(
-                  'h-touch-waiter rounded-control border border-slate-200 bg-white px-sp-4',
-                  'text-fs-18 font-semibold text-slate-900',
+                  'h-touch-waiter rounded-control border border-slate-200 bg-white px-sp-4 night:border-night-hairline night:bg-night-card',
+                  'text-fs-18 font-semibold text-slate-900 night:text-night-text',
                   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                 )}
               />
-              <span className="text-fs-12 text-slate-600">
+              <span className="text-fs-12 text-slate-600 night:text-night-second">
                 Never printed on the guest&apos;s bill. Leave it empty for a quick sale.
               </span>
             </label>
@@ -1818,8 +1818,8 @@ export function TableGrid({
                 type="button"
                 onClick={() => setNamingTab(false)}
                 className={cn(
-                  'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white',
-                  'text-fs-18 font-bold text-slate-900 shadow-el-1 active:scale-[0.97]',
+                  'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white night:border-night-hairline night:bg-night-card',
+                  'text-fs-18 font-bold text-slate-900 shadow-el-1 active:scale-[0.97] night:text-night-text',
                   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
                 )}
               >

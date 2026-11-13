@@ -34,8 +34,8 @@ export function ContextHeader({
   const time = useClock()
 
   const crumbButton = cn(
-    'rounded-chip px-sp-1 text-fs-14 font-semibold text-brand-700',
-    'transition-colors duration-80 ease-standard active:bg-brand-050',
+    'rounded-chip px-sp-1 text-fs-14 font-semibold text-brand-700 night:text-brand-300',
+    'transition-colors duration-80 ease-standard active:bg-brand-050 night:active:bg-night-raised',
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
   )
 
@@ -51,7 +51,7 @@ export function ContextHeader({
   const showCrumbs = backTarget !== null
 
   return (
-    <header className="flex h-18 shrink-0 items-center justify-between gap-sp-4 border-b border-slate-200 bg-white px-sp-4">
+    <header className="flex h-18 shrink-0 items-center justify-between gap-sp-4 border-b border-slate-200 bg-white px-sp-4 night:border-night-hairline night:bg-night-card">
       <div className="flex min-w-0 items-center gap-sp-3">
         {backTarget ? (
           <button
@@ -60,7 +60,7 @@ export function ContextHeader({
             onClick={() => onNavigate(backTarget)}
             className={cn(
               'flex size-touch-standard shrink-0 items-center justify-center rounded-control',
-              'border border-slate-200 bg-white text-slate-600 shadow-el-1',
+              'border border-slate-200 bg-white text-slate-600 shadow-el-1 night:border-night-hairline night:bg-night-card night:text-night-second',
               'transition-[transform,box-shadow] duration-80 ease-standard',
               'active:scale-[0.97] active:shadow-pressed',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
@@ -71,7 +71,7 @@ export function ContextHeader({
         ) : null}
 
         <div className="flex min-w-0 flex-col gap-sp-1">
-          <span className="truncate text-fs-18 font-bold tracking-title text-slate-900">
+          <span className="truncate text-fs-18 font-bold tracking-title text-slate-900 night:text-night-text">
             {restaurantName}
           </span>
 
@@ -88,7 +88,7 @@ export function ContextHeader({
               <button type="button" onClick={() => onNavigate('zones')} className={crumbButton}>
                 Zones
               </button>
-              <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-slate-400" />
+              <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-slate-400 night:text-night-muted" />
 
               {tableLabel ? (
                 <>
@@ -106,17 +106,17 @@ export function ContextHeader({
                       </button>
                       <ChevronRight
                         aria-hidden="true"
-                        className="size-3.5 shrink-0 text-slate-400"
+                        className="size-3.5 shrink-0 text-slate-400 night:text-night-muted"
                       />
                     </>
                   ) : null}
                   {/* Current location is not a control. */}
-                  <span aria-current="page" className="text-fs-14 text-slate-600">
+                  <span aria-current="page" className="text-fs-14 text-slate-600 night:text-night-second">
                     {tableLabel}
                   </span>
                 </>
               ) : (
-                <span aria-current="page" className="text-fs-14 text-slate-600">
+                <span aria-current="page" className="text-fs-14 text-slate-600 night:text-night-second">
                   {zoneName}
                 </span>
               )}
@@ -132,8 +132,8 @@ export function ContextHeader({
           onClick={onStaffTap}
           aria-label={`Signed in as ${staffName}. Switch user.`}
           className={cn(
-            'min-h-touch-standard rounded-control border border-slate-200 bg-white px-sp-3',
-            'text-fs-14 font-semibold text-slate-600 shadow-el-1',
+            'min-h-touch-standard rounded-control border border-slate-200 bg-white px-sp-3 night:border-night-hairline night:bg-night-card',
+            'text-fs-14 font-semibold text-slate-600 shadow-el-1 night:text-night-second',
             'transition-[transform,box-shadow] duration-80 ease-standard',
             'active:scale-[0.97] active:shadow-pressed',
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
@@ -144,7 +144,7 @@ export function ContextHeader({
 
         {/* Empty during SSR and hydration, filled immediately after — see the
             clock store above. No suppressHydrationWarning needed. */}
-        <span className="text-fs-14 font-semibold text-slate-600 tabular-nums">{time}</span>
+        <span className="text-fs-14 font-semibold text-slate-600 tabular-nums night:text-night-second">{time}</span>
       </div>
     </header>
   )

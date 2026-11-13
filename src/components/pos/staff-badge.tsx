@@ -68,10 +68,10 @@ export function StaffBadge({
         {initial}
       </span>
       <span className="flex flex-col items-start leading-tight">
-        <span className="text-fs-14 font-bold text-slate-900">{staffName}</span>
+        <span className="text-fs-14 font-bold text-slate-900 night:text-night-text">{staffName}</span>
         {/* Empty during SSR and hydration, filled immediately after — see
             `useClock`. No suppressHydrationWarning needed. */}
-        <span className="text-fs-12 tabular-nums text-slate-600">
+        <span className="text-fs-12 tabular-nums text-slate-600 night:text-night-second">
           {today && clock ? `${today} · ${clock}` : clock}
         </span>
       </span>

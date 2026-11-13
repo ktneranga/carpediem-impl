@@ -83,13 +83,13 @@ export function CustomChargeSheet({
       : `Enter a price above LKR 0, up to ${lkrFromPaisa(MAX_CUSTOM_CHARGE_PAISA)}.`
 
   const fieldClass = cn(
-    'h-touch-waiter rounded-control border border-slate-200 bg-white px-sp-3',
-    'text-fs-16 text-slate-900 placeholder:text-slate-600',
+    'h-touch-waiter rounded-control border border-slate-200 bg-white px-sp-3 night:border-night-hairline night:bg-night-card',
+    'text-fs-16 text-slate-900 placeholder:text-slate-600 night:text-night-text',
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
   )
   const stepperClass = cn(
     'flex size-touch-waiter shrink-0 items-center justify-center rounded-waiter',
-    'border border-slate-200 bg-white text-slate-900',
+    'border border-slate-200 bg-white text-slate-900 night:border-night-hairline night:bg-night-card night:text-night-text',
     'transition-[transform,box-shadow] duration-80 ease-standard',
     'active:scale-[0.97] active:shadow-pressed',
     'disabled:opacity-40 disabled:active:scale-100',
@@ -130,15 +130,15 @@ export function CustomChargeSheet({
         }}
         className={cn(
           'flex max-h-full w-full max-w-2xl flex-col gap-sp-4 overflow-y-auto',
-          'rounded-card bg-white p-sp-4 shadow-el-4',
+          'rounded-card bg-white p-sp-4 shadow-el-4 night:bg-night-card',
         )}
       >
         <div className="flex items-start justify-between gap-sp-3">
           <div className="flex flex-col gap-sp-1">
-            <h2 className="text-fs-24 font-extrabold tracking-title text-slate-900">
+            <h2 className="text-fs-24 font-extrabold tracking-title text-slate-900 night:text-night-text">
               Custom charge
             </h2>
-            <p className="text-fs-14 font-semibold text-slate-600">
+            <p className="text-fs-14 font-semibold text-slate-600 night:text-night-second">
               {seatLabel ? `For ${seatLabel} · ` : ''}on the bill, not on any ticket
             </p>
           </div>
@@ -149,7 +149,7 @@ export function CustomChargeSheet({
             aria-label="Close without adding"
             className={cn(
               'flex size-touch-waiter shrink-0 items-center justify-center rounded-waiter',
-              'border border-slate-200 bg-white text-slate-600',
+              'border border-slate-200 bg-white text-slate-600 night:border-night-hairline night:bg-night-card night:text-night-second',
               'transition-[transform,box-shadow] duration-80 ease-standard',
               'active:scale-[0.97] active:shadow-pressed',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
@@ -160,7 +160,7 @@ export function CustomChargeSheet({
         </div>
 
         <label className="flex flex-col gap-sp-1">
-          <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase">
+          <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase night:text-night-second">
             Name on the bill
           </span>
           <input
@@ -176,7 +176,7 @@ export function CustomChargeSheet({
         </label>
 
         <label className="flex flex-col gap-sp-1">
-          <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase">
+          <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase night:text-night-second">
             Price each (LKR)
           </span>
           <input
@@ -190,14 +190,14 @@ export function CustomChargeSheet({
             className={cn(fieldClass, 'tabular-nums')}
           />
           {priceProblem ? (
-            <span role="status" className="text-fs-14 font-semibold text-occupied-ink">
+            <span role="status" className="text-fs-14 font-semibold text-occupied-ink night:text-amber-300">
               {priceProblem}
             </span>
           ) : null}
         </label>
 
         <div className="flex items-center justify-between gap-sp-3">
-          <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase">
+          <span className="text-fs-12 font-semibold tracking-micro text-slate-600 uppercase night:text-night-second">
             Quantity
           </span>
           <div className="flex items-center gap-sp-3">
@@ -212,7 +212,7 @@ export function CustomChargeSheet({
             </button>
             <output
               aria-live="polite"
-              className="min-w-12 text-center text-fs-24 font-extrabold tabular-nums text-slate-900"
+              className="min-w-12 text-center text-fs-24 font-extrabold tabular-nums text-slate-900 night:text-night-text"
             >
               {quantity}
             </output>
@@ -229,7 +229,7 @@ export function CustomChargeSheet({
         </div>
 
         {error ? (
-          <p role="alert" className="text-fs-14 font-semibold text-unavailable-ink">
+          <p role="alert" className="text-fs-14 font-semibold text-unavailable-ink night:text-red-300">
             {error}
           </p>
         ) : null}

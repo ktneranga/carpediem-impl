@@ -133,15 +133,15 @@ export function SeatSelector({
                 // here" is a strong claim and wants a strong treatment.
                 isActive
                   ? 'border-brand-800 bg-brand-800'
-                  : 'border-slate-200 bg-white',
+                  : 'border-slate-200 bg-white night:border-night-hairline night:bg-night-card',
                 // Settled: dimmed, but still legible and still tappable.
-                isBilled && !isActive && 'bg-slate-50 opacity-70',
+                isBilled && !isActive && 'bg-slate-50 opacity-70 night:bg-night-raised',
               )}
             >
               <span
                 className={cn(
                   'max-w-32 truncate text-fs-16 font-bold',
-                  isActive ? 'text-white' : 'text-slate-700',
+                  isActive ? 'text-white' : 'text-slate-700 night:text-night-second',
                   isBilled && 'line-through',
                 )}
               >
@@ -161,7 +161,7 @@ export function SeatSelector({
                   aria-hidden="true"
                   className={cn(
                     'rounded-pill px-sp-2 py-0.5 text-fs-12 font-bold tabular-nums',
-                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600',
+                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600 night:bg-night-raised night:text-night-second',
                   )}
                 >
                   {count}
@@ -171,7 +171,7 @@ export function SeatSelector({
                   aria-hidden="true"
                   className={cn(
                     'text-fs-12 font-semibold',
-                    isActive ? 'text-white' : 'text-slate-600',
+                    isActive ? 'text-white' : 'text-slate-600 night:text-night-second',
                   )}
                 >
                   billed
@@ -193,7 +193,7 @@ export function SeatSelector({
                   // the note editor below belongs to.
                   isEditing
                     ? 'border-brand-800 bg-brand-800 text-white'
-                    : 'border-slate-200 bg-white text-brand-700',
+                    : 'border-slate-200 bg-white text-brand-700 night:border-night-hairline night:bg-night-card night:text-brand-300',
                 )}
               >
                 <Pencil aria-hidden="true" strokeWidth={2.5} className="size-4" />
@@ -210,7 +210,7 @@ export function SeatSelector({
           onClick={onAddSeat}
           className={cn(
             chip,
-            'border-dashed border-slate-400 bg-white text-fs-16 font-semibold text-slate-600',
+            'border-dashed border-slate-400 bg-white text-fs-16 font-semibold text-slate-600 night:border-night-muted night:bg-night-card night:text-night-second',
             'disabled:opacity-40 disabled:active:scale-100',
           )}
         >

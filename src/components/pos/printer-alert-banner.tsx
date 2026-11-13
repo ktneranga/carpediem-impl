@@ -126,21 +126,21 @@ export function PrinterAlertBanner() {
             className={cn(
               'pointer-events-auto flex items-center gap-sp-3 rounded-card border-2 px-sp-4 py-sp-3 shadow-el-3',
               stopped
-                ? 'border-unavailable-edge bg-unavailable-body'
-                : 'border-occupied-edge bg-occupied-body',
+                ? 'border-unavailable-edge bg-unavailable-body night:bg-night-unavailable-body'
+                : 'border-occupied-edge bg-occupied-body night:bg-night-occupied-body',
             )}
           >
             {stopped ? (
               <AlertTriangle
                 aria-hidden="true"
                 strokeWidth={2.5}
-                className="size-6 shrink-0 text-unavailable-ink"
+                className="size-6 shrink-0 text-unavailable-ink night:text-red-300"
               />
             ) : (
               <Printer
                 aria-hidden="true"
                 strokeWidth={2.5}
-                className="size-6 shrink-0 text-occupied-ink"
+                className="size-6 shrink-0 text-occupied-ink night:text-amber-300"
               />
             )}
 
@@ -148,7 +148,7 @@ export function PrinterAlertBanner() {
               <span
                 className={cn(
                   'text-fs-16 font-bold',
-                  stopped ? 'text-unavailable-ink' : 'text-occupied-ink',
+                  stopped ? 'text-unavailable-ink night:text-red-300' : 'text-occupied-ink night:text-amber-300',
                 )}
               >
                 {stopped
@@ -160,7 +160,7 @@ export function PrinterAlertBanner() {
               <span
                 className={cn(
                   'truncate text-fs-14',
-                  stopped ? 'text-unavailable-ink' : 'text-occupied-ink',
+                  stopped ? 'text-unavailable-ink night:text-red-300' : 'text-occupied-ink night:text-amber-300',
                 )}
               >
                 {alert.tableLabels.join(' + ') || 'Counter'}
@@ -176,7 +176,7 @@ export function PrinterAlertBanner() {
               aria-label="Dismiss"
               className={cn(
                 'ml-auto flex size-touch-standard shrink-0 items-center justify-center rounded-control',
-                stopped ? 'text-unavailable-ink' : 'text-occupied-ink',
+                stopped ? 'text-unavailable-ink night:text-red-300' : 'text-occupied-ink night:text-amber-300',
               )}
             >
               <X aria-hidden="true" strokeWidth={2.5} className="size-5" />
@@ -193,8 +193,8 @@ export function PrinterAlertBanner() {
           time — exactly when the POS is needed most. Three, a count, and one
           control that clears the lot. */}
       {hidden > 0 ? (
-        <div className="pointer-events-auto flex items-center gap-sp-3 rounded-card border-2 border-slate-200 bg-white px-sp-4 py-sp-2 shadow-el-2">
-          <span className="text-fs-14 font-semibold text-slate-600">
+        <div className="pointer-events-auto flex items-center gap-sp-3 rounded-card border-2 border-slate-200 bg-white px-sp-4 py-sp-2 shadow-el-2 night:border-night-hairline night:bg-night-card">
+          <span className="text-fs-14 font-semibold text-slate-600 night:text-night-second">
             and {hidden} more ticket{hidden === 1 ? '' : 's'} waiting on a printer
           </span>
         </div>
@@ -204,7 +204,7 @@ export function PrinterAlertBanner() {
         <button
           type="button"
           onClick={dismissAll}
-          className="pointer-events-auto self-end rounded-control border border-slate-200 bg-white px-sp-4 py-sp-2 text-fs-14 font-semibold text-slate-600 shadow-el-1"
+          className="pointer-events-auto self-end rounded-control border border-slate-200 bg-white px-sp-4 py-sp-2 text-fs-14 font-semibold text-slate-600 shadow-el-1 night:border-night-hairline night:bg-night-card night:text-night-second"
         >
           Dismiss all ({showing.length})
         </button>

@@ -47,10 +47,10 @@ export function RoundHistory({
         return (
           <div
             key={round.roundNumber}
-            className="flex flex-col gap-sp-2 rounded-waiter border border-slate-200 bg-slate-100 p-sp-3"
+            className="flex flex-col gap-sp-2 rounded-waiter border border-slate-200 bg-slate-100 p-sp-3 night:border-night-hairline night:bg-night-raised"
           >
             <div className="flex items-baseline justify-between gap-sp-3">
-              <h2 className="text-fs-14 font-bold text-slate-600">
+              <h2 className="text-fs-14 font-bold text-slate-600 night:text-night-second">
                 {/* A custom charge is saved on its own, straight to the bill
                     (Teran, 2026-11-02) — it was never "sent", so it does not
                     read as a round of food. */}
@@ -61,20 +61,20 @@ export function RoundHistory({
                   // client's value is the right one; the warning is suppressed
                   // for this text only, rather than letting a mismatch discard
                   // the server tree.
-                  <span className="font-semibold text-slate-600" suppressHydrationWarning>
+                  <span className="font-semibold text-slate-600 night:text-night-second" suppressHydrationWarning>
                     {' '}
                     · {round.items.every((item) => item.custom) ? 'added' : 'sent'} {clockTime(sentAt)}
                   </span>
                 ) : null}
               </h2>
-              <span className="text-fs-14 font-bold tabular-nums text-slate-600">
+              <span className="text-fs-14 font-bold tabular-nums text-slate-600 night:text-night-second">
                 {hasUnpricedLine ? 'at least ' : ''}
                 {lkrFromPaisa(total)}
               </span>
             </div>
 
             {hasUnpricedLine ? (
-              <p className="text-fs-12 font-semibold text-unavailable-ink">
+              <p className="text-fs-12 font-semibold text-unavailable-ink night:text-red-300">
                 Some items in this round have no recorded price.
               </p>
             ) : null}
@@ -82,7 +82,7 @@ export function RoundHistory({
             <ul className="flex flex-col gap-sp-1">
               {round.items.map((item) => (
                 <li key={item.id} className="flex items-baseline justify-between gap-sp-3">
-                  <span className="min-w-0 text-fs-14 text-slate-600">
+                  <span className="min-w-0 text-fs-14 text-slate-600 night:text-night-second">
                     {item.quantity > 1 ? `${formatQuantity(item.quantity)} ` : ''}
                     {item.name}
                     {showSeats && item.seatLabel ? ` · ${item.seatLabel}` : ''}
@@ -92,7 +92,7 @@ export function RoundHistory({
                         acted on, and 400 is 2.34:1 on this panel's slate-100. */}
                     {item.modifierText ? ` · ${item.modifierText}` : ''}
                   </span>
-                  <span className="shrink-0 text-fs-14 tabular-nums text-slate-600">
+                  <span className="shrink-0 text-fs-14 tabular-nums text-slate-600 night:text-night-second">
                     {item.unitPricePaisa === null
                       ? 'no price'
                       : lkrFromPaisa(item.unitPricePaisa * item.quantity)}

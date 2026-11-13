@@ -31,8 +31,8 @@ export function CashDrawerButton({ onOpened }: { onOpened: () => void }) {
         title="Open cash drawer"
         onClick={() => setOpen(true)}
         className={cn(
-          'flex size-11 shrink-0 items-center justify-center rounded-waiter text-slate-500',
-          'hover:bg-slate-100 active:scale-[0.96]',
+          'flex size-11 shrink-0 items-center justify-center rounded-waiter text-slate-500 night:text-night-muted',
+          'hover:bg-slate-100 active:scale-[0.96] night:hover:bg-night-raised',
           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
         )}
       >
@@ -92,13 +92,13 @@ function OpenDrawerDialog({ onCancel, onOpened }: { onCancel: () => void; onOpen
         if (event.key === 'Escape') onCancel()
       }}
     >
-      <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2">
+      <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2 night:bg-night-card">
         <div className="flex flex-col gap-sp-1">
-          <span className="text-fs-12 font-bold tracking-micro text-slate-500 uppercase">No sale</span>
-          <h2 id="open-drawer-title" className="text-fs-24 font-extrabold text-slate-900">
+          <span className="text-fs-12 font-bold tracking-micro text-slate-500 uppercase night:text-night-muted">No sale</span>
+          <h2 id="open-drawer-title" className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">
             Open the cash drawer?
           </h2>
-          <p className="text-fs-14 text-slate-600">Every opening is recorded with your name and the reason.</p>
+          <p className="text-fs-14 text-slate-600 night:text-night-second">Every opening is recorded with your name and the reason.</p>
         </div>
 
         <div className="flex gap-sp-2" role="radiogroup" aria-label="Reason">
@@ -113,7 +113,7 @@ function OpenDrawerDialog({ onCancel, onOpened }: { onCancel: () => void; onOpen
                 'h-touch-waiter flex-1 rounded-waiter border text-fs-16 font-bold',
                 reason === option.value
                   ? 'border-brand-800 bg-brand-800 text-white'
-                  : 'border-slate-200 bg-white text-slate-900',
+                  : 'border-slate-200 bg-white text-slate-900 night:border-night-hairline night:bg-night-card night:text-night-text',
                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
               )}
             >
@@ -124,19 +124,19 @@ function OpenDrawerDialog({ onCancel, onOpened }: { onCancel: () => void; onOpen
 
         {needsNote ? (
           <label className="flex flex-col gap-sp-1">
-            <span className="text-fs-14 font-semibold text-slate-700">Why?</span>
+            <span className="text-fs-14 font-semibold text-slate-700 night:text-night-second">Why?</span>
             <input
               autoFocus
               value={note}
               maxLength={120}
               onChange={(event) => setNote(event.target.value)}
-              className="h-touch-waiter rounded-waiter border border-slate-300 px-sp-3 text-fs-16 text-slate-900"
+              className="h-touch-waiter rounded-waiter border border-slate-300 px-sp-3 text-fs-16 text-slate-900 night:border-night-hairline night:text-night-text"
             />
           </label>
         ) : null}
 
         {error ? (
-          <p role="alert" className="text-fs-14 font-semibold text-unavailable-band">
+          <p role="alert" className="text-fs-14 font-semibold text-unavailable-band night:text-red-400">
             {error}
           </p>
         ) : null}
@@ -146,7 +146,7 @@ function OpenDrawerDialog({ onCancel, onOpened }: { onCancel: () => void; onOpen
             type="button"
             onClick={onCancel}
             className={cn(
-              'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white text-fs-16 font-bold text-slate-900',
+              'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white text-fs-16 font-bold text-slate-900 night:border-night-hairline night:bg-night-card night:text-night-text',
               'active:scale-[0.98]',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
             )}

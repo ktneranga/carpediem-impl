@@ -2,35 +2,33 @@
 
 import { useEffect } from 'react'
 import { Moon, Sun } from 'lucide-react'
-import { setThemeChoice, useManageTheme } from '@/components/manage/theme'
+import { setThemeChoice, useTheme } from '@/components/theme/theme'
 import { cn } from '@/lib/utils'
 
 /**
- * Puts the Manage area's light / dark choice on <html> while a Manage screen is
- * open (the layout and the unlock screen render it), and takes it off on the
- * way out, so the POS screens are never touched.
+ * Keeps <html data-theme> in step with the app-wide choice after the first
+ * paint (the root layout's `THEME_SCRIPT` set it before). Mounted once, in the
+ * root layout, for every screen — POS and Manage share one look.
  */
-export function ManageThemeRoot() {
-  const { dark } = useManageTheme()
+export function ThemeRoot() {
+  const { dark } = useTheme()
   useEffect(() => {
     const root = document.documentElement
     if (dark) root.dataset.theme = 'night'
     else delete root.dataset.theme
-    return () => {
-      delete root.dataset.theme
-    }
   }, [dark])
   return null
 }
 
 /**
- * The Dark mode switch (Teran, 2026-11-13: visible, and a real toggle). It
- * starts on whatever the device uses; flipping it pins Light or Dark for this
- * browser. `withLabel` shows "Dark mode" beside it (the laptop menu); without,
- * it is the bare switch (the phone's top row) — still named for screen readers.
+ * The Dark mode switch (Teran, 2026-11-13: visible, and a real toggle), in the
+ * Manage menu and the POS staff menu — one setting for both. It starts on
+ * whatever the device uses; flipping it pins Light or Dark for this browser.
+ * `withLabel` shows "Dark mode" beside it; without, it is the bare switch —
+ * still named for screen readers.
  */
-export function ManageThemeToggle({ withLabel = false, className }: { withLabel?: boolean; className?: string }) {
-  const { dark } = useManageTheme()
+export function ThemeToggle({ withLabel = false, className }: { withLabel?: boolean; className?: string }) {
+  const { dark } = useTheme()
   const flip = () => setThemeChoice(dark ? 'light' : 'dark')
 
   const knob = (

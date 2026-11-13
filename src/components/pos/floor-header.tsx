@@ -63,15 +63,15 @@ export function FloorHeader({
 }) {
   return (
     // h-18/72px, measured off the design — the white band above the zone bar.
-    <header className="flex h-18 shrink-0 items-center justify-between gap-sp-4 border-b border-slate-200 bg-white px-sp-4">
+    <header className="flex h-18 shrink-0 items-center justify-between gap-sp-4 border-b border-slate-200 bg-white px-sp-4 night:border-night-hairline night:bg-night-card">
       <div className="flex min-w-0 flex-col">
-        <h1 className="text-fs-20 font-extrabold tracking-title text-slate-900">Floor</h1>
-        <p className="text-fs-12 font-semibold tabular-nums text-slate-600">
+        <h1 className="text-fs-20 font-extrabold tracking-title text-slate-900 night:text-night-text">Floor</h1>
+        <p className="text-fs-12 font-semibold tabular-nums text-slate-600 night:text-night-second">
           {occupiedCount} occupied · {openCount} open
           {/* Only when there IS something to check. A permanent "0 to check"
               trains people to stop reading the row. */}
           {staleCount > 0 ? (
-            <span className="text-unavailable-band"> · {staleCount} to check</span>
+            <span className="text-unavailable-band night:text-red-400"> · {staleCount} to check</span>
           ) : null}
         </p>
       </div>
@@ -85,7 +85,7 @@ export function FloorHeader({
           ] as const).map(([dot, text]) => (
             <li key={text} className="flex items-center gap-sp-2">
               <span aria-hidden="true" className={cn('size-2.5 shrink-0 rounded-pill', dot)} />
-              <span className="text-fs-12 font-semibold whitespace-nowrap text-slate-600">
+              <span className="text-fs-12 font-semibold whitespace-nowrap text-slate-600 night:text-night-second">
                 {text}
               </span>
             </li>

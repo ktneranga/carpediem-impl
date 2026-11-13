@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { ArrowLeft, Lock, LockKeyhole } from 'lucide-react'
 import { MANAGE_SECTIONS } from './sections'
-import { ManageThemeToggle } from '@/components/manage/theme-root'
+import { ThemeToggle } from '@/components/theme/theme-switch'
 import { cn } from '@/lib/utils'
 
 const itemClass = cn(
@@ -45,11 +45,11 @@ export function ManageNav({ owner, unlocked }: { owner: boolean; unlocked: boole
           Back to floor
         </Link>
         {/* On a phone the menu is a top row: the Dark mode switch sits beside the way back. */}
-        <ManageThemeToggle className="md:hidden" />
+        <ThemeToggle className="md:hidden" />
       </div>
 
       {/* Laptop: its own labelled row under the way back, where it is seen (Teran, 2026-11-13). */}
-      <ManageThemeToggle withLabel className="hidden md:inline-flex" />
+      <ThemeToggle withLabel className="hidden md:inline-flex" />
 
       <p className="hidden px-sp-3 pt-sp-2 text-fs-18 font-extrabold text-slate-900 night:text-night-text md:block">Manage</p>
 
