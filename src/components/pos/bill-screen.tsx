@@ -8,6 +8,7 @@ import {
   CreditCard,
   Delete,
   GripVertical,
+  Landmark,
   Plus,
   Printer,
   Receipt,
@@ -1882,11 +1883,11 @@ function PaymentDialog({
    * card, and for Cash + card, where the pad types the exact cash part.
    */
   onPay: (
-    tenders: { method: 'cash' | 'card'; amountPaisa: number }[],
+    tenders: { method: 'cash' | 'card' | 'transfer'; amountPaisa: number }[],
     cashReceivedPaisa?: number,
   ) => Promise<void>
 }) {
-  const [method, setMethod] = useState<'cash' | 'card' | 'split'>('cash')
+  const [method, setMethod] = useState<'cash' | 'card' | 'transfer' | 'split'>('cash')
   // What the pad has typed, in WHOLE RUPEES as a digit string. "Exact" may set
   // a paisa amount that is not whole rupees, so it is held separately.
   const [digits, setDigits] = useState('')
@@ -1919,9 +1920,9 @@ function PaymentDialog({
   // Cash in Cash mode that does not cover the bill: the action offers a split.
   const cashShort = method === 'cash' && hasCash && cash < duePaisa
 
-  const tenders: { method: 'cash' | 'card'; amountPaisa: number }[] | null =
-    method === 'card'
-      ? [{ method: 'card', amountPaisa: duePaisa }]
+  const tenders: { method: 'cash' | 'card' | 'transfer'; amountPaisa: number }[] | null =
+    method === 'card' || method === 'transfer'
+      ? [{ method, amountPaisa: duePaisa }]
       : method === 'cash'
         ? hasCash && cash >= duePaisa
           ? [{ method: 'cash', amountPaisa: duePaisa }]
@@ -1937,6 +1938,8 @@ function PaymentDialog({
     ? 'Recording…'
     : method === 'card'
       ? `Card payment taken · ${lkrFromPaisa(duePaisa)}`
+      : method === 'transfer'
+        ? `Bank transfer received · ${lkrFromPaisa(duePaisa)}`
       : method === 'cash'
         ? !hasCash
           ? 'Enter amount received'
@@ -2008,6 +2011,7 @@ function PaymentDialog({
                 {([
                   { key: 'cash' as const, label: 'Cash', icon: Banknote },
                   { key: 'card' as const, label: 'Card', icon: CreditCard },
+                  { key: 'transfer' as const, label: 'Bank transfer', icon: Landmark },
                   { key: 'split' as const, label: 'Cash + card', icon: Split },
                 ]).map(({ key, label, icon: Icon }) => (
                   <button
@@ -2020,9 +2024,6 @@ function PaymentDialog({
                     }}
                     className={cn(
                       'flex h-touch-kitchen items-center justify-center gap-sp-2 rounded-waiter border-2 text-fs-16 font-bold',
-                      // The third choice spans the row rather than sitting as
-                      // half a row waiting for a partner.
-                      key === 'split' && 'col-span-2',
                       'active:scale-[0.97]',
                       focusRing,
                       method === key
@@ -2065,7 +2066,7 @@ function PaymentDialog({
 
           {/* ── Right: the pad ────────────────────────────────────────────── */}
           <section className="flex min-w-0 flex-1 flex-col gap-sp-3 p-sp-5">
-            {method !== 'card' ? (
+            {method === 'cash' || method === 'split' ? (
               <>
                 <div className="grid grid-cols-2 gap-sp-3">
                   <div
@@ -2164,12 +2165,25 @@ function PaymentDialog({
               </>
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center gap-sp-3 rounded-waiter bg-slate-100 p-sp-5 text-center">
-                <CreditCard aria-hidden="true" className="size-10 text-brand-700" />
-                <p className="text-fs-18 font-semibold text-slate-900">
-                  Charge <strong className="tabular-nums">{lkrFromPaisa(duePaisa)}</strong> on the
-                  card machine.
-                </p>
-                <p className="text-fs-14 text-slate-600">Confirm here once it is approved.</p>
+                {method === 'transfer' ? (
+                  <>
+                    <Landmark aria-hidden="true" className="size-10 text-brand-700" />
+                    <p className="text-fs-18 font-semibold text-slate-900">
+                      Check that <strong className="tabular-nums">{lkrFromPaisa(duePaisa)}</strong> has
+                      reached the bank account.
+                    </p>
+                    <p className="text-fs-14 text-slate-600">Confirm here once you have seen it arrive.</p>
+                  </>
+                ) : (
+                  <>
+                    <CreditCard aria-hidden="true" className="size-10 text-brand-700" />
+                    <p className="text-fs-18 font-semibold text-slate-900">
+                      Charge <strong className="tabular-nums">{lkrFromPaisa(duePaisa)}</strong> on the
+                      card machine.
+                    </p>
+                    <p className="text-fs-14 text-slate-600">Confirm here once it is approved.</p>
+                  </>
+                )}
               </div>
             )}
 

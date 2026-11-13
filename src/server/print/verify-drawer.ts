@@ -174,6 +174,24 @@ async function part2() {
     cardPaid.status === 201 && cardPaid.body?.data?.drawerJobId === null &&
       (await kicksFor(card.sessionId)).length === 0 && (await openingsFor(card.sessionId)).length === 0)
 
+  // Bank transfer (Teran, 2026-11-13): recorded as `transfer`, settles the bill, opens nothing,
+  // and the receipt names it "Bank transfer".
+  const transfer = await billedTab(owner)
+  const transferPaid = await api(owner, `/api/bills/${transfer.billId}/payments`, {
+    tenders: [{ method: 'transfer', amountPaisa: transfer.totalPaisa }],
+  })
+  const [transferRow] = await sql(`SELECT method::text, amount_paisa FROM payment_records WHERE bill_id = $1`, [transfer.billId])
+  check('a bank transfer is accepted and recorded as transfer, for the whole bill',
+    transferPaid.status === 201 && transferRow?.method === 'transfer' && transferRow?.amount_paisa === transfer.totalPaisa,
+    JSON.stringify({ status: transferPaid.status, body: transferPaid.body, transferRow }))
+  check('a bank transfer opens nothing',
+    transferPaid.body?.data?.drawerJobId === null && (await kicksFor(transfer.sessionId)).length === 0 &&
+      (await openingsFor(transfer.sessionId)).length === 0)
+  const [transferReceipt] = await sql(`SELECT ticket FROM print_jobs WHERE id = $1`, [transferPaid.body?.data?.receiptJobId])
+  check('its receipt prints "Bank transfer"',
+    !transferPaid.body?.data?.receiptJobId ||
+      buildReceipt(transferReceipt.ticket as ReceiptPayload).toString('latin1').includes('Bank transfer'))
+
   // Case 4: cash + card — one kick, at the cash row.
   const mixed = await billedTab(owner)
   const mixedPaid = await api(owner, `/api/bills/${mixed.billId}/payments`, {

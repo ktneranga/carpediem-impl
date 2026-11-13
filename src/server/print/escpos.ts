@@ -501,7 +501,7 @@ export function amountLines(left: string, right: string, indent = 0, columns = P
   return [`${head.padEnd(columns - amount.length)}${amount}`, ...rest]
 }
 
-const TENDER_NAMES: Record<string, string> = { cash: 'Cash', card: 'Card', transfer: 'Transfer' }
+const TENDER_NAMES: Record<string, string> = { cash: 'Cash', card: 'Card', transfer: 'Bank transfer' }
 
 /**
  * A bill or receipt, as the bytes a printer will accept.
@@ -696,7 +696,7 @@ export function buildTakings(payload: TakingsPayload): Buffer {
 
   row('Cash', paid.cashPaisa)
   row('Card', paid.cardPaisa)
-  if (num(paid.transferPaisa) !== 0) row('Transfer', paid.transferPaisa)
+  if (num(paid.transferPaisa) !== 0) row('Bank transfer', paid.transferPaisa)
   command(SIZE_TALL)
   command(BOLD_ON)
   row('Total paid', paid.totalPaisa)

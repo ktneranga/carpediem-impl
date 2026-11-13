@@ -16,7 +16,8 @@ import { SessionAlreadyClosedError } from '@/server/services/table-session.servi
 const billIdSchema = z.string().uuid()
 
 /**
- * One or two tenders: cash, card, or one of each for a split payment.
+ * One or two tenders: cash, card, bank transfer (Teran, 2026-11-13), or one
+ * cash and one card for a split payment.
  *
  * Integer paisa, strictly positive. `safeParse`, never `.catch()` — a silently
  * defaulted amount is the worst possible field to default.
@@ -25,7 +26,7 @@ const bodySchema = z.object({
   tenders: z
     .array(
       z.object({
-        method: z.enum(['cash', 'card']),
+        method: z.enum(['cash', 'card', 'transfer']),
         amountPaisa: z.number().int().positive(),
       }),
     )
@@ -88,7 +89,7 @@ export async function POST(
 
   const parsedBody = bodySchema.safeParse(body)
   if (!parsedBody.success) {
-    return fail('INVALID_BODY', 'Payment must be one cash and/or one card amount, in paisa', 400)
+    return fail('INVALID_BODY', 'Payment must be cash, card or bank transfer amounts, in paisa', 400)
   }
 
   try {

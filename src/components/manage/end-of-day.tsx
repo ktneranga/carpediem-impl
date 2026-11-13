@@ -131,7 +131,7 @@ export function EndOfDay({ initialDate }: { initialDate: string | null }) {
             <Card title="Paid">
               <Row label="Cash" value={money(t.paid.cashPaisa)} />
               <Row label="Card" value={money(t.paid.cardPaisa)} />
-              {t.paid.transferPaisa !== 0 ? <Row label="Transfer" value={money(t.paid.transferPaisa)} /> : null}
+              {t.paid.transferPaisa !== 0 ? <Row label="Bank transfer" value={money(t.paid.transferPaisa)} /> : null}
               <Row label="Total paid" value={money(t.paid.totalPaisa)} strong />
               {t.cashCount ? (
                 <>

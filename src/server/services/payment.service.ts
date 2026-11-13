@@ -9,7 +9,8 @@ import type { PaymentState } from '@/types/tables'
 /** Drizzle transaction handle. */
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
-export type Tender = { method: 'cash' | 'card'; amountPaisa: number }
+/** `transfer` = a bank transfer the cashier has seen arrive (Teran, 2026-11-13). */
+export type Tender = { method: 'cash' | 'card' | 'transfer'; amountPaisa: number }
 
 export type BillPayments = {
   paidPaisa: number

@@ -186,7 +186,7 @@ export function PaymentSplit({ data, dark }: { data: Insights; dark: boolean }) 
   const slices = [
     { name: 'Cash', paisa: p.cashPaisa, color: c.cash },
     { name: 'Card', paisa: p.cardPaisa, color: c.card },
-    { name: 'Transfer', paisa: p.transferPaisa, color: c.transfer },
+    { name: 'Bank transfer', paisa: p.transferPaisa, color: c.transfer },
   ]
   const share = (paisa: number) => (p.settledPaisa > 0 ? Math.round((paisa / p.settledPaisa) * 100) : 0)
   return (
