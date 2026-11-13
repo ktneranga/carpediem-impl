@@ -8,5 +8,5 @@ import { redirect } from 'next/navigation'
  */
 export default async function ManageHome() {
   const role = (await headers()).get('x-staff-role')
-  redirect(role === 'owner' ? '/manage/menu' : '/manage/sold-out')
+  redirect(role === 'owner' ? '/manage/dashboard' : '/manage/sold-out')
 }

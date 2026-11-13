@@ -5,6 +5,12 @@
  */
 export const MANAGE_SECTIONS = [
   {
+    href: '/manage/dashboard',
+    title: 'Dashboard',
+    story: '9.1',
+    what: "Today's takings as they come in, the cash check, and what needs attention.",
+  },
+  {
     href: '/manage/menu',
     title: 'Menu',
     story: '10.4',
