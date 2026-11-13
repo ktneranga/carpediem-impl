@@ -404,6 +404,55 @@ export async function moveRow(
   return { moved: true }
 }
 
+/**
+ * Sets the whole order of one list at once — a drag and drop (Teran,
+ * 2026-11-13). `ids` is every ACTIVE sibling in its new order: the categories,
+ * one category's dishes, one dish's groups or one group's options. A list that
+ * is not exactly the current set (someone added or removed one meanwhile) is
+ * refused as stale, so a drop never silently drops a row. Rows land at 10, 20,
+ * 30…; only rows whose number changes are versioned and logged.
+ */
+export async function reorderRows(
+  tx: Tx,
+  kind: MenuKind,
+  a: { tenantId: string; staffId: string; parentId: string | null; ids: string[] },
+) {
+  const table = TABLES[kind].table as typeof menuItems
+  const parentKey = PARENT[kind]
+  const parentColumn = parentKey ? (table as unknown as Record<string, typeof table.id>)[parentKey] : null
+  if (parentColumn && !a.parentId) throw new MenuRuleError('Which list is this?')
+
+  const siblings = (await tx
+    .select({ id: table.id, version: table.version, displayOrder: table.displayOrder })
+    .from(table)
+    .where(
+      and(
+        eq(table.tenantId, a.tenantId),
+        eq(table.isActive, true),
+        parentColumn ? eq(parentColumn, a.parentId!) : undefined,
+      ),
+    )
+    .for('update')) as { id: string; version: number; displayOrder: number }[]
+
+  const current = new Set(siblings.map((row) => row.id))
+  if (a.ids.length !== current.size || new Set(a.ids).size !== a.ids.length || !a.ids.every((id) => current.has(id))) {
+    throw new StaleVersionError()
+  }
+  for (const [position, id] of a.ids.entries()) {
+    const sibling = siblings.find((row) => row.id === id)!
+    const wanted = (position + 1) * 10
+    if (sibling.displayOrder === wanted) continue
+    await versionedUpdate(tx, kind, {
+      id,
+      tenantId: a.tenantId,
+      staffId: a.staffId,
+      expectedVersion: sibling.version,
+      set: { displayOrder: wanted },
+    })
+  }
+  return { reordered: true }
+}
+
 // ── Reading for the editor ───────────────────────────────────────────────────
 
 export type ManageOption = {

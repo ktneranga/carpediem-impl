@@ -1,8 +1,9 @@
 'use client'
 
-import { createElement, useState } from 'react'
+import { createElement, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, Undo2, X } from 'lucide-react'
+import { Pencil, Plus, Trash2, Undo2, X } from 'lucide-react'
+import { SortableList } from '@/components/manage/sortable-list'
 import type { ManageCategory, ManageGroup, ManageItem, ManageOption } from '@/server/services/menu-admin.service'
 import { menuCategoryIcon, routeForDestination } from '@/lib/design'
 import { lkrFromPaisa, paisaFromLkrInput, signedLkrFromPaisa } from '@/lib/format'
@@ -126,8 +127,8 @@ export function MenuEditor() {
     }
   }
 
-  const move = (kind: string, row: { id: string; version: number }, direction: 'up' | 'down') =>
-    run('POST', `/api/manage/menu/${kind}/${row.id}/move`, { direction, version: row.version })
+  /** A drag and drop: the new order of one whole list (Teran, 2026-11-13). */
+  const reorder: Reorder = (kind, parentId, ids) => run('POST', '/api/manage/menu/reorder', { kind, parentId, ids })
 
   return (
     <div className="flex flex-col gap-sp-4">
@@ -160,32 +161,40 @@ export function MenuEditor() {
             return (
               <div key={side} className="flex flex-col gap-sp-1">
                 <h3 className="px-sp-2 pt-sp-2 text-fs-12 font-bold text-slate-500">{side}</h3>
-          <ul className="flex gap-sp-1 overflow-x-auto lg:flex-col">
-            {list.map((category) => {
-              const index = categories.indexOf(category)
-              return (
-              <CategoryRow
-                key={category.id + category.version}
-                category={category}
-                selected={selected?.id === category.id}
-                first={index === 0}
-                last={index === categories.length - 1}
-                busy={busy}
-                onSelect={() => setSelectedId(category.id)}
-                onRename={(name) => run('PATCH', `/api/manage/menu/categories/${category.id}`, { version: category.version, name })}
-                onMove={(direction) => move('categories', category, direction)}
-                onRemove={() =>
-                  setConfirm({
-                    text: `Remove the category "${category.name}"?`,
-                    run: async () => {
-                      await run('DELETE', `/api/manage/menu/categories/${category.id}?version=${category.version}`)
-                    },
-                  })
-                }
-              />
-              )
-            })}
-          </ul>
+                <SortableList
+                  items={list}
+                  disabled={busy}
+                  label={(category) => category.name}
+                  className="flex flex-col gap-sp-1"
+                  // One shared order for every category: the dragged side's
+                  // categories take their new order in the slots they held.
+                  onReorder={(sideIds) => {
+                    const queue = [...sideIds]
+                    const ids = categories.map((category) =>
+                      isDrinksCategory(category) === (side === 'Drinks') ? queue.shift()! : category.id,
+                    )
+                    return reorder('category', null, ids)
+                  }}
+                  renderItem={(category, handle) => (
+                    <CategoryRow
+                      key={category.version}
+                      category={category}
+                      handle={handle}
+                      selected={selected?.id === category.id}
+                      busy={busy}
+                      onSelect={() => setSelectedId(category.id)}
+                      onRename={(name) => run('PATCH', `/api/manage/menu/categories/${category.id}`, { version: category.version, name })}
+                      onRemove={() =>
+                        setConfirm({
+                          text: `Remove the category "${category.name}"?`,
+                          run: async () => {
+                            await run('DELETE', `/api/manage/menu/categories/${category.id}?version=${category.version}`)
+                          },
+                        })
+                      }
+                    />
+                  )}
+                />
               </div>
             )
           })}
@@ -208,56 +217,50 @@ export function MenuEditor() {
           {selected && selected.items.length === 0 ? (
             <p className="px-sp-2 py-sp-4 text-fs-14 text-slate-600">No dishes in this category.</p>
           ) : null}
-          <ul className="flex flex-col divide-y divide-slate-100">
-            {(selected?.items ?? []).map((item, index, items) => (
-              <li key={item.id + item.version} className="flex flex-wrap items-center gap-sp-2 px-sp-2 py-sp-2">
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <span className={cn('text-fs-16 font-bold', item.isActive ? 'text-slate-900' : 'text-slate-400 line-through')}>
-                    {item.name}
-                  </span>
-                  <span className="flex flex-wrap items-center gap-sp-2 text-fs-12 text-slate-600">
-                    <StationChip destination={item.productionDestination} />
-                    {item.groups.length > 0 ? `${item.groups.length} option group${item.groups.length === 1 ? '' : 's'}` : ''}
-                    {item.isActive ? '' : 'removed'}
-                  </span>
-                </div>
-                <span className="text-fs-16 font-bold tabular-nums text-slate-900">{lkrFromPaisa(item.pricePaisa)}</span>
-                {item.isActive ? (
-                  <>
-                    <button type="button" aria-label={`Move ${item.name} up`} className={icon} disabled={busy || index === 0} onClick={() => move('items', item, 'up')}>
-                      <ArrowUp className="size-4" aria-hidden="true" />
-                    </button>
-                    <button type="button" aria-label={`Move ${item.name} down`} className={icon} disabled={busy || index === items.length - 1} onClick={() => move('items', item, 'down')}>
-                      <ArrowDown className="size-4" aria-hidden="true" />
-                    </button>
-                    <button type="button" aria-label={`Edit ${item.name}`} className={icon} onClick={() => setEditing({ mode: 'edit', itemId: item.id })}>
-                      <Pencil className="size-4" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Remove ${item.name}`}
-                      className={icon}
-                      disabled={busy}
-                      onClick={() =>
-                        setConfirm({
-                          text: `Remove ${item.name} from the menu?`,
-                          run: async () => {
-                            await run('DELETE', `/api/manage/menu/items/${item.id}?version=${item.version}`)
-                          },
-                        })
-                      }
-                    >
-                      <Trash2 className="size-4" aria-hidden="true" />
-                    </button>
-                  </>
-                ) : (
-                  <button type="button" className={secondary} disabled={busy} onClick={() => run('POST', `/api/manage/menu/items/${item.id}/restore`, { version: item.version })}>
-                    <Undo2 className="size-4" aria-hidden="true" /> Restore
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
+          {selected ? (
+            <SortableList
+              items={selected.items.filter((item) => item.isActive)}
+              disabled={busy}
+              label={(item) => item.name}
+              className="flex flex-col divide-y divide-slate-100"
+              onReorder={(ids) => reorder('item', selected.id, ids)}
+              renderItem={(item, handle) => (
+                <DishRow
+                  item={item}
+                  handle={handle}
+                  busy={busy}
+                  onEdit={() => setEditing({ mode: 'edit', itemId: item.id })}
+                  onRemove={() =>
+                    setConfirm({
+                      text: `Remove ${item.name} from the menu?`,
+                      run: async () => {
+                        await run('DELETE', `/api/manage/menu/items/${item.id}?version=${item.version}`)
+                      },
+                    })
+                  }
+                  onRestore={() => run('POST', `/api/manage/menu/items/${item.id}/restore`, { version: item.version })}
+                />
+              )}
+            />
+          ) : null}
+          {selected && selected.items.some((item) => !item.isActive) ? (
+            <ul className="flex flex-col divide-y divide-slate-100 border-t border-slate-200">
+              {selected.items
+                .filter((item) => !item.isActive)
+                .map((item) => (
+                  <li key={item.id + item.version}>
+                    <DishRow
+                      item={item}
+                      handle={null}
+                      busy={busy}
+                      onEdit={() => {}}
+                      onRemove={() => {}}
+                      onRestore={() => run('POST', `/api/manage/menu/items/${item.id}/restore`, { version: item.version })}
+                    />
+                  </li>
+                ))}
+            </ul>
+          ) : null}
         </section>
       </div>
 
@@ -270,7 +273,7 @@ export function MenuEditor() {
           defaultDestination={isDrinksCategory(selected) ? 'bar' : 'kitchen'}
           busy={busy}
           run={run}
-          move={move}
+          reorder={reorder}
           confirm={(text, action) => setConfirm({ text, run: action })}
           onClose={() => setEditing(null)}
           onCreated={(id) => setEditing({ mode: 'edit', itemId: id })}
@@ -296,32 +299,29 @@ export function MenuEditor() {
 
 function CategoryRow({
   category,
+  handle,
   selected,
-  first,
-  last,
   busy,
   onSelect,
   onRename,
-  onMove,
   onRemove,
 }: {
   category: ManageCategory
+  handle: ReactNode
   selected: boolean
-  first: boolean
-  last: boolean
   busy: boolean
   onSelect: () => void
   onRename: (name: string) => Promise<unknown>
-  onMove: (direction: 'up' | 'down') => Promise<unknown>
   onRemove: () => void
 }) {
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(category.name)
   return (
-    <li className="shrink-0">
+    <div className="flex items-center">
+      {handle}
       {renaming ? (
         <form
-          className="flex gap-sp-1"
+          className="flex min-w-0 flex-1 gap-sp-1"
           onSubmit={async (event) => {
             event.preventDefault()
             await onRename(name)
@@ -334,7 +334,7 @@ function CategoryRow({
           </button>
         </form>
       ) : (
-        <div className={cn('flex items-center rounded-control', selected ? 'bg-brand-050' : '')}>
+        <div className={cn('flex min-w-0 flex-1 items-center rounded-control', selected ? 'bg-brand-050' : '')}>
           <button
             type="button"
             aria-current={selected ? 'true' : undefined}
@@ -349,13 +349,7 @@ function CategoryRow({
             <span className="text-fs-12 text-slate-500">{category.items.filter((i) => i.isActive).length}</span>
           </button>
           {selected ? (
-            <span className="hidden lg:flex">
-              <button type="button" aria-label={`Move ${category.name} up`} className={icon} disabled={busy || first} onClick={() => onMove('up')}>
-                <ArrowUp className="size-4" aria-hidden="true" />
-              </button>
-              <button type="button" aria-label={`Move ${category.name} down`} className={icon} disabled={busy || last} onClick={() => onMove('down')}>
-                <ArrowDown className="size-4" aria-hidden="true" />
-              </button>
+            <span className="flex">
               <button type="button" aria-label={`Rename ${category.name}`} className={icon} onClick={() => setRenaming(true)}>
                 <Pencil className="size-4" aria-hidden="true" />
               </button>
@@ -366,7 +360,54 @@ function CategoryRow({
           ) : null}
         </div>
       )}
-    </li>
+    </div>
+  )
+}
+
+function DishRow({
+  item,
+  handle,
+  busy,
+  onEdit,
+  onRemove,
+  onRestore,
+}: {
+  item: ManageItem
+  handle: ReactNode
+  busy: boolean
+  onEdit: () => void
+  onRemove: () => void
+  onRestore: () => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-sp-2 py-sp-2 pr-sp-2">
+      {handle ?? <span className="size-11 shrink-0" />}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className={cn('text-fs-16 font-bold', item.isActive ? 'text-slate-900' : 'text-slate-400 line-through')}>
+          {item.name}
+        </span>
+        <span className="flex flex-wrap items-center gap-sp-2 text-fs-12 text-slate-600">
+          <StationChip destination={item.productionDestination} />
+          {item.groups.length > 0 ? `${item.groups.length} option group${item.groups.length === 1 ? '' : 's'}` : ''}
+          {item.isActive ? '' : 'removed'}
+        </span>
+      </div>
+      <span className="text-fs-16 font-bold tabular-nums text-slate-900">{lkrFromPaisa(item.pricePaisa)}</span>
+      {item.isActive ? (
+        <>
+          <button type="button" aria-label={`Edit ${item.name}`} className={icon} onClick={onEdit}>
+            <Pencil className="size-4" aria-hidden="true" />
+          </button>
+          <button type="button" aria-label={`Remove ${item.name}`} className={icon} disabled={busy} onClick={onRemove}>
+            <Trash2 className="size-4" aria-hidden="true" />
+          </button>
+        </>
+      ) : (
+        <button type="button" className={secondary} disabled={busy} onClick={onRestore}>
+          <Undo2 className="size-4" aria-hidden="true" /> Restore
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -391,7 +432,7 @@ function AddCategory({ busy, onAdd }: { busy: boolean; onAdd: (name: string) => 
 // ── A dish and its options ───────────────────────────────────────────────────
 
 type Run = (method: string, url: string, body?: unknown) => Promise<unknown>
-type Move = (kind: string, row: { id: string; version: number }, direction: 'up' | 'down') => Promise<unknown>
+type Reorder = (kind: 'category' | 'item' | 'group' | 'option', parentId: string | null, ids: string[]) => Promise<unknown>
 
 function ItemSheet({
   item,
@@ -400,7 +441,7 @@ function ItemSheet({
   defaultDestination,
   busy,
   run,
-  move,
+  reorder,
   confirm,
   onClose,
   onCreated,
@@ -411,7 +452,7 @@ function ItemSheet({
   defaultDestination: Destination
   busy: boolean
   run: Run
-  move: Move
+  reorder: Reorder
   confirm: (text: string, action: () => Promise<void>) => void
   onClose: () => void
   onCreated: (id: string) => void
@@ -521,19 +562,25 @@ function ItemSheet({
           <section aria-label="Options" className="flex flex-col gap-sp-3 border-t border-slate-200 pt-sp-4">
             <h3 className="text-fs-18 font-extrabold text-slate-900">Options</h3>
             {item.groups.length === 0 ? <p className="text-fs-14 text-slate-600">No options on this dish.</p> : null}
-            {item.groups.map((group, index) => (
-              <GroupCard
-                key={group.id + group.version}
-                group={group}
-                otherGroups={item.groups.filter((g) => g.id !== group.id)}
-                first={index === 0}
-                last={index === item.groups.length - 1}
-                busy={busy}
-                run={run}
-                move={move}
-                confirm={confirm}
-              />
-            ))}
+            <SortableList
+              items={item.groups}
+              disabled={busy}
+              label={(group) => group.name}
+              className="flex flex-col gap-sp-3"
+              onReorder={(ids) => reorder('group', item.id, ids)}
+              renderItem={(group, handle) => (
+                <GroupCard
+                  key={group.version}
+                  group={group}
+                  handle={handle}
+                  otherGroups={item.groups.filter((g) => g.id !== group.id)}
+                  busy={busy}
+                  run={run}
+                  reorder={reorder}
+                  confirm={confirm}
+                />
+              )}
+            />
             <AddGroup busy={busy} onAdd={(body) => run('POST', `/api/manage/menu/items/${item.id}/groups`, body)} />
           </section>
         ) : (
@@ -546,21 +593,19 @@ function ItemSheet({
 
 function GroupCard({
   group,
+  handle,
   otherGroups,
-  first,
-  last,
   busy,
   run,
-  move,
+  reorder,
   confirm,
 }: {
   group: ManageGroup
+  handle: ReactNode
   otherGroups: ManageGroup[]
-  first: boolean
-  last: boolean
   busy: boolean
   run: Run
-  move: Move
+  reorder: Reorder
   confirm: (text: string, action: () => Promise<void>) => void
 }) {
   const [name, setName] = useState(group.name)
@@ -571,6 +616,7 @@ function GroupCard({
   return (
     <div className="flex flex-col gap-sp-3 rounded-panel border border-slate-200 p-sp-3">
       <div className="flex flex-wrap items-center gap-sp-2">
+        {handle}
         <input aria-label="Group name" maxLength={60} className={cn(input, 'min-w-40 flex-1 font-bold')} value={name} onChange={(e) => setName(e.target.value)} />
         <select aria-label="Choice" className={input} value={selection} onChange={(e) => setSelection(e.target.value as 'single' | 'multi')}>
           <option value="single">Pick one</option>
@@ -584,12 +630,6 @@ function GroupCard({
             Save
           </button>
         ) : null}
-        <button type="button" aria-label={`Move ${group.name} up`} className={icon} disabled={busy || first} onClick={() => move('groups', group, 'up')}>
-          <ArrowUp className="size-4" aria-hidden="true" />
-        </button>
-        <button type="button" aria-label={`Move ${group.name} down`} className={icon} disabled={busy || last} onClick={() => move('groups', group, 'down')}>
-          <ArrowDown className="size-4" aria-hidden="true" />
-        </button>
         <button
           type="button"
           aria-label={`Remove ${group.name}`}
@@ -605,21 +645,24 @@ function GroupCard({
         </button>
       </div>
 
-      <ul className="flex flex-col gap-sp-2">
-        {group.options.map((option, index) => (
+      <SortableList
+        items={group.options}
+        disabled={busy}
+        label={(option) => option.name}
+        className="flex flex-col gap-sp-2"
+        onReorder={(ids) => reorder('option', group.id, ids)}
+        renderItem={(option, optionHandle) => (
           <OptionRow
-            key={option.id + option.version}
+            key={option.version}
             option={option}
+            handle={optionHandle}
             otherGroups={otherGroups}
-            first={index === 0}
-            last={index === group.options.length - 1}
             busy={busy}
             run={run}
-            move={move}
             confirm={confirm}
           />
-        ))}
-      </ul>
+        )}
+      />
       <AddOption busy={busy} otherGroups={otherGroups} onAdd={(body) => run('POST', `/api/manage/menu/groups/${group.id}/options`, body)} />
     </div>
   )
@@ -668,21 +711,17 @@ function draftBody(draft: OptionDraft) {
 
 function OptionRow({
   option,
+  handle,
   otherGroups,
-  first,
-  last,
   busy,
   run,
-  move,
   confirm,
 }: {
   option: ManageOption
+  handle: ReactNode
   otherGroups: ManageGroup[]
-  first: boolean
-  last: boolean
   busy: boolean
   run: Run
-  move: Move
   confirm: (text: string, action: () => Promise<void>) => void
 }) {
   const initial: OptionDraft = {
@@ -696,19 +735,14 @@ function OptionRow({
   const body = draftBody(draft)
   const changed = JSON.stringify(draft) !== JSON.stringify(initial)
   return (
-    <li className="flex flex-wrap items-center gap-sp-2 rounded-control bg-slate-50 p-sp-2">
+    <div className="flex flex-wrap items-center gap-sp-2 rounded-control bg-slate-50 p-sp-2">
+      {handle}
       <OptionFields draft={draft} setDraft={setDraft} otherGroups={otherGroups} />
       {changed ? (
         <button type="button" className={primary} disabled={busy || !body} onClick={() => run('PATCH', `/api/manage/menu/options/${option.id}`, { version: option.version, ...body })}>
           Save
         </button>
       ) : null}
-      <button type="button" aria-label={`Move ${option.name} up`} className={icon} disabled={busy || first} onClick={() => move('options', option, 'up')}>
-        <ArrowUp className="size-4" aria-hidden="true" />
-      </button>
-      <button type="button" aria-label={`Move ${option.name} down`} className={icon} disabled={busy || last} onClick={() => move('options', option, 'down')}>
-        <ArrowDown className="size-4" aria-hidden="true" />
-      </button>
       <button
         type="button"
         aria-label={`Remove ${option.name}`}
@@ -722,7 +756,7 @@ function OptionRow({
       >
         <Trash2 className="size-4" aria-hidden="true" />
       </button>
-    </li>
+    </div>
   )
 }
 

@@ -180,6 +180,14 @@ async function run() {
   const order = (await waiterMenu(waiter)).data.find((c: any) => c.id === catId)?.items.map((i: any) => i.name)
   check('move up works even when every order is 0', moved.status === 200 && order?.[0] === 'ZZ Verify Beer', JSON.stringify(order))
 
+  // Drag and drop (Teran, 2026-11-13): a whole list's new order in one call.
+  const before = (await waiterMenu(waiter)).data.find((c: any) => c.id === catId)?.items.map((i: any) => i.id) as string[]
+  const dropped = await api(manage, 'POST', '/api/manage/menu/reorder', { kind: 'item', parentId: catId, ids: [...before].reverse() })
+  const after = (await waiterMenu(waiter)).data.find((c: any) => c.id === catId)?.items.map((i: any) => i.id) as string[]
+  check('a drop saves the new order', dropped.status === 200 && JSON.stringify(after) === JSON.stringify([...before].reverse()))
+  const partial = await api(manage, 'POST', '/api/manage/menu/reorder', { kind: 'item', parentId: catId, ids: [before[0]] })
+  check('a drop of a list that changed meanwhile is refused (409 STALE)', partial.status === 409 && partial.body?.error?.code === 'STALE')
+
   // Case 5, 6, 7: remove, restore, category guard.
   const notEmpty = await api(manage, 'DELETE', `/api/manage/menu/categories/${catId}?version=1`)
   check('a category with dishes cannot be removed (409)', notEmpty.status === 409 && notEmpty.body?.error?.code === 'CATEGORY_NOT_EMPTY')
