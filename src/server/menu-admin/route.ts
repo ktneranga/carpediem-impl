@@ -18,13 +18,20 @@ import {
   MenuRuleError,
   StaleVersionError,
 } from '@/server/services/menu-admin.service'
+import {
+  HasHistoryError,
+  LastOwnerError,
+  NameTakenError,
+  OwnAccountError,
+  PinTakenError,
+} from '@/server/services/staff-admin.service'
 
 /** Drizzle transaction handle. */
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 /**
  * Shared by every `/api/manage/menu` route (Story 10.4), every
- * `/api/manage/floor` route (Story 10.3) and the Sold out routes (Story 8.3) —
+ * `/api/manage/floor` route (Story 10.3), `/api/manage/staff` (Story 10.2) and the Sold out routes (Story 8.3) —
  * they differ only in what they broadcast.
  *
  * The proxy has already required an owner POS session AND a live Manage
@@ -84,6 +91,11 @@ export function floorWrite(request: Request, write: Write, status = 200): Promis
   return manageWrite(request, write, status, emitFloorChanged, 'floor')
 }
 
+/** Runs one staff write (Story 10.2): actor, transaction, errors. Nothing to broadcast. */
+export function staffWrite(request: Request, write: Write, status = 200): Promise<NextResponse> {
+  return manageWrite(request, write, status, () => {}, 'staff')
+}
+
 async function manageWrite<T>(
   request: Request,
   write: Write<T>,
@@ -113,6 +125,11 @@ async function manageWrite<T>(
     if (isUniqueViolation(error, TABLE_LABEL_INDEX)) {
       return menuFail('LABEL_TAKEN', 'There is already a table with that label', 409)
     }
+    if (error instanceof PinTakenError) return menuFail('PIN_TAKEN', error.message, 409)
+    if (error instanceof NameTakenError) return menuFail('NAME_TAKEN', error.message, 409)
+    if (error instanceof LastOwnerError) return menuFail('LAST_OWNER', error.message, 422)
+    if (error instanceof HasHistoryError) return menuFail('HAS_HISTORY', error.message, 409)
+    if (error instanceof OwnAccountError) return menuFail('OWN_ACCOUNT', error.message, 422)
     if (error instanceof MenuNotFoundError) return menuFail('NOT_FOUND', 'Not found', 404)
     if (error instanceof MenuRuleError) return menuFail('INVALID', error.message, 422)
     console.error(`[api/manage/${area}] Write failed:`, error)
@@ -140,3 +157,13 @@ export const nameSchema = z.string().max(200)
 /** Integer paisa; whole rupees are checked by the service. */
 export const paisaSchema = z.number().int()
 export const destinationSchema = z.enum(['kitchen', 'pizza_kitchen', 'bar'])
+
+/**
+ * Staff fields (Story 10.2), only length-capped: the service checks name, job
+ * and PIN so a bad one gets a 422 with a human message, not a bare 400.
+ */
+export const staffFields = {
+  name: z.string().max(200),
+  jobTitle: z.string().max(20),
+  pin: z.string().max(20),
+}

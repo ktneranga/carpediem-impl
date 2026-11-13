@@ -281,6 +281,20 @@
       "when": 1794546785104,
       "tag": "0039_moaning_brother_voodoo",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794567741833,
+      "tag": "0040_staff_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794568643280,
+      "tag": "0041_staff_job_title",
+      "breakpoints": true
     }
   ]
 }

@@ -173,9 +173,17 @@ export const staff = pgTable('staff', {
   tenantId:  uuid('tenant_id').notNull().references(() => tenants.id),
   name:      text('name').notNull(),
   role:      staffRoleEnum('role').notNull(),
+  /**
+   * What they do — Bartender, Cashier, Chef… (`STAFF_JOBS`, src/lib/staff-jobs.ts).
+   * Shown only; `role` alone decides access (Story 10.2, Teran 2026-11-13).
+   */
+  jobTitle:  text('job_title').notNull().default('waiter'),
   pinHash:   text('pin_hash').notNull(),
   isActive:  boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  // Manage → Staff (Story 10.2): optimistic concurrency, like the menu and floor.
+  version:   integer('version').notNull().default(1),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_staff_tenant_id').on(t.tenantId),
 ])

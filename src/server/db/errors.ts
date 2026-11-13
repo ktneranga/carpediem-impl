@@ -59,3 +59,20 @@ export function isCheckViolation(error: unknown, constraintName: string): boolea
   }
   return false
 }
+
+export const PG_FOREIGN_KEY_VIOLATION = '23503'
+
+/**
+ * A row is still referenced by another table's foreign key. Not matched by
+ * name: callers wrap ONE delete whose every referencing table means the same
+ * thing ("it has history"), e.g. deleting a staff member (Story 10.2).
+ */
+export function isForeignKeyViolation(error: unknown): boolean {
+  for (let current: unknown = error, depth = 0; current && depth < 5; depth += 1) {
+    if (typeof current === 'object' && current !== null && (current as { code?: unknown }).code === PG_FOREIGN_KEY_VIOLATION) {
+      return true
+    }
+    current = (current as { cause?: unknown }).cause
+  }
+  return false
+}

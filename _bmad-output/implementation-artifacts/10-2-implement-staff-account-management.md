@@ -1,6 +1,6 @@
 # Story 10.2: Staff accounts in Manage
 
-Status: ready-for-dev
+Status: review
 
 <!-- Go-live. Next after 8.3 in the launch order. Testing deferred to the final round (launch rush). -->
 
@@ -70,51 +70,51 @@ showing who changed what.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Migration (AC 4)**: `staff` gains `version integer NOT NULL DEFAULT 1` and
+- [x] **Task 1 — Migration (AC 4)**: `staff` gains `version integer NOT NULL DEFAULT 1` and
       `updated_at timestamptz NOT NULL DEFAULT now()` (same as 10.4/10.3). `npm run db:generate` →
       0041-ish; check the SQL; apply.
-- [ ] **Task 2 — Service** `src/server/services/staff-admin.service.ts` (pattern: `floor-admin.service.ts`):
-  - [ ] errors: `PinTakenError`, `NameTakenError`, `LastOwnerError`, `OwnAccountError`; reuse
+- [x] **Task 2 — Service** `src/server/services/staff-admin.service.ts` (pattern: `floor-admin.service.ts`):
+  - [x] errors: `PinTakenError`, `NameTakenError`, `LastOwnerError`, `OwnAccountError`; reuse
         `MenuNotFoundError`, `StaleVersionError`, `MenuRuleError` (the shared route maps them).
-  - [ ] `lockStaff(tx, tenantId)` — the advisory lock (AC 3).
-  - [ ] `checkPinFree(tx, tenantId, pin, exceptId)` — bcrypt.compare against each other active row; compare
+  - [x] `lockStaff(tx, tenantId)` — the advisory lock (AC 3).
+  - [x] `checkPinFree(tx, tenantId, pin, exceptId)` — bcrypt.compare against each other active row; compare
         ALL rows (no early exit needed, but fine either way — it's owner-only, behind two gates).
-  - [ ] `checkNameFree`, `cleanStaffName`, `checkRole`, `checkPin`.
-  - [ ] `createStaff`, `updateStaff` (name/role/pin, AC 5 session updates), `setStaffActive` (AC 6, AC 7).
-  - [ ] `loadStaffForManage(db, tenantId)` → `{ id, version, name, role, isActive }[]` (never `pinHash`).
-  - [ ] Every write logs via `recordConfigChange` with the AC 9 payload.
-- [ ] **Task 3 — Routes**: `src/app/api/manage/staff/route.ts` (GET list, POST create) and
+  - [x] `checkNameFree`, `cleanStaffName`, `checkRole`, `checkPin`.
+  - [x] `createStaff`, `updateStaff` (name/role/pin, AC 5 session updates), `setStaffActive` (AC 6, AC 7).
+  - [x] `loadStaffForManage(db, tenantId)` → `{ id, version, name, role, isActive }[]` (never `pinHash`).
+  - [x] Every write logs via `recordConfigChange` with the AC 9 payload.
+- [x] **Task 3 — Routes**: `src/app/api/manage/staff/route.ts` (GET list, POST create) and
       `src/app/api/manage/staff/[id]/route.ts` (PATCH). Use the shared helper in
       `src/server/menu-admin/route.ts` — add a `staffWrite` (no broadcast needed; pass a no-op) and map the
       four new errors (`PIN_TAKEN` 409, `NAME_TAKEN` 409, `LAST_OWNER` 422, `OWN_ACCOUNT` 422). The actor's
       `staffId` is the "own account" for AC 7. Zod: `pin: z.string().regex(/^\d{4}$/)`,
       `role: z.enum(staffRoleEnum.enumValues)`. Never echo the body in an error or a log.
-- [ ] **Task 4 — Screen**: `src/app/manage/(area)/staff/page.tsx` → `src/components/manage/staff-editor.tsx`
+- [x] **Task 4 — Screen**: `src/app/manage/(area)/staff/page.tsx` → `src/components/manage/staff-editor.tsx`
       (client), styled like `floor-editor.tsx`; reuse `call`, `ApiError`, `input`, `primary`, `secondary`,
       `ConfirmDialog` from `manage-ui.tsx`. The page passes the signed-in staff id (from `x-staff-id`) for
       "You". On `ApiError` with status 401 `MANAGE_LOCKED`, `call()` already sends to unlock — keep that.
       Rows keyed `id + version`. Role badge colours: owner brand, waiter slate, kitchen amber (existing
       tokens only). 44px targets.
-- [ ] **Task 5 — Sections text**: `MANAGE_SECTIONS` Staff: "Add staff, set their PINs and roles, and
+- [x] **Task 5 — Sections text**: `MANAGE_SECTIONS` Staff: "Add staff, set their PINs and roles, and
       deactivate someone who has left."  (already says this — confirm, no change needed).
-- [ ] **Task 6 — Verify** `src/server/services/verify-staff-admin.ts`
+- [x] **Task 6 — Verify** `src/server/services/verify-staff-admin.ts`
       (`npx tsx --conditions=react-server …`), self-cleaning, uses its own tenant rows only:
-  - [ ] create waiter → hash is bcrypt, not the PIN; version 1; one `config_changes` row without `pinHash`;
-  - [ ] create with a PIN held by another active staff → `PinTakenError`; same PIN held only by an
+  - [x] create waiter → hash is bcrypt, not the PIN; version 1; one `config_changes` row without `pinHash`;
+  - [x] create with a PIN held by another active staff → `PinTakenError`; same PIN held only by an
         INACTIVE staff → allowed;
-  - [ ] duplicate active name (different case) → `NameTakenError`;
-  - [ ] edit name with stale version → `StaleVersionError`;
-  - [ ] role change waiter → owner updates that person's `staff_sessions.role`; owner → waiter deletes
+  - [x] duplicate active name (different case) → `NameTakenError`;
+  - [x] edit name with stale version → `StaleVersionError`;
+  - [x] role change waiter → owner updates that person's `staff_sessions.role`; owner → waiter deletes
         their `manage_sessions`;
-  - [ ] deactivate deletes their `staff_sessions`; reactivate with a now-taken PIN → `PinTakenError`;
-  - [ ] last active owner: deactivate → `LastOwnerError`, role change → `LastOwnerError`;
-  - [ ] actor == target: role change / deactivate → `OwnAccountError`; name change allowed;
-  - [ ] invalid role / 3-digit PIN / 41-char name → `MenuRuleError`;
-  - [ ] login still works: `bcrypt.compare(newPin, row.pinHash)` true after a PIN change.
-  - [ ] Cleanup: staff rows created by the script can't be deleted if anything references them — create
+  - [x] deactivate deletes their `staff_sessions`; reactivate with a now-taken PIN → `PinTakenError`;
+  - [x] last active owner: deactivate → `LastOwnerError`, role change → `LastOwnerError`;
+  - [x] actor == target: role change / deactivate → `OwnAccountError`; name change allowed;
+  - [x] invalid role / 3-digit PIN / 41-char name → `MenuRuleError`;
+  - [x] login still works: `bcrypt.compare(newPin, row.pinHash)` true after a PIN change.
+  - [x] Cleanup: staff rows created by the script can't be deleted if anything references them — create
         nothing that references them (no orders); delete their `staff_sessions`, then the rows. `config_changes`
         is DELETE-guarded: follow `verify-floor-admin.ts`.
-  - [ ] `npx tsc --noEmit`, `npm run lint` clean.
+  - [x] `npx tsc --noEmit`, `npm run lint` clean.
 
 ## Dev Notes
 
@@ -160,8 +160,64 @@ showing who changed what.
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
 
 ### Completion Notes List
 
+- Migration `0040_staff_version.sql` (staff.version, staff.updated_at) generated and applied locally.
+- Service `staff-admin.service.ts`: create / edit / deactivate / reactivate under a per-tenant advisory lock;
+  PIN checked with bcrypt against every other active row; name unique among active (case-insensitive); role change
+  rewrites `staff_sessions.role` and closes Manage on demotion; deactivate deletes the person's sessions;
+  LAST_OWNER and OWN_ACCOUNT guards; `config_changes` payload never holds `pinHash` (adds `pinChanged`).
+- **Deviation (AC 6): Reactivate always takes a PIN.** Salted bcrypt hashes can't be compared with each other, so
+  a deactivated person's stored PIN can't be checked for uniqueness. The Reactivate sheet asks for a PIN
+  ("It can be their old one if no one else uses it"); `PIN_TAKEN` shows inline and the field clears.
+- Routes: zod only length-caps name/role/pin so AC 8's bad role / PIN / name get 422 `INVALID` with a human
+  message from the service (not a bare 400). `staffWrite`, four error mappings and `staffFields` added to
+  `menu-admin/route.ts` (Next forbids extra exports from route files).
+- Screen: list (Owner, Waiter, Kitchen, then name), "You" chip, role badges, collapsed "Deactivated (N)" with
+  Reactivate; one sheet for add / edit / reactivate; errors inline; PIN cleared after every attempt; own role and
+  Deactivate disabled with "Another owner can change this."
+- Task 5: MANAGE_SECTIONS Staff text already matched — no change.
+- Verify: `npx tsx --conditions=react-server --env-file=.env src/server/services/verify-staff-admin.ts` → 31/31
+  (incl. a real two-saves-one-PIN race). Uses its own `ZZ Staff verify` tenant; cleanup confirmed.
+- `npx tsc --noEmit` clean; `npm run lint` 0 errors (1 pre-existing warning in socket/index.ts).
+- **Change (Teran, 2026-11-13): the job decides the access.** Staff have a job — Waiter, Bartender, Cashier,
+  Helper, Chef, Owner (`src/lib/staff-jobs.ts`, column `staff.job_title`, migration `0041_staff_job_title.sql`
+  with backfill owner → owner, kitchen → chef, waiter → waiter). There is no role picker: `role` follows the job
+  (`accessOf`: Chef → kitchen, Owner → owner, the rest → waiter); the sheet shows "Can use: …" as text. The API
+  takes `jobTitle`, not `role`. AC 5 / AC 7 now apply to a job change that changes access (session role rewrite,
+  LAST_OWNER, OWN_ACCOUNT — your own job is locked). Extra rights for one person are Story 10.6. Verify 34/34.
+- **Change (Teran, 2026-11-13): Delete.** `DELETE /api/manage/staff/:id?version=` → `deleteStaff`: only for
+  someone with no history (added by mistake). Their sessions are removed, then the row; any foreign key
+  (orders, bills, payments, change log as actor) refuses it → 409 `HAS_HISTORY` "…Deactivate them instead."
+  Not yourself (`OWN_ACCOUNT`), not the last owner. Logged as `{ id, name, deleted: true }`. Small trash icon in
+  the edit and reactivate sheets, with a confirm. New helper `isForeignKeyViolation` in `db/errors.ts`.
+  Verify 39/39.
+- UI not clicked through in a browser — deferred to the final test round (launch rush).
+
 ### File List
+
+- src/server/db/schema.ts (updated)
+- src/server/db/migrations/0040_staff_version.sql (new)
+- src/server/db/migrations/meta/0040_snapshot.json (new)
+- src/server/db/migrations/0041_staff_job_title.sql (new)
+- src/server/db/migrations/meta/0041_snapshot.json (new)
+- src/server/db/migrations/meta/_journal.json (updated)
+- src/lib/staff-jobs.ts (new)
+- src/server/services/staff-admin.service.ts (new)
+- src/server/services/verify-staff-admin.ts (new)
+- src/server/menu-admin/route.ts (updated)
+- src/server/db/errors.ts (updated)
+- src/app/api/manage/staff/route.ts (new)
+- src/app/api/manage/staff/[id]/route.ts (new)
+- src/components/manage/staff-editor.tsx (new)
+- src/app/manage/(area)/staff/page.tsx (updated)
+
+### Change Log
+
+- 2026-11-13: Story 10.2 implemented — staff accounts in Manage (add, edit, PIN, role, deactivate, reactivate). Status → review.
+- 2026-11-13: Added jobs (Bartender, Cashier, Helper, Chef…); the job sets the access, no separate role picker.
+- 2026-11-13: Added Delete for staff with no history.
