@@ -32,7 +32,16 @@ export function ManageNav({ ownerView }: { ownerView: boolean }) {
 
   return (
     <aside className="flex shrink-0 flex-col gap-sp-2 border-b border-slate-200 bg-white p-sp-3 md:w-60 md:border-r md:border-b-0 md:p-sp-4">
-      <p className="hidden px-sp-3 pb-sp-2 text-fs-18 font-extrabold text-slate-900 md:block">Manage</p>
+      {/* At the top, where people look for a way back (Teran, 2026-11-13). */}
+      <Link
+        href="/"
+        className={cn(itemClass, 'gap-sp-2 border border-slate-300 text-slate-900 hover:bg-slate-100')}
+      >
+        <ArrowLeft aria-hidden="true" className="size-4" />
+        Back to floor
+      </Link>
+
+      <p className="hidden px-sp-3 pt-sp-2 pb-sp-2 text-fs-18 font-extrabold text-slate-900 md:block">Manage</p>
 
       <nav aria-label="Manage sections" className="overflow-x-auto">
         <ul className="flex gap-sp-1 md:flex-col">
@@ -56,12 +65,8 @@ export function ManageNav({ ownerView }: { ownerView: boolean }) {
         </ul>
       </nav>
 
-      <div className="flex gap-sp-1 md:mt-auto md:flex-col">
-        <Link href="/" className={cn(itemClass, 'gap-sp-2 text-slate-600 hover:bg-slate-100')}>
-          <ArrowLeft aria-hidden="true" className="size-4" />
-          Back to floor
-        </Link>
-        {ownerView ? (
+      {ownerView ? (
+        <div className="flex gap-sp-1 md:mt-auto md:flex-col">
           <button
             type="button"
             onClick={lock}
@@ -71,8 +76,8 @@ export function ManageNav({ ownerView }: { ownerView: boolean }) {
             <Lock aria-hidden="true" className="size-4" />
             Lock
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </aside>
   )
 }
