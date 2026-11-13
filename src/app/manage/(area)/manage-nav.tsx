@@ -44,15 +44,14 @@ export function ManageNav({ owner, unlocked }: { owner: boolean; unlocked: boole
           <ArrowLeft aria-hidden="true" className="size-4" />
           Back to floor
         </Link>
-        {/* On a phone the menu is a top row: light / dark sits here. */}
+        {/* On a phone the menu is a top row: the Dark mode switch sits beside the way back. */}
         <ManageThemeToggle className="md:hidden" />
       </div>
 
-      <div className="hidden items-center justify-between md:flex md:pt-sp-1">
-        <p className="px-sp-3 text-fs-18 font-extrabold text-slate-900 night:text-night-text">Manage</p>
-        {/* Light / dark for the whole Manage area — small: it is set once and left. */}
-        <ManageThemeToggle />
-      </div>
+      {/* Laptop: its own labelled row under the way back, where it is seen (Teran, 2026-11-13). */}
+      <ManageThemeToggle withLabel className="hidden md:inline-flex" />
+
+      <p className="hidden px-sp-3 pt-sp-2 text-fs-18 font-extrabold text-slate-900 night:text-night-text md:block">Manage</p>
 
       <nav aria-label="Manage sections" className="overflow-x-auto">
         <ul className="flex gap-sp-1 md:flex-col">
