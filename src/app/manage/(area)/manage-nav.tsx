@@ -33,17 +33,17 @@ export function ManageNav({ owner, unlocked }: { owner: boolean; unlocked: boole
   }
 
   return (
-    <aside className="flex shrink-0 flex-col gap-sp-2 border-b border-slate-200 bg-white p-sp-3 md:w-60 md:border-r md:border-b-0 md:p-sp-4">
+    <aside className="flex shrink-0 flex-col gap-sp-2 border-b border-slate-200 bg-white p-sp-3 night:border-night-hairline night:bg-night-card md:w-60 md:border-r md:border-b-0 md:p-sp-4">
       {/* At the top, where people look for a way back (Teran, 2026-11-13). */}
       <Link
         href="/"
-        className={cn(itemClass, 'gap-sp-2 border border-slate-300 text-slate-900 hover:bg-slate-100')}
+        className={cn(itemClass, 'gap-sp-2 border border-slate-300 text-slate-900 hover:bg-slate-100 night:border-night-hairline night:text-night-text night:hover:bg-night-raised')}
       >
         <ArrowLeft aria-hidden="true" className="size-4" />
         Back to floor
       </Link>
 
-      <p className="hidden px-sp-3 pt-sp-2 pb-sp-2 text-fs-18 font-extrabold text-slate-900 md:block">Manage</p>
+      <p className="hidden px-sp-3 pt-sp-2 pb-sp-2 text-fs-18 font-extrabold text-slate-900 night:text-night-text md:block">Manage</p>
 
       <nav aria-label="Manage sections" className="overflow-x-auto">
         <ul className="flex gap-sp-1 md:flex-col">
@@ -56,7 +56,9 @@ export function ManageNav({ owner, unlocked }: { owner: boolean; unlocked: boole
                   aria-current={current ? 'page' : undefined}
                   className={cn(
                     itemClass,
-                    current ? 'bg-brand-050 text-brand-800' : 'text-slate-600 hover:bg-slate-100',
+                    current
+                      ? 'bg-brand-050 text-brand-800 night:bg-night-raised night:text-night-text'
+                      : 'text-slate-600 hover:bg-slate-100 night:text-night-second night:hover:bg-night-raised',
                   )}
                 >
                   {section.title}
@@ -70,7 +72,7 @@ export function ManageNav({ owner, unlocked }: { owner: boolean; unlocked: boole
       {owner && !unlocked ? (
         <Link
           href="/manage/dashboard"
-          className={cn(itemClass, 'gap-sp-2 text-slate-600 hover:bg-slate-100')}
+          className={cn(itemClass, 'gap-sp-2 text-slate-600 hover:bg-slate-100 night:text-night-second night:hover:bg-night-raised')}
         >
           <LockKeyhole aria-hidden="true" className="size-4" />
           Open Manage
@@ -83,7 +85,7 @@ export function ManageNav({ owner, unlocked }: { owner: boolean; unlocked: boole
             type="button"
             onClick={lock}
             disabled={locking}
-            className={cn(itemClass, 'gap-sp-2 text-slate-600 hover:bg-slate-100 disabled:opacity-50')}
+            className={cn(itemClass, 'gap-sp-2 text-slate-600 hover:bg-slate-100 disabled:opacity-50 night:text-night-second night:hover:bg-night-raised')}
           >
             <Lock aria-hidden="true" className="size-4" />
             Lock

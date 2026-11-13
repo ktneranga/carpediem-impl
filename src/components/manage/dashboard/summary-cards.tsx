@@ -2,25 +2,22 @@
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2 } from 'lucide-react'
-import { ApiError, call as callApi, input, primary, secondary } from '@/components/manage/manage-ui'
-import { Panel, PanelSkeleton } from '@/components/manage/dashboard/panel'
-import { useSocketEvent } from '@/hooks/use-socket'
-import { lkrFromPaisa } from '@/lib/format'
+import { X } from 'lucide-react'
+import { call as callApi } from '@/components/manage/manage-ui'
+import { Badge, Panel, PanelSkeleton, tone } from '@/components/manage/dashboard/panel'
 import { dailyOrderLabel } from '@/lib/order-number'
 import type { DashboardSummary } from '@/server/services/dashboard.service'
 import { cn } from '@/lib/utils'
 
 /**
- * The dashboard's four cards (Story 9.3): cash check, needs attention
- * (long-open orders), not available, comps. One query feeds all four; payments,
- * menu changes and table changes refresh it, and so does a minute passing
- * (long-open times grow on their own).
+ * The "right now" cards (Story 9.3): orders open too long and dishes not
+ * available, plus the cash count for today. One query; refreshed by payments,
+ * menu and table changes, and every minute (open times grow on their own).
+ * Shown on the Today view only.
  */
 
-const KEY = ['manage-dashboard-summary'] as const
+export const SUMMARY_KEY = ['manage-dashboard-summary'] as const
 const call = (method: string, url: string, body?: unknown) => callApi(method, url, body, '/manage/dashboard')
-const money = (paisa: number) => `${paisa < 0 ? '-' : ''}${lkrFromPaisa(Math.abs(paisa))}`
 const time = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 
 function duration(minutes: number) {
@@ -29,107 +26,80 @@ function duration(minutes: number) {
   return hours === 0 ? `${rest} min` : `${hours} h ${rest} min`
 }
 
-export function SummaryCards() {
-  const queryClient = useQueryClient()
-  const { data, error } = useQuery({
-    queryKey: KEY,
+export function useSummary() {
+  return useQuery({
+    queryKey: SUMMARY_KEY,
     queryFn: async () => ((await call('GET', '/api/manage/dashboard/summary')) as { data: DashboardSummary }).data,
     refetchInterval: 60_000,
   })
-  const refresh = () => void queryClient.invalidateQueries({ queryKey: KEY })
-  useSocketEvent('session:payment_changed', refresh)
-  useSocketEvent('menu:item_updated', refresh)
-  useSocketEvent('menu:changed', refresh)
-  useSocketEvent('table:status_changed', refresh)
+}
 
-  const waiting = error ? <p role="alert" className="text-fs-14 font-semibold text-red-700">Could not load.</p> : <PanelSkeleton />
+export function LiveCards() {
+  const { data, error } = useSummary()
+  const waiting = error ? <p role="alert" className={cn('text-fs-14 font-semibold', tone.bad)}>Could not load.</p> : <PanelSkeleton />
 
   return (
-    <div className="grid gap-sp-4 md:grid-cols-2 xl:grid-cols-3">
-      <Panel title="Cash check" minHeight="min-h-56">
-        {data ? <CashCheck cash={data.cash} onSaved={refresh} /> : waiting}
-      </Panel>
-
-      <Panel title="Needs attention" minHeight="min-h-56">
+    <div className="grid gap-sp-3 md:grid-cols-2">
+      <Panel title="Needs attention" subtitle={data ? `open longer than ${duration(data.longOpenMinutes)}` : undefined} minHeight="min-h-40">
         {!data ? waiting : data.longOpen.length === 0 ? (
-          <Empty text={`No order open longer than ${duration(data.longOpenMinutes)}.`} />
+          <p className={cn('flex flex-1 items-center text-fs-14', tone.second)}>No order open too long.</p>
         ) : (
-          <List>
+          <ul className="flex max-h-72 flex-col overflow-y-auto">
             {data.longOpen.map((order) => (
-              <li key={order.dailyNumber + order.openedAt} className="flex min-h-11 flex-wrap items-center gap-x-sp-3 border-t border-slate-100 py-sp-2">
-                <span className="w-14 text-fs-16 font-bold text-slate-900 tabular-nums">{dailyOrderLabel(order.dailyNumber)}</span>
-                <span className="min-w-0 flex-1 text-fs-16 text-slate-900">
+              <li key={order.dailyNumber + order.openedAt} className={cn('flex flex-wrap items-center gap-x-sp-3 border-t py-sp-2', tone.hairline)}>
+                <span className={cn('w-12 text-fs-14 font-bold tabular-nums', tone.ink)}>{dailyOrderLabel(order.dailyNumber)}</span>
+                <span className={cn('min-w-0 flex-1 text-fs-14', tone.ink)}>
                   {order.tables.join(' + ')}
-                  {order.zone ? <span className="text-fs-14 text-slate-500"> · {order.zone}</span> : null}
+                  {order.zone ? <span className={tone.muted}> · {order.zone}</span> : null}
                 </span>
-                <span className="text-fs-14 font-semibold text-amber-900 tabular-nums">{duration(order.minutesOpen)}</span>
-                <span className="w-full pl-[4.25rem] text-fs-12 text-slate-500">Opened {time(order.openedAt)} by {order.openedBy}</span>
+                <Badge kind="warn">{duration(order.minutesOpen)}</Badge>
+                <span className={cn('w-full pl-[3.75rem] text-fs-12', tone.muted)}>Opened {time(order.openedAt)} by {order.openedBy}</span>
               </li>
             ))}
-          </List>
+          </ul>
         )}
       </Panel>
 
-      <Panel title="Not available" minHeight="min-h-56">
+      <Panel title="Not available" subtitle="switched off on every tablet" minHeight="min-h-40">
         {!data ? waiting : data.soldOut.length === 0 ? (
-          <Empty text="Everything is available." />
+          <p className={cn('flex flex-1 items-center text-fs-14', tone.second)}>Everything is available.</p>
         ) : (
-          <List>
+          <ul className="flex max-h-72 flex-col overflow-y-auto">
             {data.soldOut.map((item) => (
-              <li key={item.id} className="flex min-h-11 items-center justify-between gap-sp-3 border-t border-slate-100 py-sp-2">
-                <span className="min-w-0 truncate text-fs-16 text-slate-900">{item.name}</span>
-                <span className="shrink-0 rounded-pill bg-slate-100 px-sp-2 py-0.5 text-fs-12 font-semibold text-slate-700">
-                  {item.kind === 'depleted' ? 'Ran out' : 'Switched off'}
-                </span>
+              <li key={item.id} className={cn('flex min-h-10 items-center justify-between gap-sp-3 border-t py-sp-1', tone.hairline)}>
+                <span className={cn('min-w-0 truncate text-fs-14', tone.ink)}>{item.name}</span>
+                <Badge kind="info">{item.kind === 'depleted' ? 'Ran out' : 'Switched off'}</Badge>
               </li>
             ))}
-          </List>
-        )}
-      </Panel>
-
-      <Panel
-        title="Comps"
-        minHeight="min-h-56"
-        action={data && data.comps.entries.length > 0 ? (
-          <span className="text-fs-14 font-bold text-slate-900 tabular-nums">-{lkrFromPaisa(data.comps.totalPaisa)}</span>
-        ) : undefined}
-      >
-        {!data ? waiting : data.comps.entries.length === 0 ? (
-          <Empty text="No comps today." />
-        ) : (
-          <List>
-            {data.comps.entries.map((comp, index) => (
-              <li key={index} className="flex min-h-11 flex-wrap items-center gap-x-sp-3 border-t border-slate-100 py-sp-2">
-                <span className="min-w-0 flex-1 truncate text-fs-16 text-slate-900">{comp.itemName}</span>
-                <span className="text-fs-14 font-semibold text-slate-900 tabular-nums">-{lkrFromPaisa(comp.amountPaisa)}</span>
-                <span className="w-full text-fs-12 text-slate-500">
-                  {comp.reason} · {comp.staffName} · {time(comp.at)}
-                </span>
-              </li>
-            ))}
-          </List>
+          </ul>
         )}
       </Panel>
     </div>
   )
 }
 
-/** Scrolls past about five rows, so a long list never stretches the card. */
-function List({ children }: { children: React.ReactNode }) {
-  return <ul className="flex max-h-72 flex-col overflow-y-auto">{children}</ul>
+/** "Count cash" / "Recount" in the cash tile; opens a small sheet. Today only. */
+export function CashCountButton({ counted, onSaved }: { counted: boolean; onSaved: () => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        type="button"
+        className="mt-sp-1 inline-flex h-9 items-center self-start rounded-control border border-slate-300 px-sp-3 text-fs-14 font-bold text-slate-900 hover:bg-slate-50 night:border-night-hairline night:text-night-text night:hover:bg-night-raised"
+        onClick={() => setOpen(true)}
+      >
+        {counted ? 'Recount' : 'Count cash'}
+      </button>
+      {open ? <CashCountSheet onClose={() => setOpen(false)} onSaved={onSaved} /> : null}
+    </>
+  )
 }
 
-function Empty({ text }: { text: string }) {
-  return <p className="flex flex-1 items-center text-fs-14 text-slate-600">{text}</p>
-}
-
-/** Expected (cash taken today) against what the owner counted; a recount adds a new count. */
-function CashCheck({ cash, onSaved }: { cash: DashboardSummary['cash']; onSaved: () => void }) {
-  const [editing, setEditing] = useState(cash.count === null)
+function CashCountSheet({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const queryClient = useQueryClient()
   const [rupees, setRupees] = useState('')
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
-  const gap = cash.gapPaisa
 
   async function save() {
     const value = Number(rupees.replace(/,/g, ''))
@@ -141,76 +111,56 @@ function CashCheck({ cash, onSaved }: { cash: DashboardSummary['cash']; onSaved:
     setProblem(null)
     try {
       await call('POST', '/api/manage/dashboard/cash-count', { countedPaisa: value * 100 })
-      setRupees('')
-      setEditing(false)
+      await queryClient.invalidateQueries({ queryKey: SUMMARY_KEY })
       onSaved()
+      onClose()
     } catch (failure) {
-      setProblem(failure instanceof ApiError || failure instanceof Error ? failure.message : 'Could not save the count')
+      setProblem(failure instanceof Error ? failure.message : 'Could not save the count')
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-sp-2">
-      <div className="flex items-center justify-between text-fs-16 text-slate-700">
-        <span>Expected (cash taken)</span>
-        <span className="font-bold text-slate-900 tabular-nums">{money(cash.expectedPaisa)}</span>
-      </div>
-      {cash.count ? (
-        <div className="flex items-center justify-between text-fs-16 text-slate-700">
-          <span>Counted</span>
-          <span className="font-bold text-slate-900 tabular-nums">{money(cash.count.countedPaisa)}</span>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cash-count-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose()
+      }}
+    >
+      <form
+        className={cn('flex w-full max-w-sm flex-col gap-sp-3 rounded-panel p-sp-5 shadow-el-2', tone.card)}
+        onSubmit={(event) => {
+          event.preventDefault()
+          void save()
+        }}
+      >
+        <div className="flex items-center justify-between">
+          <h2 id="cash-count-title" className={cn('text-fs-20 font-extrabold', tone.ink)}>Count the cash</h2>
+          <button type="button" aria-label="Close" className={cn('inline-flex size-11 items-center justify-center rounded-control', tone.second)} onClick={onClose}>
+            <X className="size-5" aria-hidden="true" />
+          </button>
         </div>
-      ) : null}
-
-      {gap === null ? null : gap === 0 ? (
-        <p className="flex items-center gap-sp-2 rounded-control bg-open-body px-sp-3 py-sp-2 text-fs-16 font-bold text-open-ink">
-          <CheckCircle2 className="size-5" aria-hidden="true" /> Balanced
-        </p>
-      ) : (
-        <p className="flex items-center justify-between gap-sp-2 rounded-control border-2 border-red-700 bg-white px-sp-3 py-sp-2 text-fs-16 font-bold text-red-700">
-          <span className="flex items-center gap-sp-2">
-            <AlertTriangle className="size-5" aria-hidden="true" /> {gap > 0 ? 'Over by' : 'Short by'}
-          </span>
-          <span className="tabular-nums">{lkrFromPaisa(Math.abs(gap))}</span>
-        </p>
-      )}
-      {cash.count ? (
-        <p className="text-fs-12 text-slate-500">Counted {time(cash.count.countedAt)} by {cash.count.countedBy}</p>
-      ) : null}
-
-      {editing ? (
-        <form
-          className="mt-auto flex flex-col gap-sp-1"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void save()
-          }}
-        >
-          <label className="text-fs-14 font-semibold text-slate-700" htmlFor="cash-counted">Cash in the drawer, without the float</label>
-          <div className="flex gap-sp-2">
-            <input
-              id="cash-counted"
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder="LKR"
-              className={cn(input, 'min-w-0 flex-1 tabular-nums')}
-              value={rupees}
-              onChange={(e) => setRupees(e.target.value.replace(/[^\d,]/g, ''))}
-            />
-            <button type="submit" className={primary} disabled={busy}>Save</button>
-            {cash.count ? (
-              <button type="button" className={secondary} onClick={() => setEditing(false)}>Cancel</button>
-            ) : null}
-          </div>
-          {problem ? <span role="alert" className="text-fs-12 font-semibold text-red-700">{problem}</span> : null}
-        </form>
-      ) : (
-        <button type="button" className={cn(secondary, 'mt-auto self-start')} onClick={() => setEditing(true)}>
-          Recount
+        <label className="flex flex-col gap-sp-1">
+          <span className={cn('text-fs-14 font-semibold', tone.second)}>Cash in the drawer, without the float (LKR)</span>
+          <input
+            autoFocus
+            inputMode="numeric"
+            autoComplete="off"
+            className="h-12 rounded-control border border-slate-300 bg-white px-sp-3 text-fs-20 font-bold text-slate-900 tabular-nums night:border-night-hairline night:bg-night-sunken night:text-night-text"
+            value={rupees}
+            onChange={(e) => setRupees(e.target.value.replace(/[^\d,]/g, ''))}
+          />
+        </label>
+        <p className={cn('text-fs-12', tone.muted)}>A recount adds a new count; earlier ones stay on record.</p>
+        {problem ? <p role="alert" className={cn('text-fs-14 font-semibold', tone.bad)}>{problem}</p> : null}
+        <button type="submit" disabled={busy} className="h-11 rounded-control bg-brand-800 text-fs-14 font-bold text-white disabled:opacity-50">
+          Save count
         </button>
-      )}
+      </form>
     </div>
   )
 }

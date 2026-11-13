@@ -19,7 +19,7 @@ export default async function ManageAreaLayout({ children }: { children: React.R
   // The proxy sets this only after checking the Manage session itself.
   const unlocked = owner && list.get('x-manage-unlocked') === '1'
   return (
-    <div className="flex min-h-screen flex-col bg-slate-100 md:flex-row">
+    <div className="flex min-h-screen flex-col bg-slate-100 night:bg-night-app md:flex-row">
       <ManageNav owner={owner} unlocked={unlocked} />
       <main className="min-w-0 flex-1 p-sp-4 md:p-sp-6">{children}</main>
     </div>

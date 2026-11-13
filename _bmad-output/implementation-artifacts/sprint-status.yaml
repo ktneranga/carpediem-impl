@@ -141,6 +141,7 @@ development_status:
   9-3-implement-cash-reconciliation-comp-log-inventory-alerts-and-long-open-tables: review  # counted cash (Teran 2026-11-13)
   9-4-implement-manager-shift-summary-and-remote-access: backlog
   9-5-end-of-day-takings: review  # added 2026-11-04 — go-live
+  9-6-dashboard-periods-insights-and-dark-mode: review  # added 2026-11-13 (Teran), from the Carpe Diem mock-up
   epic-9-retrospective: optional
 
   # ── Epic 10: System Configuration & Staff Management ─────────────────────
