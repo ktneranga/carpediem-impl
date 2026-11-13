@@ -199,7 +199,7 @@ screen, a per-person permission (10.6 may narrow waiters later — through ONE f
 ### Testing
 
 No test framework; each story adds a `verify-*.ts` script (see `verify-menu-admin.ts`,
-`verify-floor-admin.ts` for the manage-session-free, tenant-scoped pattern). Browser try of `/sold-out`
+`verify-floor-admin.ts` for the manage-session-free, tenant-scoped pattern). Browser try of Manage → Sold out (owner and waiter)
 on a tablet goes into the final test round.
 
 ### References
