@@ -2,6 +2,7 @@
 
 import { useSocketStatus } from '@/hooks/use-socket'
 import { Panel, PanelSkeleton } from '@/components/manage/dashboard/panel'
+import { RevenuePanel } from '@/components/manage/dashboard/revenue-panel'
 import { cn } from '@/lib/utils'
 
 /**
@@ -22,9 +23,7 @@ export function Dashboard() {
         </span>
       </header>
 
-      <Panel title="Takings today" minHeight="min-h-80">
-        <PanelSkeleton rows={6} />
-      </Panel>
+      <RevenuePanel />
 
       <div className="grid gap-sp-4 md:grid-cols-2 xl:grid-cols-3">
         <Panel title="Cash check" minHeight="min-h-56">

@@ -1,6 +1,6 @@
 # Story 9.2: Live revenue chart
 
-Status: ready-for-dev
+Status: review
 
 <!-- Brought forward 2026-11-13 (Teran). Testing in the final round (launch rush). -->
 
@@ -40,9 +40,9 @@ so that I can see how tonight is going against last night without running a repo
 
 ## Tasks / Subtasks
 
-- [ ] Task 1 — `revenueByHour(db, tenantId)` in `src/server/services/dashboard.service.ts` + route.
-- [ ] Task 2 — `src/components/manage/dashboard/revenue-panel.tsx` (load the `dataviz` skill first).
-- [ ] Task 3 — Verify script; `tsc`, `lint`.
+- [x] Task 1 — `revenueByHour(db, tenantId)` in `src/server/services/dashboard.service.ts` + route.
+- [x] Task 2 — `src/components/manage/dashboard/revenue-panel.tsx` (load the `dataviz` skill first).
+- [x] Task 3 — Verify script; `tsc`, `lint`.
 
 ## Dev Notes
 
@@ -55,6 +55,23 @@ so that I can see how tonight is going against last night without running a repo
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Completion Notes List
 
+- `revenueByHour` in `dashboard.service.ts`: one grouped query, slots from the turnover hour in the tenant's zone;
+  returns `nowSlot` for the "by this time yesterday" comparison. Route `GET /api/manage/dashboard/revenue`.
+- `revenue-panel.tsx`: headline (today so far, vs yesterday by now ±%), Recharts cumulative lines — emphasis form,
+  Today `brand-500` solid, Yesterday `slate-400` dashed (dataviz: de-emphasis grey; legend + dash so identity is
+  never colour alone; grey's low contrast relieved by the legend, tooltip and an sr-only table). Crosshair tooltip,
+  values first. Today's line stops at the current hour. Live on `session:payment_changed` + 60 s refetch.
+- Verify `verify-revenue.ts` 8/8 (8 PM → slot 16, 1 AM → slot 21 same business day, other tenant/day excluded).
+- `tsc`, lint clean. Chart not yet rendered and eyeballed — final test round.
+
 ### File List
+
+- src/server/services/dashboard.service.ts (new)
+- src/server/services/verify-revenue.ts (new)
+- src/app/api/manage/dashboard/revenue/route.ts (new)
+- src/components/manage/dashboard/revenue-panel.tsx (new)
+- src/components/manage/dashboard.tsx (updated)
