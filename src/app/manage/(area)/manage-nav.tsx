@@ -3,10 +3,31 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import { ArrowLeft, Lock, LockKeyhole } from 'lucide-react'
+import {
+  ArrowLeft,
+  Ban,
+  BookOpen,
+  LayoutDashboard,
+  LayoutGrid,
+  Lock,
+  LockKeyhole,
+  Settings,
+  Users,
+  type LucideIcon,
+} from 'lucide-react'
 import { MANAGE_SECTIONS } from './sections'
 import { ThemeToggle } from '@/components/theme/theme-switch'
 import { cn } from '@/lib/utils'
+
+/** One icon per section, so the menu scans by shape (Teran, 2026-11-14). */
+const SECTION_ICONS: Record<string, LucideIcon> = {
+  '/manage/dashboard': LayoutDashboard,
+  '/manage/menu': BookOpen,
+  '/manage/floor': LayoutGrid,
+  '/manage/sold-out': Ban,
+  '/manage/staff': Users,
+  '/manage/settings': Settings,
+}
 
 const itemClass = cn(
   'flex min-h-touch-standard items-center rounded-control px-sp-3 text-fs-14 font-semibold whitespace-nowrap',
@@ -66,6 +87,7 @@ export function ManageNav({
         <ul className="flex gap-sp-1 md:flex-col">
           {MANAGE_SECTIONS.filter((section) => unlocked || ('waiter' in section && section.waiter)).map((section) => {
             const current = pathname === section.href || pathname.startsWith(`${section.href}/`)
+            const Icon = SECTION_ICONS[section.href]
             return (
               <li key={section.href}>
                 <Link
@@ -73,11 +95,13 @@ export function ManageNav({
                   aria-current={current ? 'page' : undefined}
                   className={cn(
                     itemClass,
+                    'gap-sp-2',
                     current
                       ? 'bg-brand-050 text-brand-800 night:bg-night-raised night:text-night-text'
                       : 'text-slate-600 hover:bg-slate-100 night:text-night-second night:hover:bg-night-raised',
                   )}
                 >
+                  {Icon ? <Icon aria-hidden="true" className="size-4 shrink-0" /> : null}
                   {section.title}
                 </Link>
               </li>

@@ -103,7 +103,7 @@ export type TableCardProps = {
  * rather than a visual preference:
  *   · occupied    — a duration, top right. Nothing else shows a clock.
  *   · open        — a green dot AND "N seats". A dot alone would be hue only.
- *   · needs check — a warning glyph and the words "Still open? Check".
+ *   · needs check — a red card and a warning glyph by the time.
  *   · unavailable — a slashed circle, the hatch pattern, and the words.
  * Every state is legible in greyscale, and the accessible name below reads the
  * same facts in the same order.
@@ -192,8 +192,8 @@ export function TableCard({
       aria-current={selected || undefined}
       className={cn(
         // 132px is a MINIMUM, not a height (Teran, 2026-10-30). A fixed h-33
-        // fitted three rows; a merged table that needs checking has FOUR —
-        // tile, name, "Still open? Check", the group line — and those need
+        // fitted three rows; a merged table has FOUR — tile, name, the guests
+        // line, the group line — and those need
         // ~140px. With the height fixed, `justify-between` had nothing to give,
         // the bottom row was pushed into the padding and sat on the border,
         // and `overflow-hidden` clipped what did not fit. The card now grows
@@ -270,7 +270,7 @@ export function TableCard({
             <span className="flex flex-col items-end gap-0.5 pt-0.5">
               <span className="flex items-center gap-sp-1 text-fs-12 font-bold text-unavailable-band night:text-red-400">
                 <AlertTriangle aria-hidden="true" strokeWidth={2.5} className="size-3.5 shrink-0" />
-                Open {elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : '—'}
+                {elapsedMinutes !== undefined ? elapsed(elapsedMinutes) : '—'}
               </span>
               {orderLabel ? (
                 <span className="text-fs-12 font-semibold tabular-nums text-unavailable-band night:text-red-400">
@@ -309,13 +309,17 @@ export function TableCard({
         </span>
 
         {status === 'occupied' ? (
-          stale ? (
-            <span className="truncate text-fs-12 font-bold text-unavailable-band night:text-red-400">
-              Still open? Check
-            </span>
-          ) : (
+          // A table open too long says so with the red card and the warning
+          // by its time (Teran, 2026-11-14: no "Still open? Check" line); the
+          // bottom line stays what it always is — guests or items, the total.
+          (
             <span className="flex items-baseline justify-between gap-sp-2">
-              <span className="truncate text-fs-12 font-semibold tabular-nums text-occupied-ink night:text-amber-300">
+              <span
+                className={cn(
+                  'truncate text-fs-12 font-semibold tabular-nums',
+                  stale ? 'text-unavailable-band night:text-red-400' : 'text-occupied-ink night:text-amber-300',
+                )}
+              >
                 {coverCount != null
                   ? `${coverCount}/${capacity ?? coverCount} guests`
                   : itemCount !== undefined
@@ -337,7 +341,12 @@ export function TableCard({
                   Part paid
                 </span>
               ) : totalPaisa ? (
-                <span className="shrink-0 text-fs-12 font-extrabold tabular-nums text-occupied-ink night:text-amber-300">
+                <span
+                  className={cn(
+                    'shrink-0 text-fs-12 font-extrabold tabular-nums',
+                    stale ? 'text-unavailable-band night:text-red-400' : 'text-occupied-ink night:text-amber-300',
+                  )}
+                >
                   {lkrCompact(totalPaisa)}
                 </span>
               ) : null}

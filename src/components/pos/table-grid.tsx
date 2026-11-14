@@ -1496,7 +1496,7 @@ export function TableGrid({
                             </span>
                           ) : isLate ? (
                             <span className="truncate text-fs-12 font-bold text-unavailable-band night:text-red-400">
-                              {dailyOrderLabel(counter.dailyNumber)} · Still open? Check
+                              {dailyOrderLabel(counter.dailyNumber)}
                             </span>
                           ) : (
                             <span className="truncate text-fs-12 font-semibold tabular-nums text-slate-600 night:text-night-second">
