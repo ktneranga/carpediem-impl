@@ -47,10 +47,78 @@ export async function checkTakingsDate(executor: Executor, tenantId: string, dat
   return date
 }
 
-/** The day's orders, as a subquery every figure filters on. */
-const dayOrders = (tenantId: string, businessDate: string) => sql`(
+/** The orders of a span of business days, as a subquery every figure filters on. */
+const spanOrders = (tenantId: string, from: string, to: string) => sql`(
   select id from order_sessions
-   where tenant_id = ${tenantId} and business_date = ${businessDate}::date)`
+   where tenant_id = ${tenantId} and business_date between ${from}::date and ${to}::date)`
+
+/**
+ * What was sold and paid over a span of business days — the ONE definition the
+ * Dashboard and the end-of-day slip share, so their figures can never differ.
+ * Comps are the comps on bills (`bill_comps`): items − comps = subtotal.
+ */
+export type Sales = {
+  orders: number
+  itemsPaisa: number
+  compsPaisa: number
+  compLines: number
+  subtotalPaisa: number
+  serviceChargePaisa: number
+  taxPaisa: number
+  billedPaisa: number
+  paid: { cashPaisa: number; cardPaisa: number; transferPaisa: number; totalPaisa: number }
+}
+
+/** Takes the POOL (parallel queries). */
+export async function loadSales(
+  executor: typeof db,
+  { tenantId, from, to }: { tenantId: string; from: string; to: string },
+): Promise<Sales> {
+  const span = spanOrders(tenantId, from, to)
+  const [orders, billed, items, comps, paid] = await Promise.all([
+    rows<{ n: number }>(executor, sql`
+      select count(*)::int as n from order_sessions s
+       where s.id in ${span}
+         and exists (select 1 from order_events e where e.session_id = s.id and e.event_type = 'ITEM_ADDED')`),
+    rows<{ subtotal: number; service: number; tax: number; total: number }>(executor, sql`
+      select coalesce(sum(subtotal_paisa), 0)::bigint as subtotal,
+             coalesce(sum(service_charge_paisa), 0)::bigint as service,
+             coalesce(sum(tax_paisa), 0)::bigint as tax,
+             coalesce(sum(total_paisa), 0)::bigint as total
+        from bills where session_id in ${span}`),
+    rows<{ n: number }>(executor, sql`
+      select coalesce(sum(l.amount_paisa), 0)::bigint as n
+        from bill_lines l join bills b on b.id = l.bill_id
+       where b.session_id in ${span}`),
+    rows<{ n: number; lines: number }>(executor, sql`
+      select coalesce(sum(c.amount_paisa), 0)::bigint as n, count(*)::int as lines
+        from bill_comps c join bills b on b.id = c.bill_id
+       where b.session_id in ${span}`),
+    rows<{ cash: number; card: number; transfer: number }>(executor, sql`
+      select coalesce(sum(amount_paisa) filter (where method = 'cash'), 0)::bigint as cash,
+             coalesce(sum(amount_paisa) filter (where method = 'card'), 0)::bigint as card,
+             coalesce(sum(amount_paisa) filter (where method = 'transfer'), 0)::bigint as transfer
+        from payment_records where session_id in ${span}`),
+  ])
+  const b = billed[0]!
+  const p = paid[0]!
+  return {
+    orders: int(orders[0]?.n),
+    itemsPaisa: int(items[0]?.n),
+    compsPaisa: int(comps[0]?.n),
+    compLines: int(comps[0]?.lines),
+    subtotalPaisa: int(b.subtotal),
+    serviceChargePaisa: int(b.service),
+    taxPaisa: int(b.tax),
+    billedPaisa: int(b.total),
+    paid: {
+      cashPaisa: int(p.cash),
+      cardPaisa: int(p.card),
+      transferPaisa: int(p.transfer),
+      totalPaisa: int(p.cash) + int(p.card) + int(p.transfer),
+    },
+  }
+}
 
 /**
  * The figures. Takes the POOL, not a transaction: its queries run in parallel,
@@ -60,32 +128,10 @@ export async function loadTakings(
   executor: typeof db,
   { tenantId, businessDate }: { tenantId: string; businessDate: string },
 ): Promise<Takings> {
-  const day = dayOrders(tenantId, businessDate)
+  const day = spanOrders(tenantId, businessDate, businessDate)
 
-  const [orders, billed, items, comps, paid, closedUnpaid, open, noSales, counted] = await Promise.all([
-    rows<{ n: number }>(executor, sql`
-      select count(*)::int as n from order_sessions s
-       where s.id in ${day}
-         and exists (select 1 from order_events e where e.session_id = s.id and e.event_type = 'ITEM_ADDED')`),
-    rows<{ subtotal: number; service: number; tax: number; total: number }>(executor, sql`
-      select coalesce(sum(subtotal_paisa), 0)::int as subtotal,
-             coalesce(sum(service_charge_paisa), 0)::int as service,
-             coalesce(sum(tax_paisa), 0)::int as tax,
-             coalesce(sum(total_paisa), 0)::int as total
-        from bills where session_id in ${day}`),
-    rows<{ n: number }>(executor, sql`
-      select coalesce(sum(l.amount_paisa), 0)::int as n
-        from bill_lines l join bills b on b.id = l.bill_id
-       where b.session_id in ${day}`),
-    rows<{ n: number }>(executor, sql`
-      select coalesce(sum(c.amount_paisa), 0)::int as n
-        from bill_comps c join bills b on b.id = c.bill_id
-       where b.session_id in ${day}`),
-    rows<{ cash: number; card: number; transfer: number }>(executor, sql`
-      select coalesce(sum(amount_paisa) filter (where method = 'cash'), 0)::int as cash,
-             coalesce(sum(amount_paisa) filter (where method = 'card'), 0)::int as card,
-             coalesce(sum(amount_paisa) filter (where method = 'transfer'), 0)::int as transfer
-        from payment_records where session_id in ${day}`),
+  const [sales, closedUnpaid, open, noSales, counted] = await Promise.all([
+    loadSales(executor, { tenantId, from: businessDate, to: businessDate }),
     // Closed as walkout / abandoned: what their bills still owed.
     rows<{ n: number; owed: number }>(executor, sql`
       select count(*)::int as n,
@@ -116,25 +162,13 @@ export async function loadTakings(
        order by created_at desc, id desc limit 1`),
   ])
 
-  const b = billed[0]!
-  const p = paid[0]!
+  const { compLines, ...money } = sales
+  void compLines // the slip shows the amount, not the count
   return {
     businessDate,
-    orders: int(orders[0]?.n),
-    itemsPaisa: int(items[0]?.n),
-    compsPaisa: int(comps[0]?.n),
-    subtotalPaisa: int(b.subtotal),
-    serviceChargePaisa: int(b.service),
-    taxPaisa: int(b.tax),
-    billedPaisa: int(b.total),
-    paid: {
-      cashPaisa: int(p.cash),
-      cardPaisa: int(p.card),
-      transferPaisa: int(p.transfer),
-      totalPaisa: int(p.cash) + int(p.card) + int(p.transfer),
-    },
+    ...money,
     closedUnpaid: { count: int(closedUnpaid[0]?.n), owedPaisa: int(closedUnpaid[0]?.owed) },
-    cashCount: counted[0] ? { countedPaisa: int(counted[0].n), gapPaisa: int(counted[0].n) - int(p.cash) } : null,
+    cashCount: counted[0] ? { countedPaisa: int(counted[0].n), gapPaisa: int(counted[0].n) - sales.paid.cashPaisa } : null,
     openOrders: open.map((row) => ({
       dailyNumber: row.daily_number,
       tables: openOrderPlace(row),

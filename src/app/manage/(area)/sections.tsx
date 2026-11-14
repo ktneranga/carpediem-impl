@@ -8,7 +8,7 @@ export const MANAGE_SECTIONS = [
     href: '/manage/dashboard',
     title: 'Dashboard',
     story: '9.1',
-    what: "Today's takings as they come in, the cash check, and what needs attention.",
+    what: "Takings by day, week or month, the cash check, what needs attention, and the end-of-day slip.",
   },
   {
     href: '/manage/menu',
@@ -34,12 +34,6 @@ export const MANAGE_SECTIONS = [
     title: 'Staff',
     story: '10.2',
     what: 'Add staff, set their jobs and PINs, and deactivate someone who has left.',
-  },
-  {
-    href: '/manage/end-of-day',
-    title: 'End of day',
-    story: '9.5',
-    what: "The day's takings by payment method, what is still open, and drawer openings.",
   },
 ] as const
 

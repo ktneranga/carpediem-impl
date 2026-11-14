@@ -1,8 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { call as callApi } from '@/components/manage/manage-ui'
+import { CalendarDays, Printer } from 'lucide-react'
+import { call as callApi, icon } from '@/components/manage/manage-ui'
+import { NoSales, SalesBreakdown } from '@/components/manage/dashboard/day-close'
 import { AuditList, CompsByReason, PaymentSplit, RevenueChart, StatTiles, TopItems } from '@/components/manage/dashboard/insight-panels'
 import { Panel, PanelSkeleton, tone } from '@/components/manage/dashboard/panel'
 import { CashCountButton, LiveCards, SUMMARY_KEY } from '@/components/manage/dashboard/summary-cards'
@@ -18,9 +20,14 @@ import { cn } from '@/lib/utils'
  * span before, cash gap, covers, comps), payment split, top items, comps by
  * reason, unclosed orders and corrections — and on Today, what needs attention
  * now. Light and dark follow the app-wide theme (the Dark mode switch).
+ *
+ * End of day (Story 9.5) merged in 2026-11-14 (Teran): the calendar icon picks
+ * any past day (kept in `?date=`), Print sends that day's slip to the receipt
+ * printer, and the Sales and No-sale panels carry what only End of day showed.
  */
 
-const PERIODS: { value: Period; label: string; word: string }[] = [
+type Tab = Exclude<Period, 'day'>
+const PERIODS: { value: Tab; label: string; word: string }[] = [
   { value: 'today', label: 'Today', word: 'Today' },
   { value: 'yesterday', label: 'Yesterday', word: 'Yesterday' },
   { value: 'week', label: 'Week', word: 'This week' },
@@ -36,21 +43,78 @@ function periodTitle(data: Insights) {
   return `${date(data.from, { day: 'numeric', month: 'short' })} – ${date(data.to, { day: 'numeric', month: 'short' })}`
 }
 
-export function Dashboard() {
+/** `YYYY-MM-DD` ± days, in plain calendar arithmetic. */
+function shiftDate(day: string, days: number): string {
+  const d = new Date(`${day}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+export function Dashboard({ initialDate }: { initialDate: string | null }) {
   const queryClient = useQueryClient()
   const live = useSocketStatus()
   const { dark } = useTheme()
-  const [period, setPeriod] = useState<Period>('today')
-  const includesToday = period !== 'yesterday'
+  const [period, setPeriod] = useState<Period>(initialDate ? 'day' : 'today')
+  const [day, setDay] = useState<string | null>(initialDate)
+  const [printNote, setPrintNote] = useState<string | null>(null)
+  const [printing, setPrinting] = useState(false)
+  const picker = useRef<HTMLInputElement>(null)
+  const includesToday = period === 'today' || period === 'week' || period === 'month'
 
-  const key = ['manage-dashboard-insights', period] as const
+  const key = ['manage-dashboard-insights', period, period === 'day' ? day : null] as const
   const { data, error } = useQuery({
     queryKey: key,
     queryFn: async () =>
-      ((await callApi('GET', `/api/manage/dashboard/insights?period=${period}`, undefined, '/manage/dashboard')) as { data: Insights }).data,
+      ((await callApi(
+        'GET',
+        `/api/manage/dashboard/insights?period=${period}${period === 'day' && day ? `&date=${day}` : ''}`,
+        undefined,
+        '/manage/dashboard',
+      )) as { data: Insights }).data,
     refetchInterval: includesToday ? 60_000 : false,
     placeholderData: (previous) => previous,
   })
+
+  function show(next: Period, date: string | null = null) {
+    // Today and yesterday have their own tabs; any other day is `day`.
+    let p = next
+    if (p === 'day' && date && data) {
+      if (date === data.today) p = 'today'
+      else if (date === shiftDate(data.today, -1)) p = 'yesterday'
+    }
+    setPeriod(p)
+    setDay(p === 'day' ? date : null)
+    setPrintNote(null)
+    try {
+      window.history.replaceState(null, '', p === 'day' && date ? `/manage/dashboard?date=${date}` : '/manage/dashboard')
+    } catch {
+      // The URL is a convenience; the screen works without it.
+    }
+  }
+
+  function pickDay() {
+    const input = picker.current
+    if (!input) return
+    try {
+      input.showPicker()
+    } catch {
+      input.focus()
+      input.click()
+    }
+  }
+
+  async function print(date: string) {
+    setPrinting(true)
+    setPrintNote(null)
+    try {
+      await callApi('POST', '/api/manage/dashboard/print', { date }, '/manage/dashboard')
+      setPrintNote('Sent to the printer')
+    } catch (failure) {
+      setPrintNote(failure instanceof Error ? failure.message : 'Could not send it to the printer')
+    } finally {
+      setPrinting(false)
+    }
+  }
   const refresh = () => {
     if (includesToday) void queryClient.invalidateQueries({ queryKey: ['manage-dashboard-insights'] })
     void queryClient.invalidateQueries({ queryKey: SUMMARY_KEY })
@@ -60,8 +124,9 @@ export function Dashboard() {
   useSocketEvent('menu:item_updated', () => void queryClient.invalidateQueries({ queryKey: SUMMARY_KEY }))
   useSocketEvent('menu:changed', () => void queryClient.invalidateQueries({ queryKey: SUMMARY_KEY }))
 
-  const word = PERIODS.find((p) => p.value === period)!.word
-  const shown = data && data.period === period ? data : null
+  const shown = !data ? null : period === 'day' ? (data.from === day && data.to === day ? data : null) : data.period === period ? data : null
+  const word = PERIODS.find((p) => p.value === shown?.period)?.word ?? (shown ? periodTitle(shown) : '')
+  const singleDay = !!shown && shown.from === shown.to
 
   return (
     <div>
@@ -71,7 +136,37 @@ export function Dashboard() {
             <p className="text-fs-12 font-extrabold tracking-micro text-brand-700 uppercase night:text-brand-300">
               {data?.restaurantName ?? 'Dashboard'}
             </p>
-            <h1 className={cn('text-fs-24 font-extrabold', tone.ink)}>{data ? periodTitle(data) : 'Dashboard'}</h1>
+            <div className="flex items-center gap-sp-1">
+              <h1 className={cn('mr-sp-1 text-fs-24 font-extrabold', tone.ink)}>{data ? periodTitle(data) : 'Dashboard'}</h1>
+              <span className="relative">
+                <button type="button" aria-label="Choose a day" title="Choose a day" className={icon} disabled={!data} onClick={pickDay}>
+                  <CalendarDays className="size-5" aria-hidden="true" />
+                </button>
+                <input
+                  ref={picker}
+                  type="date"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 opacity-0"
+                  value={shown && singleDay ? shown.from : ''}
+                  max={data?.today}
+                  onChange={(e) => e.target.value && show('day', e.target.value)}
+                />
+              </span>
+              {singleDay ? (
+                <button
+                  type="button"
+                  aria-label="Print the day's takings"
+                  title="Print the day's takings"
+                  className={icon}
+                  disabled={printing}
+                  onClick={() => void print(shown!.from)}
+                >
+                  <Printer className="size-5" aria-hidden="true" />
+                </button>
+              ) : null}
+              {printNote ? <span role="status" className={cn('text-fs-14 font-semibold', tone.second)}>{printNote}</span> : null}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-sp-2">
             <div role="tablist" aria-label="Period" className={cn('flex rounded-control p-0.5', tone.card)}>
@@ -80,14 +175,14 @@ export function Dashboard() {
                   key={p.value}
                   role="tab"
                   type="button"
-                  aria-selected={period === p.value}
+                  aria-selected={(shown?.period ?? period) === p.value}
                   className={cn(
                     'h-10 rounded-control px-sp-3 text-fs-14 font-bold',
-                    period === p.value
+                    (shown?.period ?? period) === p.value
                       ? 'bg-brand-800 text-white night:bg-brand-500'
                       : 'text-slate-600 hover:bg-slate-100 night:text-night-second night:hover:bg-night-raised',
                   )}
-                  onClick={() => setPeriod(p.value)}
+                  onClick={() => show(p.value)}
                 >
                   {p.label}
                 </button>
@@ -118,12 +213,17 @@ export function Dashboard() {
               <div className="order-2 lg:order-3 lg:col-span-3">
                 <StatTiles
                   data={shown}
-                  cashAction={period === 'today' ? <CashCountButton counted={!!shown.cash.count} onSaved={refresh} /> : undefined}
+                  cashAction={shown.period === 'today' ? <CashCountButton counted={!!shown.cash.count} onSaved={refresh} /> : undefined}
                 />
               </div>
             </div>
 
-            {period === 'today' ? <LiveCards /> : null}
+            {shown.period === 'today' ? <LiveCards /> : null}
+
+            <div className="grid gap-sp-3 lg:grid-cols-2">
+              <SalesBreakdown data={shown} />
+              {shown.noSales ? <NoSales openings={shown.noSales} /> : null}
+            </div>
 
             <div className="grid gap-sp-3 lg:grid-cols-3">
               <TopItems data={shown} dark={dark} />

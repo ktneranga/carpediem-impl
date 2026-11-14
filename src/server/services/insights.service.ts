@@ -2,7 +2,8 @@ import 'server-only'
 import { sql } from 'drizzle-orm'
 import { db } from '@/server/db'
 import { MenuRuleError } from '@/server/services/menu-admin.service'
-import { openOrderPlace } from '@/server/services/takings.service'
+import { listNoSaleOpenings } from '@/server/services/cash-drawer.service'
+import { checkTakingsDate, loadSales, openOrderPlace, type Sales } from '@/server/services/takings.service'
 
 /**
  * The owner dashboard's figures for a period (Teran, 2026-11-13 — the Carpe
@@ -19,11 +20,17 @@ import { openOrderPlace } from '@/server/services/takings.service'
  * When the period includes today, the earlier span is cut at the same moment
  * (`created_at < now() − shift`), so 9 PM tonight is compared with 9 PM last
  * week, not with last week's whole night.
+ *
+ * ── One source with the end-of-day slip ──────────────────────────────────────
+ * Revenue, payments, comps and the sales breakdown come from `loadSales`, the
+ * function the printed slip uses too. End of day lives on this screen (merged
+ * 2026-11-14): any single day — `day` with a date — also carries its no-sale
+ * drawer openings.
  */
 
 type Executor = typeof db
-export type Period = 'today' | 'yesterday' | 'week' | 'month'
-export const PERIODS: Period[] = ['today', 'yesterday', 'week', 'month']
+export type Period = 'today' | 'yesterday' | 'week' | 'month' | 'day'
+export const PERIODS: Period[] = ['today', 'yesterday', 'week', 'month', 'day']
 
 export type Insights = {
   period: Period
@@ -54,6 +61,10 @@ export type Insights = {
     byReason: { reason: string; approver: string; paisa: number; count: number }[]
   }
   payments: { settledPaisa: number; cashPaisa: number; cardPaisa: number; transferPaisa: number }
+  /** Items, comps, subtotal, service, tax, billed — as on the printed slip. */
+  sales: Sales
+  /** Single-day views only: no-sale drawer openings, oldest first. */
+  noSales: { openedAt: string; staffName: string; reason: 'change' | 'float' | 'other'; note: string | null }[] | null
   topItems: { name: string; quantity: number; paisa: number }[]
   audit: {
     kind: 'unclosed' | 'walkout' | 'abandoned' | 'correction'
@@ -81,7 +92,7 @@ function shiftDate(date: string, days: number): string {
 const weekday = (date: string) => WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()]!
 
 /** The period's business dates, and the earlier span it is compared with. */
-function rangeOf(period: Period, today: string) {
+function rangeOf(period: Period, today: string, date: string) {
   const dow = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7 // Monday = 0
   switch (period) {
     case 'today':
@@ -94,23 +105,37 @@ function rangeOf(period: Period, today: string) {
       return { from: shiftDate(today, -dow), to: today, shift: '7 days', compareLabel: 'vs last week', live: true }
     case 'month':
       return { from: `${today.slice(0, 8)}01`, to: today, shift: '1 month', compareLabel: 'vs last month', live: true }
+    case 'day':
+      return { from: date, to: date, shift: '7 days', compareLabel: `vs the ${weekday(date)} before`, live: false }
   }
 }
 
 export function checkPeriod(value: string | null): Period {
   if (value === null) return 'today'
-  if (!(PERIODS as string[]).includes(value)) throw new MenuRuleError('Choose today, yesterday, week or month')
+  if (!(PERIODS as string[]).includes(value)) throw new MenuRuleError('Choose today, yesterday, week, month or a day')
   return value as Period
 }
 
-export async function loadInsights(executor: Executor, tenantId: string, period: Period): Promise<Insights> {
+/**
+ * `date` is required for `day` (a past day; today or yesterday become those
+ * periods, so their tab lights up) and ignored otherwise.
+ */
+export async function loadInsights(executor: Executor, tenantId: string, asked: Period, date: string | null = null): Promise<Insights> {
   const [clock] = await rows<{ today: string; start_hour: number; name: string | null; tenant_name: string }>(executor, sql`
     select business_date_at(t.id, now())::text as today, t.business_day_start_hour as start_hour,
            c.restaurant_name as name, t.name as tenant_name
       from tenants t left join tenant_config c on c.tenant_id = t.id
      where t.id = ${tenantId}`)
   if (!clock) throw new Error('No such tenant')
-  const { from, to, shift, compareLabel, live } = rangeOf(period, clock.today)
+  let period = asked
+  let day = clock.today
+  if (period === 'day') {
+    if (!date) throw new MenuRuleError('Choose a day')
+    day = await checkTakingsDate(executor, tenantId, date)
+    if (day === clock.today) period = 'today'
+    else if (day === shiftDate(clock.today, -1)) period = 'yesterday'
+  }
+  const { from, to, shift, compareLabel, live } = rangeOf(period, clock.today, day)
   const startHour = n(clock.start_hour)
   const sessions = sql`(select id from order_sessions
     where tenant_id = ${tenantId} and business_date between ${from}::date and ${to}::date)`
@@ -119,9 +144,10 @@ export async function loadInsights(executor: Executor, tenantId: string, period:
       and business_date between (${from}::date - ${shift}::interval)::date and (${to}::date - ${shift}::interval)::date)`
   const dayPeriod = from === to
 
-  const [recorded, compare, buckets, expected, counts, covers, comps, compReasons, payments, topItems, unclosed, closedUnpaid, corrections] =
+  const [sales, noSales, compare, buckets, expected, counts, covers, compReasons, topItems, unclosed, closedUnpaid, corrections] =
     await Promise.all([
-      rows<{ n: number }>(executor, sql`select coalesce(sum(total_paisa), 0)::bigint as n from bills where session_id in ${sessions}`),
+      loadSales(executor, { tenantId, from, to }),
+      dayPeriod ? listNoSaleOpenings(executor, { tenantId, businessDate: from }) : Promise.resolve(null),
       rows<{ n: number }>(executor, sql`
         select coalesce(sum(total_paisa), 0)::bigint as n from bills
          where session_id in ${compareSessions}
@@ -153,24 +179,20 @@ export async function loadInsights(executor: Executor, tenantId: string, period:
         select coalesce(sum(s.cover_count), 0)::int as n from order_sessions s
          where s.id in ${sessions}
            and exists (select 1 from order_events e where e.session_id = s.id and e.event_type = 'ITEM_ADDED')`),
-      rows<{ total: number; lines: number }>(executor, sql`
-        select coalesce(sum(amount_paisa), 0)::bigint as total, count(*)::int as lines
-          from comp_records where session_id in ${sessions}`),
+      // The comps on bills, as `loadSales` counts them, so the reasons add up to the tile.
       rows<{ reason: string; approver: string; paisa: number; count: number }>(executor, sql`
-        select c.reason, a.name as approver, sum(c.amount_paisa)::bigint as paisa, count(*)::int as count
-          from comp_records c join staff a on a.id = c.authorized_by_staff_id
-         where c.session_id in ${sessions}
-         group by 1, 2 order by 3 desc limit 6`),
-      rows<{ cash: number; card: number; transfer: number }>(executor, sql`
-        select coalesce(sum(amount_paisa) filter (where method = 'cash'), 0)::bigint as cash,
-               coalesce(sum(amount_paisa) filter (where method = 'card'), 0)::bigint as card,
-               coalesce(sum(amount_paisa) filter (where method = 'transfer'), 0)::bigint as transfer
-          from payment_records where session_id in ${sessions}`),
+        select c.reason, a.name as approver, sum(bc.amount_paisa)::bigint as paisa, count(*)::int as count
+          from bill_comps bc
+          join bills b on b.id = bc.bill_id
+          join comp_records c on c.id = bc.comp_record_id
+          join staff a on a.id = c.authorized_by_staff_id
+         where b.session_id in ${sessions}
+         group by 1, 2 order by 3 desc limit 100`),
       rows<{ name: string; quantity: number; paisa: number }>(executor, sql`
         select l.name, sum(l.quantity)::int as quantity, sum(l.amount_paisa)::bigint as paisa
           from bill_lines l join bills b on b.id = l.bill_id
          where b.session_id in ${sessions}
-         group by 1 order by 3 desc, 1 limit 5`),
+         group by 1 order by 3 desc, 1 limit 200`),
       // Still open: with a bill printed and not settled, or simply open.
       rows<{ daily_number: number; kind: string; tab_label: string | null; tables: string[] | null; primary_label: string | null; opened_at: Date; printed_at: Date | null }>(executor, sql`
         select s.daily_number, s.kind, s.tab_label, s.opened_at,
@@ -206,11 +228,11 @@ export async function loadInsights(executor: Executor, tenantId: string, period:
           left join menu_items m on m.id = e.menu_item_id
           join staff st on st.id = e.staff_id
          where e.session_id in ${sessions} and e.event_type in ('ITEM_REMOVED', 'ITEM_VOIDED', 'ITEM_COMPED')
-         order by e.created_at desc limit 20`),
+         order by e.created_at desc limit 200`),
     ])
 
   // ── Revenue and its buckets ────────────────────────────────────────────────
-  const recordedPaisa = n(recorded[0]?.n)
+  const recordedPaisa = sales.billedPaisa
   const comparePaisa = n(compare[0]?.n)
   const byKey = new Map(buckets.map((b) => [b.key, n(b.n)]))
   let items: Insights['buckets']['items']
@@ -272,9 +294,9 @@ export async function loadInsights(executor: Executor, tenantId: string, period:
     })),
   ].sort((x, y) => y.at.localeCompare(x.at))
 
-  const compsTotal = n(comps[0]?.total)
+  const compsTotal = sales.compsPaisa
   const coverCount = n(covers[0]?.n)
-  const pay = payments[0]!
+  const pay = sales.paid
   return {
     period,
     from,
@@ -294,15 +316,17 @@ export async function loadInsights(executor: Executor, tenantId: string, period:
     comps: {
       totalPaisa: compsTotal,
       percentOfRevenue: recordedPaisa > 0 && compsTotal > 0 ? Math.round((compsTotal / recordedPaisa) * 1000) / 10 : null,
-      lines: n(comps[0]?.lines),
+      lines: sales.compLines,
       byReason: compReasons.map((row) => ({ reason: row.reason, approver: row.approver, paisa: n(row.paisa), count: n(row.count) })),
     },
     payments: {
-      cashPaisa: n(pay.cash),
-      cardPaisa: n(pay.card),
-      transferPaisa: n(pay.transfer),
-      settledPaisa: n(pay.cash) + n(pay.card) + n(pay.transfer),
+      cashPaisa: pay.cashPaisa,
+      cardPaisa: pay.cardPaisa,
+      transferPaisa: pay.transferPaisa,
+      settledPaisa: pay.totalPaisa,
     },
+    sales,
+    noSales: noSales?.map(({ openedAt, staffName, reason, note }) => ({ openedAt, staffName, reason, note })) ?? null,
     topItems: topItems.map((row) => ({ name: row.name, quantity: n(row.quantity), paisa: n(row.paisa) })),
     audit,
   }

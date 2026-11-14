@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { X } from 'lucide-react'
+import { Ban, Clock, X } from 'lucide-react'
 import { call as callApi } from '@/components/manage/manage-ui'
 import { Badge, Panel, PanelSkeleton, tone } from '@/components/manage/dashboard/panel'
 import { dailyOrderLabel } from '@/lib/order-number'
@@ -40,7 +40,7 @@ export function LiveCards() {
 
   return (
     <div className="grid gap-sp-3 md:grid-cols-2">
-      <Panel title="Needs attention" subtitle={data ? `open longer than ${duration(data.longOpenMinutes)}` : undefined} minHeight="min-h-40">
+      <Panel title="Needs attention" icon={Clock} subtitle={data ? `open longer than ${duration(data.longOpenMinutes)}` : undefined} minHeight="min-h-40">
         {!data ? waiting : data.longOpen.length === 0 ? (
           <p className={cn('flex flex-1 items-center text-fs-14', tone.second)}>No order open too long.</p>
         ) : (
@@ -60,7 +60,7 @@ export function LiveCards() {
         )}
       </Panel>
 
-      <Panel title="Not available" subtitle="switched off on every tablet" minHeight="min-h-40">
+      <Panel title="Not available" icon={Ban} subtitle="switched off on every tablet" minHeight="min-h-40">
         {!data ? waiting : data.soldOut.length === 0 ? (
           <p className={cn('flex flex-1 items-center text-fs-14', tone.second)}>Everything is available.</p>
         ) : (

@@ -1,7 +1,7 @@
-import { EndOfDay } from '@/components/manage/end-of-day'
+import { redirect } from 'next/navigation'
 
-/** Manage → End of day (Story 9.5). Behind the Manage gate (Story 10.0). `?date=YYYY-MM-DD`, default today. */
+/** End of day moved into the Dashboard (2026-11-14); old links land on the same day there. */
 export default async function ManageEndOfDayPage({ searchParams }: { searchParams: Promise<{ date?: string | string[] }> }) {
   const { date } = await searchParams
-  return <EndOfDay initialDate={typeof date === 'string' ? date : null} />
+  redirect(typeof date === 'string' ? `/manage/dashboard?date=${encodeURIComponent(date)}` : '/manage/dashboard')
 }

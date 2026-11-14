@@ -6,7 +6,7 @@ import { wakePrintQueue } from '@/server/print/wake'
 import { MenuRuleError } from '@/server/services/menu-admin.service'
 import { printTakings } from '@/server/services/takings.service'
 
-/** Prints the day's takings on the receipt printer (Story 9.5). 202: a request to the printer. */
+/** Prints one day's takings on the receipt printer (Story 9.5; Dashboard → Print since 2026-11-14). 202: a request to the printer. */
 export async function POST(request: Request) {
   const body = await readBody(request, z.object({ date: z.string().max(10) }))
   if (!body) return menuFail('INVALID_BODY', 'Which day?', 400)
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, data: result }, { status: 202 })
   } catch (error) {
     if (error instanceof MenuRuleError) return menuFail('INVALID', error.message, 422)
-    console.error('[api/manage/end-of-day/print] Print failed:', error)
+    console.error('[api/manage/dashboard/print] Print failed:', error)
     return menuFail('INTERNAL_ERROR', 'Could not send it to the printer', 500)
   }
 }

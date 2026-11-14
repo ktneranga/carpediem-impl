@@ -80,8 +80,12 @@ async function run() {
   await db.execute(q`INSERT INTO print_jobs (tenant_id, session_id, destination, bill_id, ticket)
     VALUES (${a.id}, ${B.id}, 'cashier', ${B.bill}, '{"kind":"receipt","title":"BILL","destination":"cashier","tableLabels":["ZZ R03"]}'::jsonb)`)
   const C = await order(a, { opened: at(today, '20:45'), billed: at(today, '21:00'), item: 'ZZ Kottu', qty: 1, paisa: 3000, close: 'walkout' })
+  // Comps count once on a bill (the slip's definition); one on no bill does not.
+  const comp = (await one(q`INSERT INTO comp_records (session_id, order_event_id, staff_id, authorized_by_staff_id, amount_paisa, reason)
+    VALUES (${A.id}, ${A.event}, ${a.owner}, ${a.owner}, 1000, 'ZZ Kitchen error') RETURNING id`)).id
+  await db.execute(q`INSERT INTO bill_comps (bill_id, comp_record_id, amount_paisa) VALUES (${A.bill}, ${comp}, 1000)`)
   await db.execute(q`INSERT INTO comp_records (session_id, order_event_id, staff_id, authorized_by_staff_id, amount_paisa, reason)
-    VALUES (${A.id}, ${A.event}, ${a.owner}, ${a.owner}, 1000, 'ZZ Kitchen error')`)
+    VALUES (${C.id}, ${C.event}, ${a.owner}, ${a.owner}, 500, 'ZZ Not billed')`)
   await db.execute(q`INSERT INTO cash_counts (tenant_id, business_date, counted_paisa, staff_id) VALUES (${a.id}, ${today}, 5000, ${a.owner})`)
   // Yesterday.
   const Y = await order(a, { opened: at(shift(-1), '19:00'), billed: at(shift(-1), '19:30'), item: 'ZZ Beer', qty: 1, paisa: 7000 })
@@ -118,6 +122,10 @@ async function run() {
   check('audit: the walkout, with what it owed', !!walkout && walkout.amountPaisa === 3000, JSON.stringify(walkout))
   check('restaurant name from the config', t.restaurantName === 'ZZ Insights verify')
 
+  check('sales: 3 orders, billed 18,000, paid 10,000, matches recorded', t.sales.orders === 3 && t.sales.billedPaisa === 18000 &&
+    t.sales.paid.totalPaisa === 10000 && t.sales.compsPaisa === 1000, JSON.stringify(t.sales))
+  check('single day carries its no-sale openings', Array.isArray(t.noSales))
+
   const y = await loadInsights(db, a.id, 'yesterday')
   check('yesterday: 7,000 by transfer, nothing to compare', y.recorded.paisa === 7000 && y.payments.transferPaisa === 7000 &&
     y.recorded.changePercent === null && y.cash.gapPaisa === null && y.audit.length === 0)
@@ -128,6 +136,20 @@ async function run() {
     w.recorded.paisa === 18000 + (dow >= 1 ? 7000 : 0), JSON.stringify({ n: w.buckets.items.length, r: w.recorded.paisa }))
   const m = await loadInsights(db, a.id, 'month')
   check('month: 1st → today', m.from === `${today.slice(0, 8)}01` && m.to === today && m.buckets.items.length === Number(today.slice(8)))
+
+  check('week has no no-sale list', w.noSales === null)
+  const picked = await loadInsights(db, a.id, 'day', shift(-1))
+  check('a picked day that is yesterday becomes the Yesterday tab', picked.period === 'yesterday' && picked.recorded.paisa === 7000)
+  const past = await loadInsights(db, a.id, 'day', shift(-3))
+  check('a past day: one day, compared with the same weekday before', past.period === 'day' && past.from === shift(-3) &&
+    past.to === shift(-3) && past.buckets.kind === 'hour' && /^vs the \w{3} before$/.test(past.compareLabel), past.compareLabel)
+  let future = false
+  try {
+    await loadInsights(db, a.id, 'day', shift(1))
+  } catch (error) {
+    future = error instanceof MenuRuleError
+  }
+  check('a day after today is refused', future)
 
   const theirs = await loadInsights(db, other.id, 'today')
   check('the other tenant sees only its own', theirs.recorded.paisa === 99900 && theirs.topItems[0]?.name === 'ZZ Theirs')
@@ -150,6 +172,7 @@ async function cleanup() {
   const all = `{${ids.join(',')}}`
   const sessions = q`(select id from order_sessions where tenant_id = any(${all}::uuid[]))`
   const guarded = [
+    ['bill_comps', 'immutable_bill_comps'],
     ['comp_records', 'immutable_comp_records'],
     ['payment_records', 'immutable_payment_records'],
     ['bill_lines', 'immutable_bill_lines'],
@@ -159,6 +182,7 @@ async function cleanup() {
   ] as const
   try {
     for (const [table, trigger] of guarded) await db.execute(q.raw(`ALTER TABLE ${table} DISABLE TRIGGER ${trigger}`))
+    await db.execute(q`DELETE FROM bill_comps WHERE bill_id IN (select id from bills where tenant_id = any(${all}::uuid[]))`)
     await db.execute(q`DELETE FROM comp_records WHERE session_id IN ${sessions}`)
     await db.execute(q`DELETE FROM payment_records WHERE session_id IN ${sessions}`)
     await db.execute(q`DELETE FROM print_jobs WHERE tenant_id = any(${all}::uuid[])`)

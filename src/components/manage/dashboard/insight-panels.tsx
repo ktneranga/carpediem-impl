@@ -1,9 +1,23 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { ArrowDownRight, ArrowUpRight, Lock } from 'lucide-react'
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  Banknote,
+  ChartColumn,
+  ClipboardList,
+  Gift,
+  Lock,
+  TrendingUp,
+  TriangleAlert,
+  Users,
+  UtensilsCrossed,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react'
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
-import { Badge, Panel, tone } from '@/components/manage/dashboard/panel'
+import { Badge, Panel, ShowAll, tone } from '@/components/manage/dashboard/panel'
 import { lkrCompact, lkrFromPaisa } from '@/lib/format'
 import type { Insights } from '@/server/services/insights.service'
 import { cn } from '@/lib/utils'
@@ -41,6 +55,7 @@ export function RevenueChart({ data, dark, periodWord }: { data: Insights; dark:
   return (
     <Panel
       title={hourly ? 'Hourly revenue' : 'Daily revenue'}
+      icon={ChartColumn}
       subtitle={`${periodWord} · ${money(data.recorded.paisa)} recorded`}
       minHeight="min-h-72"
       action={peak ? <Badge kind="warn">Peak {hourly ? `${peak.label}:00` : peak.label}</Badge> : undefined}
@@ -115,13 +130,18 @@ function BarTooltip({ active, payload, label, hourly, dark }: { active?: boolean
 
 // ── Stat tiles ───────────────────────────────────────────────────────────────
 
-function Tile({ label, value, children, alert }: { label: string; value: ReactNode; children?: ReactNode; alert?: boolean }) {
+/** `alert` turns the ring red AND swaps the icon for a warning: never colour alone (UX spec). */
+function Tile({ label, icon: Icon, value, children, alert }: { label: string; icon: LucideIcon; value: ReactNode; children?: ReactNode; alert?: boolean }) {
+  const Shown = alert ? TriangleAlert : Icon
   return (
     <section
       aria-label={label}
       className={cn('flex min-h-32 flex-col gap-sp-1 rounded-panel p-sp-4', tone.card, alert && 'ring-2 ring-red-400 night:ring-red-500/60')}
     >
-      <h2 className={cn('text-fs-12 font-bold tracking-micro uppercase', tone.muted)}>{label}</h2>
+      <h2 className={cn('flex items-center gap-sp-1 text-fs-12 font-bold tracking-micro uppercase', tone.muted)}>
+        <Shown className={cn('size-3.5 shrink-0', alert && tone.bad)} aria-hidden="true" />
+        {label}
+      </h2>
       <p className={cn('text-fs-24 font-extrabold tabular-nums', tone.ink)}>{value}</p>
       <div className={cn('text-fs-12', tone.second)}>{children}</div>
     </section>
@@ -135,7 +155,7 @@ export function StatTiles({ data, cashAction }: { data: Insights; cashAction?: R
   const singleDay = data.from === data.to
   return (
     <div className="grid grid-cols-2 gap-sp-3 xl:grid-cols-4">
-      <Tile label="Recorded revenue" value={money(data.recorded.paisa)}>
+      <Tile label="Recorded revenue" icon={TrendingUp} value={money(data.recorded.paisa)}>
         {change === null ? (
           <span>Nothing to compare {data.compareLabel.replace('vs ', 'with ')}</span>
         ) : (
@@ -148,6 +168,7 @@ export function StatTiles({ data, cashAction }: { data: Insights; cashAction?: R
 
       <Tile
         label="Cash gap"
+        icon={Banknote}
         alert={gap !== null && gap !== 0}
         value={gap === null ? <span className={tone.muted}>—</span> : gap === 0 ? 'Balanced' : money(Math.abs(gap))}
       >
@@ -165,11 +186,11 @@ export function StatTiles({ data, cashAction }: { data: Insights; cashAction?: R
         </span>
       </Tile>
 
-      <Tile label="Covers" value={data.covers.count.toLocaleString('en-US')}>
+      <Tile label="Covers" icon={Users} value={data.covers.count.toLocaleString('en-US')}>
         {data.covers.averagePaisa === null ? 'No guests recorded' : `avg ${money(data.covers.averagePaisa)} each`}
       </Tile>
 
-      <Tile label="Comps" value={money(data.comps.totalPaisa)}>
+      <Tile label="Comps" icon={Gift} value={money(data.comps.totalPaisa)}>
         {data.comps.lines === 0
           ? 'No comps'
           : `${data.comps.percentOfRevenue ?? 0}% of revenue · ${data.comps.lines} line${data.comps.lines === 1 ? '' : 's'}`}
@@ -190,7 +211,7 @@ export function PaymentSplit({ data, dark }: { data: Insights; dark: boolean }) 
   ]
   const share = (paisa: number) => (p.settledPaisa > 0 ? Math.round((paisa / p.settledPaisa) * 100) : 0)
   return (
-    <Panel title="Payment split" subtitle="settled only" minHeight="min-h-56 h-full">
+    <Panel title="Payment split" icon={Wallet} subtitle="settled only" minHeight="min-h-56 h-full">
       {p.settledPaisa === 0 ? (
         <p className={cn('flex flex-1 items-center text-fs-14', tone.second)}>No payments in this period.</p>
       ) : (
@@ -259,40 +280,48 @@ function RankedRows({ rows, color }: { rows: { key: string; title: ReactNode; am
   )
 }
 
+const TOP_SHOWN = 5
+const REASONS_SHOWN = 6
+const AUDIT_SHOWN = 8
+
 export function TopItems({ data, dark }: { data: Insights; dark: boolean }) {
+  const rows = data.topItems.map((item) => ({
+    key: item.name,
+    title: <>{item.name} <span className={tone.muted}>×{item.quantity}</span></>,
+    amount: item.paisa,
+  }))
+  const color = chartColors(dark).base
   return (
-    <Panel title="Top items" subtitle="by revenue" minHeight="min-h-40">
-      {data.topItems.length === 0 ? (
+    <Panel title="Top items" icon={UtensilsCrossed} subtitle="by revenue" minHeight="min-h-40">
+      {rows.length === 0 ? (
         <p className={cn('flex flex-1 items-center text-fs-14', tone.second)}>Nothing billed in this period.</p>
       ) : (
-        <RankedRows
-          color={chartColors(dark).base}
-          rows={data.topItems.map((item) => ({
-            key: item.name,
-            title: <>{item.name} <span className={tone.muted}>×{item.quantity}</span></>,
-            amount: item.paisa,
-          }))}
-        />
+        <RankedRows color={color} rows={rows.slice(0, TOP_SHOWN)} />
       )}
+      <ShowAll title="Items by revenue" total={rows.length} shown={TOP_SHOWN}>
+        <RankedRows color={color} rows={rows} />
+      </ShowAll>
     </Panel>
   )
 }
 
 export function CompsByReason({ data, dark }: { data: Insights; dark: boolean }) {
+  const rows = data.comps.byReason.map((row) => ({
+    key: `${row.reason}|${row.approver}`,
+    title: <>{row.reason} <span className={tone.muted}>· {row.approver}{row.count > 1 ? ` · ${row.count}×` : ''}</span></>,
+    amount: row.paisa,
+  }))
+  const color = chartColors(dark).peak
   return (
-    <Panel title="Comps by reason" subtitle="every comp carries an approver" minHeight="min-h-40">
-      {data.comps.byReason.length === 0 ? (
+    <Panel title="Comps by reason" icon={Gift} subtitle="every comp carries an approver" minHeight="min-h-40">
+      {rows.length === 0 ? (
         <p className={cn('flex flex-1 items-center text-fs-14', tone.second)}>No comps in this period.</p>
       ) : (
-        <RankedRows
-          color={chartColors(dark).peak}
-          rows={data.comps.byReason.map((row) => ({
-            key: `${row.reason}|${row.approver}`,
-            title: <>{row.reason} <span className={tone.muted}>· {row.approver}{row.count > 1 ? ` · ${row.count}×` : ''}</span></>,
-            amount: row.paisa,
-          }))}
-        />
+        <RankedRows color={color} rows={rows.slice(0, REASONS_SHOWN)} />
       )}
+      <ShowAll title="Comps by reason" total={rows.length} shown={REASONS_SHOWN}>
+        <RankedRows color={color} rows={rows} />
+      </ShowAll>
     </Panel>
   )
 }
@@ -306,14 +335,10 @@ const BADGES = {
   correction: { label: 'Correction', kind: 'warn' },
 } as const
 
-export function AuditList({ data }: { data: Insights }) {
+function AuditRows({ rows }: { rows: Insights['audit'] }) {
   return (
-    <Panel title="Unclosed & corrections" subtitle="audit trail" minHeight="min-h-40">
-      {data.audit.length === 0 ? (
-        <p className={cn('flex flex-1 items-center text-fs-14', tone.second)}>Every order is closed and nothing was corrected.</p>
-      ) : (
-        <ul className="flex max-h-96 flex-col overflow-y-auto">
-          {data.audit.map((row, index) => (
+    <ul className="flex flex-col">
+      {rows.map((row, index) => (
             <li key={index} className={cn('flex items-start gap-sp-3 border-t py-sp-2', tone.hairline)}>
               <div className="min-w-0 flex-1">
                 <p className={cn('text-fs-14 font-bold', tone.ink)}>{row.title}</p>
@@ -324,9 +349,22 @@ export function AuditList({ data }: { data: Insights }) {
               </div>
               <Badge kind={BADGES[row.kind].kind}>{BADGES[row.kind].label}</Badge>
             </li>
-          ))}
-        </ul>
+      ))}
+    </ul>
+  )
+}
+
+export function AuditList({ data }: { data: Insights }) {
+  return (
+    <Panel title="Unclosed & corrections" icon={ClipboardList} subtitle="audit trail" minHeight="min-h-40">
+      {data.audit.length === 0 ? (
+        <p className={cn('flex flex-1 items-center text-fs-14', tone.second)}>Every order is closed and nothing was corrected.</p>
+      ) : (
+        <AuditRows rows={data.audit.slice(0, AUDIT_SHOWN)} />
       )}
+      <ShowAll title="Unclosed & corrections" total={data.audit.length} shown={AUDIT_SHOWN}>
+        <AuditRows rows={data.audit} />
+      </ShowAll>
       <p className={cn('mt-auto flex items-center gap-sp-1 pt-sp-2 text-fs-12', tone.muted)}>
         <Lock className="size-3" aria-hidden="true" /> Records cannot be edited or deleted. Corrections appear as new entries.
       </p>

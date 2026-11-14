@@ -1,4 +1,7 @@
-import type { ReactNode } from 'react'
+'use client'
+
+import { useState, type ReactNode } from 'react'
+import { X, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -22,9 +25,11 @@ export const tone = {
 /**
  * A dashboard card (Story 9.1). `minHeight` is the card's final height class,
  * so the skeleton and the loaded card take the same room and nothing jumps.
+ * `icon`: one small muted Lucide icon before the title, so cards scan by shape.
  */
 export function Panel({
   title,
+  icon: Icon,
   subtitle,
   action,
   minHeight,
@@ -32,6 +37,7 @@ export function Panel({
   children,
 }: {
   title: string
+  icon?: LucideIcon
   subtitle?: ReactNode
   action?: ReactNode
   minHeight: string
@@ -42,7 +48,10 @@ export function Panel({
     <section aria-label={title} className={cn('flex flex-col gap-sp-3 rounded-panel p-sp-4', tone.card, minHeight, className)}>
       <div className="flex min-h-8 flex-wrap items-start justify-between gap-sp-2">
         <div>
-          <h2 className={cn('text-fs-16 font-extrabold', tone.ink)}>{title}</h2>
+          <h2 className={cn('flex items-center gap-sp-2 text-fs-16 font-extrabold', tone.ink)}>
+            {Icon ? <Icon className={cn('size-4 shrink-0', tone.muted)} aria-hidden="true" /> : null}
+            {title}
+          </h2>
           {subtitle ? <p className={cn('text-fs-12', tone.muted)}>{subtitle}</p> : null}
         </div>
         {action}
@@ -76,5 +85,52 @@ export function Badge({ children, kind }: { children: ReactNode; kind: 'bad' | '
     >
       {children}
     </span>
+  )
+}
+
+/**
+ * "Show all (N)" under a list the card cuts short, opening the whole list in a
+ * sheet over the dashboard. Renders nothing when everything already fits — a
+ * button that reveals nothing new is clutter.
+ */
+export function ShowAll({ title, total, shown, children }: { title: string; total: number; shown: number; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  if (total <= shown) return null
+  return (
+    <>
+      <button
+        type="button"
+        className="mt-auto inline-flex h-10 items-center self-start rounded-control px-sp-2 text-fs-14 font-bold text-brand-700 hover:bg-slate-100 night:text-brand-300 night:hover:bg-night-raised"
+        onClick={() => setOpen(true)}
+      >
+        Show all ({total})
+      </button>
+      {open ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
+          onClick={(event) => event.target === event.currentTarget && setOpen(false)}
+          onKeyDown={(event) => event.key === 'Escape' && setOpen(false)}
+        >
+          <div className={cn('flex max-h-[85vh] w-full max-w-lg flex-col rounded-panel shadow-el-2', tone.card)}>
+            <div className="flex items-center justify-between gap-sp-3 p-sp-4 pb-sp-2">
+              <h2 className={cn('text-fs-20 font-extrabold', tone.ink)}>{title}</h2>
+              <button
+                type="button"
+                autoFocus
+                aria-label="Close"
+                className={cn('inline-flex size-11 items-center justify-center rounded-control', tone.second)}
+                onClick={() => setOpen(false)}
+              >
+                <X className="size-5" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-sp-4 pb-sp-4">{children}</div>
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }
