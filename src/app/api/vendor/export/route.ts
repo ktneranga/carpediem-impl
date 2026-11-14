@@ -27,6 +27,28 @@ import {
  */
 export const dynamic = 'force-dynamic'
 
+/**
+ * Which pg_dump to run.
+ *
+ * In the Docker install the app image has pg_dump (`PG_DUMP_PATH` or plain
+ * `pg_dump`). In development the app runs on Windows and only the DATABASE is
+ * in Docker, so `PG_DUMP_DOCKER_CONTAINER=<db container>` runs the container's
+ * own pg_dump through `docker exec`, against the database inside it
+ * (localhost:5432 there). `-e PGPASSWORD` with no value passes the password
+ * from this process's environment, so it is not on the command line either.
+ */
+function pgDumpCommand(target: URL): { command: string; args: string[] } {
+  const container = process.env.PG_DUMP_DOCKER_CONTAINER?.trim()
+  const options = ['--format=custom', '--no-owner']
+  if (container) {
+    const inside = new URL(target.toString())
+    inside.hostname = 'localhost'
+    inside.port = '5432'
+    return { command: 'docker', args: ['exec', '-e', 'PGPASSWORD', container, 'pg_dump', ...options, `--dbname=${inside.toString()}`] }
+  }
+  return { command: process.env.PG_DUMP_PATH || 'pg_dump', args: [...options, `--dbname=${target.toString()}`] }
+}
+
 /** One export at a time: a second click must not put a second full dump on the live POS. */
 let running = false
 
@@ -68,7 +90,8 @@ export async function GET(request: NextRequest) {
   const password = decodeURIComponent(target.password)
   target.password = ''
   running = true
-  const child = spawn(process.env.PG_DUMP_PATH || 'pg_dump', ['--format=custom', '--no-owner', `--dbname=${target.toString()}`], {
+  const { command, args } = pgDumpCommand(target)
+  const child = spawn(command, args, {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, PGPASSWORD: password },
   })
@@ -99,7 +122,13 @@ export async function GET(request: NextRequest) {
     running = false
     console.error('[api/vendor/export] pg_dump could not start:', started.code ?? started.message)
     return started.code === 'ENOENT'
-      ? fail('PG_DUMP_MISSING', 'pg_dump is not installed where the app runs', 503)
+      ? fail(
+          'PG_DUMP_MISSING',
+          process.env.PG_DUMP_DOCKER_CONTAINER
+            ? 'docker is not available where the app runs'
+            : 'pg_dump is not installed where the app runs. In development, set PG_DUMP_DOCKER_CONTAINER in .env.',
+          503,
+        )
       : fail('INTERNAL_ERROR', 'Could not start the export', 500)
   }
   const first = await Promise.race([

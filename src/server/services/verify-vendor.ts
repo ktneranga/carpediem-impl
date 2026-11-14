@@ -109,6 +109,9 @@ async function run() {
   check('export without a vendor sign-in: 401', noCookie.status === 401 && noCookie.body?.error?.code === 'VENDOR_SIGN_IN_REQUIRED')
   const before = (await one(q`SELECT count(*)::int AS n FROM vendor_access_events WHERE tenant_id = ${tenantId} AND kind = 'export'`)).n
   const savedPath = process.env.PG_DUMP_PATH
+  // The failure cases run pg_dump directly, not through the dev container.
+  const savedContainer = process.env.PG_DUMP_DOCKER_CONTAINER
+  delete process.env.PG_DUMP_DOCKER_CONTAINER
   process.env.PG_DUMP_PATH = 'zz-no-such-pg-dump'
   const missing = await exportWith(cookie)
   const after = (await one(q`SELECT count(*)::int AS n FROM vendor_access_events WHERE tenant_id = ${tenantId} AND kind = 'export'`)).n
@@ -121,6 +124,23 @@ async function run() {
   const afterFail = (await one(q`SELECT count(*)::int AS n FROM vendor_access_events WHERE tenant_id = ${tenantId} AND kind = 'export'`)).n
   check('pg_dump that fails before any byte: 502 EXPORT_FAILED, no export recorded',
     failed.status === 502 && failed.body?.error?.code === 'EXPORT_FAILED' && afterFail === before, `${failed.status} ${afterFail}`)
+  // The real thing, where pg_dump can run (the Docker image, or a dev PC with
+  // PG_DUMP_DOCKER_CONTAINER): a 200 stream that is a pg_dump custom file.
+  delete process.env.PG_DUMP_PATH
+  if (savedContainer) process.env.PG_DUMP_DOCKER_CONTAINER = savedContainer
+  if (process.env.PG_DUMP_DOCKER_CONTAINER) {
+    const response = await exportRoute(new NextRequest('http://localhost/api/vendor/export', {
+      headers: { cookie: `${VENDOR_COOKIE_NAME}=${cookie}` },
+    }))
+    const bytes = Buffer.from(await response.arrayBuffer())
+    const recorded = (await one(q`SELECT count(*)::int AS n FROM vendor_access_events WHERE tenant_id = ${tenantId} AND kind = 'export'`)).n
+    check('a live export: 200, a .dump attachment, a real pg_dump file, recorded',
+      response.status === 200 && /attachment; filename="carpe-diem_\d{4}-\d{2}-\d{2}_\d{4}\.dump"/.test(response.headers.get('content-disposition') ?? '') &&
+        bytes.subarray(0, 5).toString() === 'PGDMP' && bytes.length > 10_000 && recorded === before + 1,
+      `${response.status} ${bytes.length} bytes, ${bytes.subarray(0, 5).toString()}`)
+  } else {
+    console.log('SKIP a live export (no pg_dump here; set PG_DUMP_DOCKER_CONTAINER to run it)')
+  }
   if (savedPath === undefined) delete process.env.PG_DUMP_PATH
   else process.env.PG_DUMP_PATH = savedPath
 
