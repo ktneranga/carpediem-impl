@@ -35,6 +35,12 @@ export const MANAGE_SECTIONS = [
     story: '10.2',
     what: 'Add staff, set their jobs and PINs, and deactivate someone who has left.',
   },
+  {
+    href: '/manage/settings',
+    title: 'Settings',
+    story: 'settings',
+    what: 'What the bill prints (name, header, footer, logo, review QR), service charge, tax and the business day.',
+  },
 ] as const
 
 export function ComingSoon({ href }: { href: (typeof MANAGE_SECTIONS)[number]['href'] }) {

@@ -308,3 +308,9 @@
 
 - **An empty install can be claimed by anyone on its network** until the form is submitted (no setup token). Mitigation for now: install with the POS off the restaurant Wi-Fi, or set up straight after `docker compose up`. A one-time token printed in the container log would close it.
 - **`isProvisioned` caches `true` per module copy** — if the database is emptied under a running server, the proxy keeps showing the PIN pad until a restart (the /setup page itself re-checks). Rare; restart after wiping.
+
+## From spec-restaurant-settings review (2026-11-14)
+
+- **Changing the business-day hour during service** can split one night's orders across two business dates (end-of-day and daily numbers shift). The Settings page only warns ("change it outside service hours"); a guard that refuses while orders are open would close it.
+- **No test that a NEW bill uses a changed rate** while an existing bill keeps its own — `bill.service` reads rates per bill (covered by verify-bills); note a later bill in a session that already has one keeps the first bill's pinned service rate, by design.
+- **Version check is to the millisecond** (`updated_at` stores microseconds); two saves in the same millisecond would not be told apart. Theoretical for one owner.

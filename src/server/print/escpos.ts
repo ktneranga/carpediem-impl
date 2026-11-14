@@ -68,6 +68,11 @@ const CUT = [GS, 0x56, 66, 0x00]
  * not a well-formed raster that fits the 80mm head (576 dots), so a bad
  * setting prints no logo instead of a page of garbage.
  */
+/** Whether a stored logo would print (Manage → Settings saves only what passes this). */
+export function logoPrints(image: { widthDots: unknown; heightDots: unknown; data: unknown }): boolean {
+  return rasterImage(image) !== null
+}
+
 function rasterImage(image: { widthDots: unknown; heightDots: unknown; data: unknown }): number[] | null {
   const { widthDots: width, heightDots: height, data } = image
   if (typeof width !== 'number' || typeof height !== 'number' || typeof data !== 'string') return null
