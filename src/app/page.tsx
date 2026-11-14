@@ -24,7 +24,7 @@ export default async function Home() {
   // which controls exist. One database read makes the authority obvious.
   const [staffRow] = staffId
     ? await db
-        .select({ name: staff.name, role: staff.role })
+        .select({ name: staff.name, role: staff.role, permissions: staff.permissions })
         .from(staff)
         .where(eq(staff.id, staffId))
         .limit(1)
@@ -40,6 +40,7 @@ export default async function Home() {
       restaurantName={config?.restaurantName ?? 'Restaurant'}
       staffName={staffRow?.name ?? 'Unknown'}
       role={staffRow?.role ?? null}
+      permissions={staffRow?.permissions ?? []}
     />
   )
 }

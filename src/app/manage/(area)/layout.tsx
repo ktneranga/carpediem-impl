@@ -1,5 +1,6 @@
 import { headers } from 'next/headers'
 import { installationTenant, lastVendorAccess, vendorWhen } from '@/server/services/vendor.service'
+import { MANAGE_AREAS, parsePermissionsHeader } from '@/server/auth/permissions'
 import { ManageNav } from './manage-nav'
 
 /**
@@ -19,6 +20,10 @@ export default async function ManageAreaLayout({ children }: { children: React.R
   const owner = list.get('x-staff-role') === 'owner'
   // The proxy sets this only after checking the Manage session itself.
   const unlocked = owner && list.get('x-manage-unlocked') === '1'
+  // Someone granted Manage areas (Story 10.6) sees those, besides Availability.
+  // The proxy already decided access; this only picks the links.
+  const permissions = owner ? [] : parsePermissionsHeader(list.get('x-staff-permissions'))
+  const grantedAreas = MANAGE_AREAS.filter((area) => permissions.includes(area.permission)).map((area) => area.href)
   // The owner sees when the vendor last signed in or exported the database
   // (spec-11-1-vendor-access-export). A failed read hides the line, never the page.
   // Formatted HERE, in the restaurant's zone, so every device shows the same
@@ -42,7 +47,7 @@ export default async function ManageAreaLayout({ children }: { children: React.R
   }
   return (
     <div className="flex min-h-screen flex-col bg-slate-100 night:bg-night-app md:flex-row">
-      <ManageNav owner={owner} unlocked={unlocked} vendorLastUsed={vendorLastUsed} />
+      <ManageNav owner={owner} unlocked={unlocked} grantedAreas={grantedAreas} vendorLastUsed={vendorLastUsed} />
       <main className="min-w-0 flex-1 p-sp-4 md:p-sp-6">{children}</main>
     </div>
   )

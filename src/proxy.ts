@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE_NAME, touchSession, validateSession } from '@/server/services/session.service'
-import { isRoleAllowed } from '@/server/auth/permissions'
+import { canOpenManage, effectivePermissions, isRoleAllowed, manageAreaOf } from '@/server/auth/permissions'
 import { isManagePath, loginUrl, manageUnlockUrl } from '@/lib/return-to'
 import { needsManageSession } from '@/server/auth/manage-gate'
 import { isProvisioned } from '@/server/services/setup-state'
@@ -105,6 +105,7 @@ export async function proxy(request: NextRequest) {
   headers.delete('x-staff-id')
   headers.delete('x-staff-role')
   headers.delete('x-manage-unlocked')
+  headers.delete('x-staff-permissions')
 
   if (isPublic(request)) {
     // An empty install has nobody to sign in: send /login to the setup screen.
@@ -132,7 +133,19 @@ export async function proxy(request: NextRequest) {
     return unauthenticated(request)
   }
 
-  if (!isRoleAllowed(request.nextUrl.pathname, session.role, request.method)) {
+  // ── A Manage area granted to a non-owner (Story 10.6) ──────────────────────
+  // Their own PIN session opens EXACTLY that area's pages and APIs: no owner
+  // role, no Manage password (that stays the owner's). Every other Manage path
+  // falls through to the owner-only rule below. The owner's flow is unchanged.
+  const permissions = effectivePermissions(session.role, session.permissions)
+  const area = manageAreaOf(request.nextUrl.pathname)
+  const grantedArea =
+    session.role !== 'owner' &&
+    ((area !== null && permissions.includes(area)) ||
+      // `/manage` itself only redirects to their first area (see its page).
+      (request.nextUrl.pathname === '/manage' && canOpenManage(session.role, permissions)))
+
+  if (!grantedArea && !isRoleAllowed(request.nextUrl.pathname, session.role, request.method)) {
     return forbidden(request)
   }
 
@@ -140,7 +153,7 @@ export async function proxy(request: NextRequest) {
   // never shown the unlock screen. A PIN alone never opens configuration.
   let manageTouched = false
   let manageUnlocked = false
-  if (needsManageSession(request.nextUrl.pathname)) {
+  if (!grantedArea && needsManageSession(request.nextUrl.pathname)) {
     try {
       const manage = await validateManageSession(
         request.cookies.get(MANAGE_COOKIE_NAME)?.value,
@@ -168,6 +181,9 @@ export async function proxy(request: NextRequest) {
   // Set from the validated session only — never from anything the client sent.
   headers.set('x-staff-id', session.staffId)
   headers.set('x-staff-role', session.role)
+  // From the database, this request (owners: the full set). Pages and routes
+  // read it with `parsePermissionsHeader`; the client can't forge it (deleted above).
+  headers.set('x-staff-permissions', permissions.join(','))
   // Only decides which links the Manage nav shows; access was decided above.
   if (manageUnlocked) headers.set('x-manage-unlocked', '1')
 

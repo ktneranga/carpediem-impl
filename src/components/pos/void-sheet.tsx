@@ -50,7 +50,7 @@ async function post<T>(url: string, body: unknown): Promise<{ ok: true; data: T 
  *
  * ── Approval on the same device ──────────────────────────────────────────────
  * A waiter (`needsApproval`) gets a PIN pad after the reason: someone with the
- * owner role types their PIN and both names are recorded. The waiter stays
+ * owner role, or anyone allowed to approve voids (Story 10.6), types their PIN and both names are recorded. The waiter stays
  * signed in. The server decides independently: a 403 `APPROVAL_REQUIRED` (the
  * role changed mid-shift) also opens the pad, so showing it here is
  * convenience, never the guard.
@@ -251,7 +251,7 @@ export function VoidSheet({
               {amountPaisa !== null ? ` · ${lkrFromPaisa(amountPaisa)}` : ''}
             </p>
             <PINPad
-              label="Owner PIN to approve"
+              label="Approver PIN"
               hint="Your own sign-in stays as it is"
               error={pinError}
               disabled={busy}

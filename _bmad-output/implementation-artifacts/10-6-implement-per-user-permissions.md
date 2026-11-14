@@ -1,6 +1,6 @@
 # Story 10.6: Per-User Permissions
 
-Status: ready-for-dev
+Status: review
 
 <!-- Go-live. Brought forward 2026-11-14 by sprint-change-proposal-2026-11-14-permissions.md.
      After 7-5, before 11-3 lite / 1-4. Security-critical: the Manage gate changes. -->
@@ -70,36 +70,36 @@ so that a trusted shift lead or cashier can do specific jobs while everyone else
 
 ## Tasks / Subtasks
 
-- [ ] **T1 — Schema + migration `0045_staff_permissions.sql`** (AC 1, 2): `staff.permissions text[] NOT NULL DEFAULT '{}'`,
+- [x] **T1 — Schema + migration `0045_staff_permissions.sql`** (AC 1, 2): `staff.permissions text[] NOT NULL DEFAULT '{}'`,
       CHECK every element is one of the seven (`permissions <@ ARRAY[...]::text[]`). Mirror in `schema.ts`.
-- [ ] **T2 — `src/server/auth/permissions.ts`** (AC 3–6, 9): `PERMISSIONS` const + `Permission` type; `MANAGE_AREAS`
+- [x] **T2 — `src/server/auth/permissions.ts`** (AC 3–6, 9): `PERMISSIONS` const + `Permission` type; `MANAGE_AREAS`
       (area → page prefixes + api prefixes + permission, the ONE map); `effectivePermissions(role, stored)`;
       `hasPermission(role, perms, p)`; `manageAreaOf(pathname)` (null = not an area path); `canAddCustomCharge(role, perms)`,
       `canOpenCashDrawer(role, perms)`, `canApproveVoids(role, perms)`, `canOpenManage(role, perms)`;
       `parsePermissionsHeader(value)`. Keep `isRoleAllowed` as is; widen `/api/cash-drawer` to owner+waiter.
       Update the doc comments that said "until 10.6".
-- [ ] **T3 — `session.service.ts` `validateSession`** (AC 6, 9): also return the staff row's `permissions` and `role`
+- [x] **T3 — `session.service.ts` `validateSession`** (AC 6, 9): also return the staff row's `permissions` and `role`
       FRESH (join `staff` on `staff_sessions.staff_id`; keep the session's role semantics, but permissions from staff).
-- [ ] **T4 — `src/proxy.ts`** (AC 6, 7, 9): strip `x-staff-permissions`; for a non-owner on a Manage path:
+- [x] **T4 — `src/proxy.ts`** (AC 6, 7, 9): strip `x-staff-permissions`; for a non-owner on a Manage path:
       if `manageAreaOf(path)` is granted → allow WITHOUT a Manage session (skip `ROUTE_ROLES` owner rule and
       `needsManageSession`); otherwise the existing refusal. Owners: exactly today's flow. Set `x-staff-permissions`.
-- [ ] **T5 — Call sites** (AC 3–5, 8): orders route + order page (custom charge); cash-drawer route + `table-grid`/
+- [x] **T5 — Call sites** (AC 3–5, 8): orders route + order page (custom charge); cash-drawer route + `table-grid`/
       `floor-header` (drawer icon); `void.service` (`resolveApproval`, `findApprover` with holders); voids/cancel routes
       pass permissions; order page `canManage`/void `needsApproval` and bill page `canApprove` from `canApproveVoids`;
       `table-grid` + `order-screen` Manage entry from `canOpenManage`; `app/page.tsx` passes permissions to the grid.
-- [ ] **T6 — Manage area UI** (AC 6): `(area)/layout.tsx` + `manage-nav.tsx` show Availability + granted areas for a
+- [x] **T6 — Manage area UI** (AC 6): `(area)/layout.tsx` + `manage-nav.tsx` show Availability + granted areas for a
       non-owner (no Lock, no vendor line); `(area)/page.tsx` redirect rule.
-- [ ] **T7 — Staff management** (AC 1, 2): `staff-admin.service.ts` — `permissions` in `ManageStaff`, `updateStaff`
+- [x] **T7 — Staff management** (AC 1, 2): `staff-admin.service.ts` — `permissions` in `ManageStaff`, `updateStaff`
       accepts `permissions` (validated, waiter-access only, cleared on job change to kitchen/owner), logged via
       existing `log()`; `staffFields`/route schema; `staff-editor.tsx` switches per row.
-- [ ] **T8 — `src/server/services/verify-permissions.ts`**: pure rule tests (`manageAreaOf` for every
+- [x] **T8 — `src/server/services/verify-permissions.ts`**: pure rule tests (`manageAreaOf` for every
       `/api/manage/*` route file — enumerate `src/app/api/manage/**/route.ts` so a new route can't be missed;
       Staff/password/lock/unlock map to null), `effectivePermissions`, grant validation (kitchen/owner/unknown
       refused, job change clears), `findApprover` with a holder PIN, `resolveApproval` self-approve for a holder,
       `canAddCustomCharge`/`canOpenCashDrawer` matrix, `validateSession` returns fresh permissions (revoke →
       next call sees it), proxy-level: a waiter with `manage_menu` gets `/api/manage/menu` and is refused
       `/api/manage/staff` + `/api/manage/settings` (call `proxy()` with a real signed session cookie).
-- [ ] **T9 — Regression:** verify-voids, verify-staff-admin, verify-menu-admin, verify-floor-admin,
+- [x] **T9 — Regression:** verify-voids, verify-staff-admin, verify-menu-admin, verify-floor-admin,
       verify-settings, verify-dashboard, verify-custom-charge, verify-drawer, verify-manage (with
       `VERIFY_MANAGE_PASSWORD`), `tsc`, `eslint`.
 
@@ -160,10 +160,77 @@ Changed: `schema.ts`, `server/auth/permissions.ts`, `server/services/session.ser
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
+
+- `verify-permissions.ts` → 28/28 (walks all 32 `/api/manage/**` route files; drives the real `proxy()` with signed cookies).
+- Regression: verify-voids 34/34, verify-staff-admin 39/39, verify-menu-admin 31/31, verify-floor-admin 30/30,
+  verify-settings 27/27, verify-dashboard 17/17, verify-custom-charge 22/22, verify-bills 119/119, verify-setup 16/16,
+  verify-vendor 27/27, verify-drawer 39/39. `tsc` clean; eslint clean on touched files.
+- verify-manage not run: it needs `VERIFY_MANAGE_PASSWORD` (a Manage password is set locally).
+- verify-receipt: 60/62 before this story too. Its "settling queues a receipt" check printed the bill first, and
+  since 2026-11-13 a waiting BILL counts as handed over, so the receipt is skipped. The test now clears every print
+  job before it (test-only fix). After the fix: 81/81 (the earlier failure had stopped later checks running).
 
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created.
+- **Data:** `staff.permissions text[]` (migration 0045) with a CHECK listing the seven names.
+- **One map:** `MANAGE_AREAS` in `permissions.ts` (area → pages + APIs + permission). The proxy, the Manage
+  nav, the `/manage` redirect and the verify script all read it. Anything not in it stays owner-only.
+- **Proxy:** a non-owner holding the area's permission passes the Manage path with their PIN session alone
+  (no role rule, no Manage password). `/manage` itself admits anyone with an area. The owner's flow is unchanged
+  (still 401 MANAGE_LOCKED without the password). `x-staff-permissions` is stripped from requests and set from
+  the database.
+- **Fresh:** `validateSession` joins `staff` and returns `permissions` every request; a revoke is refused on the
+  next request (tested).
+- **Call sites:** `canAddCustomCharge` / `canOpenCashDrawer` take permissions (`/api/cash-drawer` admits waiters;
+  the route checks). Void approval: `canApproveVoids` (owner or `approve_voids`) self-approves; `findApprover`
+  candidates are every active person who can approve. Order page `canApproveVoids` → void sheet; bill page
+  `canApprove`; Manage entry on the floor/order screens from `canOpenManage`. The void sheet's PIN pad says
+  "Approver PIN".
+- **Staff:** `updateStaff` accepts `permissions` (full set). Unknown names, kitchen or owner rows are refused
+  (422). Granting yourself is refused (`OwnAccountError`). A job change to kitchen/owner clears them. Audited
+  through the existing staff `config_changes` record. The staff sheet has "Extra permissions" switches in two
+  groups (On the floor / Manage areas), shown only for waiter-access staff.
+- Not done (outside the ACs): a list-row badge showing who holds extra permissions; only the sheet shows them.
 
 ### File List
+
+New:
+- src/server/db/migrations/0045_staff_permissions.sql
+- src/server/db/migrations/meta/0045_snapshot.json
+- src/server/services/verify-permissions.ts
+
+Modified:
+- src/server/db/schema.ts
+- src/server/db/migrations/meta/_journal.json
+- src/server/auth/permissions.ts
+- src/server/services/session.service.ts
+- src/proxy.ts
+- src/server/services/void.service.ts
+- src/server/services/staff-admin.service.ts
+- src/server/menu-admin/route.ts
+- src/app/api/manage/staff/[id]/route.ts
+- src/app/api/sessions/[sessionId]/orders/route.ts
+- src/app/api/sessions/[sessionId]/voids/route.ts
+- src/app/api/bills/[billId]/cancel/route.ts
+- src/app/api/cash-drawer/open/route.ts
+- src/app/orders/[sessionId]/page.tsx
+- src/app/orders/[sessionId]/bill/page.tsx
+- src/app/page.tsx
+- src/app/manage/(area)/page.tsx
+- src/app/manage/(area)/layout.tsx
+- src/app/manage/(area)/manage-nav.tsx
+- src/components/pos/order-screen.tsx
+- src/components/pos/table-grid.tsx
+- src/components/pos/void-sheet.tsx
+- src/components/manage/staff-editor.tsx
+- src/server/print/verify-receipt.ts (test fix, see Debug Log)
+
+### Change Log
+
+- 2026-11-14: Story 10.6 implemented — per-user permissions (custom charge, approve voids, no-sale drawer,
+  Manage areas Dashboard/Menu/Floor/Settings), granted in Manage → Staff, checked in the proxy and the routes,
+  read fresh per request, audited. Status → review.

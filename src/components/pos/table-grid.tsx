@@ -19,7 +19,7 @@ import { zoneIcon } from '@/lib/design'
 import { cn } from '@/lib/utils'
 import type { TableGridRow } from '@/app/api/tables/route'
 import type { PaymentState, SessionPaymentChangedPayload, TableStatusChangedPayload } from '@/types/tables'
-import { canMarkSoldOut, canOpenCashDrawer, type StaffRole } from '@/server/auth/permissions'
+import { canMarkSoldOut, canOpenCashDrawer, canOpenManage, type StaffRole } from '@/server/auth/permissions'
 
 const TABLES_QUERY_KEY = ['tables'] as const
 /**
@@ -424,6 +424,7 @@ function isStale(elapsedMinutes: number | undefined): boolean {
 export function TableGrid({
   staffName,
   role,
+  permissions = [],
 }: {
   /**
    * REMOVED from the UI on 2026-10-19 and kept as a prop on purpose.
@@ -442,6 +443,8 @@ export function TableGrid({
    * this decides which controls exist.
    */
   role: StaffRole | null
+  /** Granted permissions (Story 10.6): the drawer icon and the Manage entry. */
+  permissions?: string[]
 }) {
   const queryClient = useQueryClient()
   const router = useRouter()
@@ -1235,10 +1238,10 @@ export function TableGrid({
         onStaffTap={signOut}
         // The owner's badge opens a small menu with Manage (Story 10.0).
         // Full navigation: the Manage pages are server-gated by the proxy.
-        onManage={role === 'owner' ? () => window.location.assign('/manage') : undefined}
+        onManage={canOpenManage(role, permissions) ? () => window.location.assign('/manage') : undefined}
         // Owner and waiters (Story 8.3). A client navigation: no password.
         onSoldOut={canMarkSoldOut(role) ? () => router.push('/manage/sold-out') : undefined}
-        canOpenDrawer={canOpenCashDrawer(role)}
+        canOpenDrawer={canOpenCashDrawer(role, permissions)}
         onDrawerOpened={() => showNotice('Drawer opening — recorded')}
       />
 

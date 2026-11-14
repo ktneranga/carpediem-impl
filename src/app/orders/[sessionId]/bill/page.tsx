@@ -1,4 +1,5 @@
 import { headers } from 'next/headers'
+import { canApproveVoids, parsePermissionsHeader, type StaffRole } from '@/server/auth/permissions'
 import { redirect } from 'next/navigation'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
@@ -188,7 +189,10 @@ export default async function BillPage({
       draftError={draftError}
       seats={seats}
       // Cancel bill (Story 7.5): an owner approves their own; others need an owner's PIN.
-      canApprove={(await headers()).get('x-staff-role') === 'owner'}
+      canApprove={canApproveVoids(
+        (await headers()).get('x-staff-role') as StaffRole | null,
+        parsePermissionsHeader((await headers()).get('x-staff-permissions')),
+      )}
     />
   )
 }

@@ -1,4 +1,5 @@
 import 'server-only'
+import { isPermission, PERMISSIONS, type Permission } from '@/server/auth/permissions'
 import bcrypt from 'bcryptjs'
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm'
 import { db } from '@/server/db'
@@ -72,7 +73,16 @@ export class HasHistoryError extends Error {
 const PIN_COST = 10
 
 /** What the editor and the change log see: never `pinHash`. */
-export type ManageStaff = { id: string; version: number; name: string; role: StaffRole; jobTitle: string; isActive: boolean }
+export type ManageStaff = {
+  id: string
+  version: number
+  name: string
+  role: StaffRole
+  jobTitle: string
+  isActive: boolean
+  /** Granted beyond the role (Story 10.6); always empty for owners and kitchen. */
+  permissions: Permission[]
+}
 
 type StaffRow = typeof staff.$inferSelect
 
@@ -83,7 +93,15 @@ function publicRow(row: StaffRow): Omit<StaffRow, 'pinHash'> {
 }
 
 function toManage(row: StaffRow): ManageStaff {
-  return { id: row.id, version: row.version, name: row.name, role: row.role, jobTitle: row.jobTitle, isActive: row.isActive }
+  return {
+    id: row.id,
+    version: row.version,
+    name: row.name,
+    role: row.role,
+    jobTitle: row.jobTitle,
+    isActive: row.isActive,
+    permissions: (row.permissions ?? []).filter(isPermission),
+  }
 }
 
 // ── Rules ────────────────────────────────────────────────────────────────────
@@ -98,6 +116,21 @@ export function cleanStaffName(name: string): string {
 export function checkJob(job: string): StaffJob {
   if (!isStaffJob(job)) throw new MenuRuleError('Choose a job from the list')
   return job
+}
+
+/**
+ * The permissions someone may hold (Story 10.6): known names, no duplicates,
+ * and only for a waiter-role person — owners hold everything already, kitchen
+ * staff are display-only.
+ */
+export function checkPermissions(role: StaffRole, permissions: readonly string[]): Permission[] {
+  const unknown = permissions.find((p) => !isPermission(p))
+  if (unknown !== undefined) throw new MenuRuleError('Choose permissions from the list')
+  const unique = [...new Set(permissions)] as Permission[]
+  if (unique.length > 0 && role !== 'waiter') {
+    throw new MenuRuleError(role === 'owner' ? 'Owners can already do everything' : 'Kitchen staff can’t hold permissions')
+  }
+  return PERMISSIONS.filter((p) => unique.includes(p))
 }
 
 export function checkPin(pin: string): string {
@@ -231,6 +264,8 @@ export async function updateStaff(
     name?: string
     jobTitle?: string
     pin?: string
+    /** Story 10.6: the full set to hold (replaces what they had). */
+    permissions?: string[]
   },
 ): Promise<ManageStaff> {
   await lockStaff(tx, a.tenantId)
@@ -258,6 +293,15 @@ export async function updateStaff(
     const pin = checkPin(a.pin)
     if (current.isActive) await checkPinFree(tx, a.tenantId, pin, a.id)
     set.pinHash = await bcrypt.hash(pin, PIN_COST)
+  }
+  // Story 10.6. Checked against the role they will have AFTER this change, and
+  // cleared when the new job is an owner or kitchen one.
+  const nextRole = set.role ?? current.role
+  if (a.permissions !== undefined) {
+    if (a.id === a.staffId && a.permissions.length > 0) throw new OwnAccountError()
+    set.permissions = checkPermissions(nextRole, a.permissions)
+  } else if (roleChanged && nextRole !== 'waiter' && (current.permissions ?? []).length > 0) {
+    set.permissions = []
   }
 
   const row = await versionedUpdate(tx, {
@@ -364,9 +408,18 @@ const ROLE_ORDER = sql`case ${staff.role} when 'owner' then 0 when 'waiter' then
 
 /** Everyone, active and not, by role (Owner, Waiter, Kitchen) then name. */
 export async function loadStaffForManage(executor: Tx | typeof db, tenantId: string): Promise<ManageStaff[]> {
-  return executor
-    .select({ id: staff.id, version: staff.version, name: staff.name, role: staff.role, jobTitle: staff.jobTitle, isActive: staff.isActive })
+  const rows = await executor
+    .select({
+      id: staff.id,
+      version: staff.version,
+      name: staff.name,
+      role: staff.role,
+      jobTitle: staff.jobTitle,
+      isActive: staff.isActive,
+      permissions: staff.permissions,
+    })
     .from(staff)
     .where(eq(staff.tenantId, tenantId))
     .orderBy(ROLE_ORDER, sql`lower(${staff.name})`, asc(staff.id))
+  return rows.map((row) => ({ ...row, permissions: (row.permissions ?? []).filter(isPermission) }))
 }

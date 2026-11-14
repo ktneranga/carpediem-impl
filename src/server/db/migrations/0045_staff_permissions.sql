@@ -1,0 +1,2 @@
+ALTER TABLE "staff" ADD COLUMN "permissions" text[] DEFAULT '{}'::text[] NOT NULL;--> statement-breakpoint
+ALTER TABLE "staff" ADD CONSTRAINT "staff_permissions_known" CHECK ("staff"."permissions" <@ ARRAY['custom_charge','approve_voids','open_cash_drawer','manage_dashboard','manage_menu','manage_floor','manage_settings']::text[]);

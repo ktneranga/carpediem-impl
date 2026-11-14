@@ -154,8 +154,10 @@ export type OrderScreenProps = {
    * the send route decides again.
    */
   canAddCustomCharge?: boolean
-  /** Owner only: the staff menu offers Manage (Story 10.0). */
+  /** Owners and anyone granted a Manage area (Story 10.6): the staff menu offers Manage. */
   canManage?: boolean
+  /** Owners and holders of `approve_voids` (Story 10.6): a void needs no PIN. */
+  canApproveVoids?: boolean
   /** Owner and waiters (`canMarkSoldOut`, Story 8.3): the staff menu offers Sold out. */
   canMarkSoldOut?: boolean
 }
@@ -366,6 +368,7 @@ export function OrderScreen({
   initialHasUnbilled,
   canAddCustomCharge = false,
   canManage = false,
+  canApproveVoids = false,
   canMarkSoldOut = false,
   tableLabel,
   orderLabel = null,
@@ -842,7 +845,8 @@ export function OrderScreen({
 
   // ── Void a sent item (Story 7.5) ──────────────────────────────────────────
   // An owner approves their own void; anyone else needs an owner's PIN on this
-  // tablet (`canManage` is "is an owner"). After it, the history, the bill
+  // tablet (`canApproveVoids`: owners and holders of approve_voids, Story 10.6).
+  // After it, the history, the bill
   // state and the floor all move — refresh all three.
   const [voidTarget, setVoidTarget] = useState<VoidSheetTarget | null>(null)
   function afterVoid() {
@@ -1870,7 +1874,7 @@ export function OrderScreen({
         <VoidSheet
           sessionId={sessionId}
           target={voidTarget}
-          needsApproval={!canManage}
+          needsApproval={!canApproveVoids}
           onCancel={() => setVoidTarget(null)}
           onDone={afterVoid}
         />

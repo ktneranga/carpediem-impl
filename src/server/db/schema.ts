@@ -185,8 +185,19 @@ export const staff = pgTable('staff', {
   // Manage → Staff (Story 10.2): optimistic concurrency, like the menu and floor.
   version:   integer('version').notNull().default(1),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * Extra permissions the owner granted this person (Story 10.6), beyond their
+   * role: `PERMISSIONS` in src/server/auth/permissions.ts. Owners hold every one
+   * implicitly and store none; kitchen staff hold none. Read FRESH on every
+   * request by the proxy, so a revoke bites on the next tap.
+   */
+  permissions: text('permissions').array().notNull().default(sql`'{}'::text[]`),
 }, (t) => [
   index('idx_staff_tenant_id').on(t.tenantId),
+  check(
+    'staff_permissions_known',
+    sql`${t.permissions} <@ ARRAY['custom_charge','approve_voids','open_cash_drawer','manage_dashboard','manage_menu','manage_floor','manage_settings']::text[]`,
+  ),
 ])
 
 /**

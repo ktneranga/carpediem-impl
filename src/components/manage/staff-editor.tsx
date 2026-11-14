@@ -6,6 +6,7 @@ import { ChevronDown, Eye, EyeOff, Plus, Trash2, X } from 'lucide-react'
 import { ApiError, call as callApi, ConfirmDialog, icon, input, primary, secondary } from '@/components/manage/manage-ui'
 import { accessOf, isStaffJob, jobLabel, STAFF_JOBS, type StaffJob } from '@/lib/staff-jobs'
 import type { ManageStaff, StaffRole } from '@/server/services/staff-admin.service'
+import type { Permission } from '@/server/auth/permissions'
 import { cn } from '@/lib/utils'
 
 /**
@@ -156,6 +157,11 @@ function StaffSheet({
   const [showPin, setShowPin] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<'deactivate' | 'delete' | null>(null)
+  // Story 10.6: extra permissions, for waiter-access staff only.
+  const [granted, setGranted] = useState<Permission[]>(person?.permissions ?? [])
+  const canHold = accessOf(job) === 'waiter'
+  const toggle = (permission: Permission) =>
+    setGranted((current) => (current.includes(permission) ? current.filter((p) => p !== permission) : [...current, permission]))
 
   const pinNeeded = sheet.mode !== 'edit'
   const pinValid = pin === '' ? !pinNeeded : /^\d{4}$/.test(pin)
@@ -175,11 +181,15 @@ function StaffSheet({
       return finish(await save('PATCH', `/api/manage/staff/${sheet.person.id}`, { version: sheet.person.version, active: true, pin }))
     }
     const p = sheet.person
+    const nextPermissions = canHold ? granted : []
+    const permissionsChanged =
+      nextPermissions.length !== p.permissions.length || nextPermissions.some((perm) => !p.permissions.includes(perm))
     const change = {
       version: p.version,
       ...(name.trim() !== p.name ? { name } : {}),
       ...(job !== p.jobTitle ? { jobTitle: job } : {}),
       ...(pin !== '' ? { pin } : {}),
+      ...(permissionsChanged && !isMe ? { permissions: nextPermissions } : {}),
     }
     if (Object.keys(change).length === 1) return onClose()
     return finish(await save('PATCH', `/api/manage/staff/${p.id}`, change))
@@ -289,6 +299,42 @@ function StaffSheet({
             </span>
           </label>
 
+          {sheet.mode === 'edit' && !isMe ? (
+            <fieldset className="flex flex-col gap-sp-2">
+              <legend className="mb-sp-1 text-fs-14 font-semibold text-slate-700 night:text-night-second">Extra permissions</legend>
+              {canHold ? (
+                <>
+                  {PERMISSION_GROUPS.map((group) => (
+                    <div key={group.title} className="flex flex-col gap-sp-1">
+                      <span className="text-fs-12 font-semibold tracking-micro text-slate-500 uppercase night:text-night-muted">{group.title}</span>
+                      {group.items.map((item) => (
+                        <label key={item.permission} className="flex min-h-10 items-center gap-sp-3 text-fs-14 text-slate-900 night:text-night-text">
+                          <input
+                            type="checkbox"
+                            className="size-5 accent-brand-800"
+                            checked={granted.includes(item.permission)}
+                            onChange={() => toggle(item.permission)}
+                          />
+                          <span className="flex flex-col">
+                            {item.label}
+                            <span className="text-fs-12 text-slate-500 night:text-night-muted">{item.hint}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                  <span className="text-fs-12 text-slate-600 night:text-night-second">
+                    Manage areas open with their own PIN, no Manage password. Staff stays with owners.
+                  </span>
+                </>
+              ) : (
+                <span className="text-fs-12 text-slate-600 night:text-night-second">
+                  {accessOf(job) === 'owner' ? 'Owners can do everything.' : 'Kitchen staff can’t hold permissions.'}
+                </span>
+              )}
+            </fieldset>
+          ) : null}
+
           {problem ? (
             <p role="alert" className="rounded-control bg-amber-50 px-sp-3 py-sp-2 text-fs-14 font-semibold text-amber-900 night:bg-amber-500/10 night:text-amber-300">{problem}</p>
           ) : null}
@@ -359,3 +405,24 @@ function choiceClass(chosen: boolean) {
     chosen ? 'border-brand-800 bg-brand-800 text-white' : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-50 night:border-night-hairline night:bg-night-card night:text-night-text night:hover:bg-night-raised',
   )
 }
+
+/** The switches in the staff sheet (Story 10.6), grouped as the owner thinks of them. */
+const PERMISSION_GROUPS: { title: string; items: { permission: Permission; label: string; hint: string }[] }[] = [
+  {
+    title: 'On the floor',
+    items: [
+      { permission: 'custom_charge', label: 'Custom charge', hint: 'Add a typed charge, e.g. corkage' },
+      { permission: 'approve_voids', label: 'Approve voids', hint: 'Void and cancel bills without the owner, and approve others’ voids' },
+      { permission: 'open_cash_drawer', label: 'Open cash drawer', hint: 'Open the drawer with no sale' },
+    ],
+  },
+  {
+    title: 'Manage areas',
+    items: [
+      { permission: 'manage_dashboard', label: 'Dashboard', hint: 'Takings, cash count, end-of-day print' },
+      { permission: 'manage_menu', label: 'Menu', hint: 'Dishes, prices, options' },
+      { permission: 'manage_floor', label: 'Floor', hint: 'Zones and tables' },
+      { permission: 'manage_settings', label: 'Settings', hint: 'Bill, logo, QR, service charge, tax' },
+    ],
+  },
+]

@@ -7,7 +7,7 @@ import { db } from '@/server/db'
 import { sessionPaymentState } from '@/server/services/payment.service'
 import { orderEvents, orderRounds, orderSessions } from '@/server/db/schema'
 import { isUniqueViolation } from '@/server/db/errors'
-import { canAddCustomCharge, type StaffRole } from '@/server/auth/permissions'
+import { canAddCustomCharge, parsePermissionsHeader, type StaffRole } from '@/server/auth/permissions'
 import { sanitizeTicketText } from '@/server/print/ticket'
 import { dishCount, dishTotalPaisa } from '@/server/orders/item-count'
 import { wakePrintQueue } from '@/server/print/wake'
@@ -243,14 +243,17 @@ export async function POST(
   }
   const { submissionId, lines } = parsedBody.data
 
-  // Who may add a custom charge — ONE function, which Story 10.6 replaces with
-  // a per-person permission. The role comes from the proxy, from the session,
-  // never from the body. Refused before anything is written.
+  // Who may add a custom charge — ONE function: owners and holders of
+  // `custom_charge` (Story 10.6). Role and permissions come from the proxy, from
+  // the database, never from the body. Refused before anything is written.
   if (
     lines.some((line) => 'customName' in line) &&
-    !canAddCustomCharge(request.headers.get('x-staff-role') as StaffRole | null)
+    !canAddCustomCharge(
+      request.headers.get('x-staff-role') as StaffRole | null,
+      parsePermissionsHeader(request.headers.get('x-staff-permissions')),
+    )
   ) {
-    return fail('CUSTOM_CHARGE_NOT_ALLOWED', 'Only the owner can add a custom charge.', 403)
+    return fail('CUSTOM_CHARGE_NOT_ALLOWED', 'You are not allowed to add a custom charge.', 403)
   }
 
   let result

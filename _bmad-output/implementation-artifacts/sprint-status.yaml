@@ -153,7 +153,7 @@ development_status:
   10-3-implement-zone-table-and-station-configuration: review  # LITE (zones + tables) brought into go-live 2026-11-13 — stations later
   10-4-implement-menu-management: review
   10-5-implement-tenant-feature-flags-and-brand-customization: backlog
-  10-6-implement-per-user-permissions: ready-for-dev  # added 2026-10-31; brought into go-live 2026-11-14 (4 permissions + Manage areas)
+  10-6-implement-per-user-permissions: review  # added 2026-10-31; brought into go-live 2026-11-14 (4 permissions + Manage areas)
   epic-10-retrospective: optional
 
   # ── Epic 11: Vendor Support APIs & Infrastructure ─────────────────────────

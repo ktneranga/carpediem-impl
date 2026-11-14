@@ -18,7 +18,7 @@ import {
   zones,
 } from '@/server/db/schema'
 import { DUMMY_PIN_HASH } from '@/server/auth/dummy-pin-hash'
-import type { StaffRole } from '@/server/auth/permissions'
+import { canApproveVoids, type StaffRole } from '@/server/auth/permissions'
 import { billedUnits, voidedUnits } from '@/server/orders/units'
 import { buildVoidTicketPayload } from '@/server/print/ticket'
 import { lockOpenSession } from '@/server/services/table-session.service'
@@ -85,7 +85,8 @@ function noteWrongPin(staffId: string, now: number): void {
 }
 
 /**
- * The owner-role staff member whose PIN this is, or null.
+ * The staff member who may approve voids whose PIN this is, or null: an active
+ * owner, or an active waiter holding `approve_voids` (Story 10.6).
  *
  * A PIN lookup, not a sign-in: nothing else happens, the waiter stays signed
  * in. Every candidate is compared with no early exit, and the dummy hash is
@@ -93,10 +94,11 @@ function noteWrongPin(staffId: string, now: number): void {
  * with no owners cost the same (the login route's rule).
  */
 export async function findApprover(tenantId: string, pin: string): Promise<string | null> {
-  const owners = await db
-    .select({ id: staff.id, pinHash: staff.pinHash })
+  const active = await db
+    .select({ id: staff.id, role: staff.role, permissions: staff.permissions, pinHash: staff.pinHash })
     .from(staff)
-    .where(and(eq(staff.tenantId, tenantId), eq(staff.isActive, true), eq(staff.role, 'owner')))
+    .where(and(eq(staff.tenantId, tenantId), eq(staff.isActive, true)))
+  const owners = active.filter((person) => canApproveVoids(person.role, person.permissions))
 
   if (owners.length === 0) {
     await bcrypt.compare(pin, DUMMY_PIN_HASH)
@@ -122,18 +124,22 @@ export type Approval =
 export async function resolveApproval({
   staffId,
   role,
+  permissions = [],
   tenantId,
   approverPin,
 }: {
   staffId: string
   role: StaffRole | null
+  /** From `x-staff-permissions` (the proxy, from the database). */
+  permissions?: readonly string[]
   tenantId: string
   approverPin: string | undefined
 }): Promise<Approval> {
-  if (role === 'owner') return { ok: true, staffId, approverId: staffId }
+  // Owners, and holders of `approve_voids` (Story 10.6), approve their own.
+  if (canApproveVoids(role, permissions)) return { ok: true, staffId, approverId: staffId }
 
   if (!approverPin) {
-    return { ok: false, code: 'APPROVAL_REQUIRED', message: 'The owner needs to approve this with their PIN', status: 403 }
+    return { ok: false, code: 'APPROVAL_REQUIRED', message: 'Someone allowed to approve voids needs to enter their PIN', status: 403 }
   }
 
   // Before the compare, so a locked-out loop costs no bcrypt either.

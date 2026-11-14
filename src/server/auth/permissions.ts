@@ -83,7 +83,9 @@ export const ROUTE_ROLES: RoutePolicy[] = [
   // Opening the cash drawer with no sale (Story 6.7, FR72). Owner only — there
   // is no manager role. Added BEFORE the route, because an unmatched prefix is
   // default-allow. `canOpenCashDrawer` below must say the same thing.
-  { prefix: '/api/cash-drawer', roles: ['owner'] },
+  // Story 10.6 widened this to waiters: the route itself asks
+  // `canOpenCashDrawer`, which holds the `open_cash_drawer` permission.
+  { prefix: '/api/cash-drawer', roles: ['owner', 'waiter'] },
 
   // Opening and closing table sessions is order entry, so it follows the same
   // rule. Reads are exempt because every role's landing screen calls
@@ -190,29 +192,95 @@ export function isRoleAllowed(pathname: string, role: StaffRole, method?: string
   return policy === null || policy.roles.includes(role)
 }
 
+// ── Per-user permissions (Story 10.6, FR67) ─────────────────────────────────
+// The owner grants these to individual staff, beyond their role. Owners hold
+// every one implicitly; only waiter-role staff may hold any. Stored on
+// `staff.permissions`, read fresh by the proxy on every request, and passed
+// on as `x-staff-permissions`.
+
+export const PERMISSIONS = [
+  'custom_charge',
+  'approve_voids',
+  'open_cash_drawer',
+  'manage_dashboard',
+  'manage_menu',
+  'manage_floor',
+  'manage_settings',
+] as const
+export type Permission = (typeof PERMISSIONS)[number]
+
+export function isPermission(value: unknown): value is Permission {
+  return typeof value === 'string' && (PERMISSIONS as readonly string[]).includes(value)
+}
+
+/**
+ * The Manage areas a non-owner can be granted, and EXACTLY which pages and APIs
+ * each one opens. The ONE map: the proxy, the Manage nav and the verify script
+ * all read it. Anything under /manage or /api/manage not listed here stays
+ * owner-only — Staff, unlock, password, lock never appear.
+ */
+export const MANAGE_AREAS = [
+  { permission: 'manage_dashboard', href: '/manage/dashboard', pages: ['/manage/dashboard', '/manage/end-of-day'], apis: ['/api/manage/dashboard'] },
+  { permission: 'manage_menu', href: '/manage/menu', pages: ['/manage/menu'], apis: ['/api/manage/menu'] },
+  { permission: 'manage_floor', href: '/manage/floor', pages: ['/manage/floor'], apis: ['/api/manage/floor'] },
+  { permission: 'manage_settings', href: '/manage/settings', pages: ['/manage/settings'], apis: ['/api/manage/settings'] },
+] as const satisfies readonly { permission: Permission; href: string; pages: readonly string[]; apis: readonly string[] }[]
+
+const under = (pathname: string, prefix: string) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+
+/** The permission that opens this Manage path, or null (owner-only, or not a Manage path). */
+export function manageAreaOf(pathname: string): Permission | null {
+  for (const area of MANAGE_AREAS) {
+    if ([...area.pages, ...area.apis].some((prefix) => under(pathname, prefix))) return area.permission
+  }
+  return null
+}
+
+/** What this person may do: everything for an owner, what is stored for a waiter, nothing for kitchen. */
+export function effectivePermissions(role: StaffRole | null | undefined, stored: readonly string[] | null | undefined): Permission[] {
+  if (role === 'owner') return [...PERMISSIONS]
+  if (role !== 'waiter') return []
+  return (stored ?? []).filter(isPermission)
+}
+
+export function hasPermission(role: StaffRole | null | undefined, permissions: readonly string[] | null | undefined, permission: Permission): boolean {
+  return effectivePermissions(role, permissions).includes(permission)
+}
+
+/** `x-staff-permissions`: comma-separated, set by the proxy from the database only. */
+export function parsePermissionsHeader(value: string | null | undefined): Permission[] {
+  return (value ?? '').split(',').map((part) => part.trim()).filter(isPermission)
+}
+
+/** Any Manage area beyond Availability: owners, and anyone granted one. */
+export function canOpenManage(role: StaffRole | null | undefined, permissions: readonly string[] | null | undefined): boolean {
+  if (role === 'owner') return true
+  const held = effectivePermissions(role, permissions)
+  return MANAGE_AREAS.some((area) => held.includes(area.permission))
+}
+
+/** Voids and bill cancels without asking for a PIN, and approves others' with their own (Story 7.5). */
+export function canApproveVoids(role: StaffRole | null | undefined, permissions: readonly string[] | null | undefined): boolean {
+  return hasPermission(role, permissions, 'approve_voids')
+}
+
 /**
  * Whether this person may add a CUSTOM CHARGE — a typed name and price
- * (Story 4.9, FR66).
- *
- * The owner role until Story 10.6, which grants it per person
- * (`custom_charge`). This is the ONE place that decides: the send route and the
- * order page both ask it, so 10.6 changes this function and nothing else.
+ * (Story 4.9, FR66). Owners, and anyone granted `custom_charge` (Story 10.6).
+ * The ONE place that decides: the send route and the order page both ask it.
  */
-export function canAddCustomCharge(role: StaffRole | null | undefined): boolean {
-  return role === 'owner'
+export function canAddCustomCharge(role: StaffRole | null | undefined, permissions: readonly string[] | null | undefined = []): boolean {
+  return hasPermission(role, permissions, 'custom_charge')
 }
 
 /**
  * Whether this person may open the cash drawer WITHOUT a sale (Story 6.7,
  * FR72). A cash payment opens it for anyone who may take payment; this is the
- * no-sale button.
- *
- * The owner role until Story 10.6 grants it per person. 10.6 must widen the
- * `/api/cash-drawer` entry in `ROUTE_ROLES` at the same time, or the button
- * shows and the route refuses.
+ * no-sale button. Owners, and anyone granted `open_cash_drawer` (Story 10.6;
+ * `/api/cash-drawer` admits waiters so the route can ask this).
  */
-export function canOpenCashDrawer(role: StaffRole | null | undefined): boolean {
-  return role === 'owner'
+export function canOpenCashDrawer(role: StaffRole | null | undefined, permissions: readonly string[] | null | undefined = []): boolean {
+  return hasPermission(role, permissions, 'open_cash_drawer')
 }
 
 /**

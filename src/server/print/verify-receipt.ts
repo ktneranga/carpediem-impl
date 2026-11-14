@@ -388,7 +388,9 @@ async function part2() {
   // The drafts printed above never reached the guest here: without this, the
   // printed BILL would make the receipt skip itself (Teran, 2026-11-13), and
   // this block is about what the receipt says.
-  await sql(`UPDATE print_jobs SET status = 'dead' WHERE session_id = $1 AND bill_id IS NULL`, [tab.sessionId])
+  // The recorded-bill prints above too (`bill_id` set): the last one is still
+  // waiting, and since 2026-11-13 a waiting BILL counts as handed over.
+  await sql(`UPDATE print_jobs SET status = 'dead' WHERE session_id = $1`, [tab.sessionId])
   // Before paying, while the bill is still open — afterwards the refusal would
   // be "already settled" and say nothing about this rule.
   const short = await api(owner, `/api/bills/${billId}/payments`, {

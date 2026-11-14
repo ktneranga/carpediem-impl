@@ -166,4 +166,6 @@ export const staffFields = {
   name: z.string().max(200),
   jobTitle: z.string().max(20),
   pin: z.string().max(20),
+  /** Story 10.6: the full set of granted permissions (the service checks each). */
+  permissions: z.array(z.string().max(40)).max(20).optional(),
 }

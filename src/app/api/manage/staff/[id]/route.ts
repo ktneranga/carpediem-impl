@@ -17,6 +17,7 @@ export async function PATCH(request: Request, { params }: Ctx) {
       name: staffFields.name.optional(),
       jobTitle: staffFields.jobTitle.optional(),
       pin: staffFields.pin.optional(),
+      permissions: staffFields.permissions,
       active: z.boolean().optional(),
     }),
   )

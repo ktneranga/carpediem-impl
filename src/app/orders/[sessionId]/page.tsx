@@ -4,7 +4,14 @@ import { and, asc, eq, isNull } from 'drizzle-orm'
 import { dailyOrderLabel } from '@/lib/order-number'
 import { dishCount } from '@/server/orders/item-count'
 import { z } from 'zod'
-import { canAddCustomCharge, canMarkSoldOut, type StaffRole } from '@/server/auth/permissions'
+import {
+  canAddCustomCharge,
+  canApproveVoids,
+  canMarkSoldOut,
+  canOpenManage,
+  parsePermissionsHeader,
+  type StaffRole,
+} from '@/server/auth/permissions'
 import { db } from '@/server/db'
 import { loadSubmittedRounds } from '@/server/orders/submitted-rounds'
 import { hasUnbilledItems, loadSessionBills } from '@/server/services/bill.service'
@@ -60,6 +67,8 @@ export default async function OrderPage({
   // Set by the proxy from the session. Decides whether the + beside the total
   // offers a custom charge (Story 4.9); the send route decides again.
   const staffRole = headersList.get('x-staff-role') as StaffRole | null
+  // Granted permissions (Story 10.6), set by the proxy from the database.
+  const staffPermissions = parsePermissionsHeader(headersList.get('x-staff-permissions'))
 
   // LEFT joins from the session outward. A counter sale returns exactly one row
   // with nulls for the table columns; a merged group returns one row per table,
@@ -210,8 +219,9 @@ export default async function OrderPage({
       initialBillMode={session.billMode}
       initialBills={initialBills}
       initialHasUnbilled={initialHasUnbilled}
-      canAddCustomCharge={canAddCustomCharge(staffRole)}
-      canManage={staffRole === 'owner'}
+      canAddCustomCharge={canAddCustomCharge(staffRole, staffPermissions)}
+      canManage={canOpenManage(staffRole, staffPermissions)}
+      canApproveVoids={canApproveVoids(staffRole, staffPermissions)}
       canMarkSoldOut={canMarkSoldOut(staffRole)}
     />
   )

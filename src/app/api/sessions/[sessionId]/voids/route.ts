@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { orderSessions } from '@/server/db/schema'
-import type { StaffRole } from '@/server/auth/permissions'
+import { parsePermissionsHeader, type StaffRole } from '@/server/auth/permissions'
 import { announceSessionTotals } from '@/server/orders/announce-floor'
 import { wakePrintQueue } from '@/server/print/wake'
 import { announcePayment } from '@/server/services/payment-announce'
@@ -78,6 +78,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
     const approval = await resolveApproval({
       staffId: parsedStaff.data,
       role,
+      permissions: parsePermissionsHeader(request.headers.get('x-staff-permissions')),
       tenantId: session.tenantId,
       approverPin: body.approverPin,
     })

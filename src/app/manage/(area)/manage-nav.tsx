@@ -43,10 +43,13 @@ const itemClass = cn(
 export function ManageNav({
   owner,
   unlocked,
+  grantedAreas = [],
   vendorLastUsed,
 }: {
   owner: boolean
   unlocked: boolean
+  /** A non-owner's granted Manage areas (Story 10.6), as section hrefs. */
+  grantedAreas?: string[]
   /** "signed in 14 Nov, 21:30 · last export 14 Nov, 21:31", or "never"; undefined = not shown. */
   vendorLastUsed?: string
 }) {
@@ -85,7 +88,9 @@ export function ManageNav({
 
       <nav aria-label="Manage sections" className="overflow-x-auto">
         <ul className="flex gap-sp-1 md:flex-col">
-          {MANAGE_SECTIONS.filter((section) => unlocked || ('waiter' in section && section.waiter)).map((section) => {
+          {MANAGE_SECTIONS.filter(
+            (section) => unlocked || ('waiter' in section && section.waiter) || grantedAreas.includes(section.href),
+          ).map((section) => {
             const current = pathname === section.href || pathname.startsWith(`${section.href}/`)
             const Icon = SECTION_ICONS[section.href]
             return (

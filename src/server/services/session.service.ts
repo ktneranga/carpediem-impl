@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm'
 import { db } from '@/server/db'
-import { staffSessions, tenantConfig, type staffRoleEnum } from '@/server/db/schema'
+import { staff, staffSessions, tenantConfig, type staffRoleEnum } from '@/server/db/schema'
 import { signSessionId, verifySessionCookie } from '@/server/auth/session-cookie'
 
 // NOTE: no `import 'server-only'` here.
@@ -94,6 +94,12 @@ export type ValidatedSession = {
   staffId: string
   tenantId: string
   role: StaffRole
+  /**
+   * The person's granted permissions (Story 10.6), read from `staff` on EVERY
+   * validation — not snapshotted at sign-in — so a revoke bites on the next
+   * request. Raw as stored; `effectivePermissions` adds an owner's full set.
+   */
+  permissions: string[]
   /** Seconds since last activity, measured by PostgreSQL. */
   idleSeconds: number
   timeoutMinutes: number
@@ -119,11 +125,13 @@ export async function validateSession(
       staffId: staffSessions.staffId,
       tenantId: staffSessions.tenantId,
       role: staffSessions.role,
+      permissions: staff.permissions,
       // Idle age computed by PostgreSQL against its own clock — never derived
       // from Date.now(). See the CLOCK AUTHORITY note above.
       idleSeconds: sql<number>`extract(epoch from (now() - ${staffSessions.lastActiveAt}))`,
     })
     .from(staffSessions)
+    .innerJoin(staff, eq(staff.id, staffSessions.staffId))
     .where(eq(staffSessions.id, sessionId))
     .limit(1)
 
@@ -146,6 +154,7 @@ export async function validateSession(
     staffId: row.staffId,
     tenantId: row.tenantId,
     role: row.role,
+    permissions: row.permissions ?? [],
     idleSeconds,
     timeoutMinutes,
   }

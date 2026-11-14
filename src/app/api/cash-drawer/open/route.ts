@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { staff } from '@/server/db/schema'
-import { canOpenCashDrawer, type StaffRole } from '@/server/auth/permissions'
+import { canOpenCashDrawer, parsePermissionsHeader, type StaffRole } from '@/server/auth/permissions'
 import { openWithoutSale } from '@/server/services/cash-drawer.service'
 import { wakePrintQueue } from '@/server/print/wake'
 
@@ -43,8 +43,13 @@ function fail(code: string, message: string, status: number) {
 export async function POST(request: Request) {
   const staffId = request.headers.get('x-staff-id')
   if (!staffId) return fail('UNAUTHENTICATED', 'Sign in required', 401)
-  if (!canOpenCashDrawer(request.headers.get('x-staff-role') as StaffRole | null)) {
-    return fail('FORBIDDEN', 'Only the owner can open the drawer without a sale', 403)
+  if (
+    !canOpenCashDrawer(
+      request.headers.get('x-staff-role') as StaffRole | null,
+      parsePermissionsHeader(request.headers.get('x-staff-permissions')),
+    )
+  ) {
+    return fail('FORBIDDEN', 'You are not allowed to open the drawer without a sale', 403)
   }
 
   let body: unknown
