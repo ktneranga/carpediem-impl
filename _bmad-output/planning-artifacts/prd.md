@@ -393,7 +393,7 @@ All 9 capabilities defined in the Product Scope MVP section are load-bearing —
 *(sprint-change-proposal-2026-11-04.md)* The restaurant is handed the system when these work end to end on site; everything else follows launch.
 
 1. Order entry, routing and printed tickets (built) — reviews of 4.8/4.9 closed.
-2. ~~Void / comp a sent item (FR47, FR48, Story 7.3)~~ — moved after launch 2026-11-06 (Teran). Until then a sent item stays on the bill.
+2. Void a sent item with owner-PIN approval, and cancel an unpaid bill (FR48 append-only; Story 7.5, added 2026-11-14). Comps (FR47) remain after launch.
 3. Customer bill printed (FR69, Story 6.6); cash drawer opens on cash payments, no-sale openings audited (FR72, Story 6.7).
 4. Manage area (FR70): menu with prices, options and sold-out (FR56, FR36); staff and PINs (FR58); end-of-day takings by business date (FR50, FR54 subset).
 5. Nightly backup, local plus an off-site copy (NFR-R4).

@@ -35,14 +35,14 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-03
-last_updated: 2026-11-13
+last_updated: 2026-11-14
 project: carpe-diem-restaurant
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 
-# GO-LIVE ORDER (sprint-change-proposal-2026-11-04.md):
-#   review 4-8 → 6-6 → 6-7 → 10-0 → 10-4 → 10-3 (lite, added 2026-11-13) → 8-3 → 10-2 → 9-5 → 11-3 (lite) → 1-4 (install)
+# GO-LIVE ORDER (sprint-change-proposal-2026-11-04.md; 7-5 added by sprint-change-proposal-2026-11-14.md):
+#   review 4-8 → 6-6 → 6-7 → 10-0 → 10-4 → 10-3 (lite, added 2026-11-13) → 8-3 → 10-2 → 9-5 → 7-5 (void) → 11-3 (lite) → 1-4 (install)
 # Everything else is after launch. 7-3 moved after launch 2026-11-06 (Teran): too complex for now;
 # the built work is in `git stash` ("Story 7.3 comp/void - reverted 2026-11-06").
 
@@ -120,11 +120,12 @@ development_status:
   epic-6-retrospective: optional
 
   # ── Epic 7: Audit Trail & Dispute Resolution ──────────────────────────────
-  epic-7: backlog
+  epic-7: in-progress  # 7-5 only for go-live
   7-1-build-disputetimeline-component: backlog
   7-2-implement-per-order-item-history-view: backlog
   7-3-implement-comp-recording-and-item-reassignment: backlog
   7-4-implement-full-audit-trail-view: backlog
+  7-5-void-a-sent-item: ready-for-dev  # added 2026-11-14 — go-live (void + cancel unpaid bill, owner-PIN approval)
   epic-7-retrospective: optional
 
   # ── Epic 8: Inventory Management ─────────────────────────────────────────
@@ -140,7 +141,7 @@ development_status:
   9-2-implement-real-time-revenue-chart: review
   9-3-implement-cash-reconciliation-comp-log-inventory-alerts-and-long-open-tables: review  # counted cash (Teran 2026-11-13)
   9-4-implement-manager-shift-summary-and-remote-access: backlog
-  9-5-end-of-day-takings: review  # added 2026-11-04 — go-live
+  9-5-end-of-day-takings: review  # added 2026-11-04 — go-live; merged into the Dashboard 2026-11-14 (calendar icon, Print icon, Sales + No-sale panels)
   9-6-dashboard-periods-insights-and-dark-mode: review  # added 2026-11-13 (Teran), from the Carpe Diem mock-up
   epic-9-retrospective: optional
 

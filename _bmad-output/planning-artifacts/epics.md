@@ -2110,6 +2110,9 @@ So that I can show a customer exactly who entered each item, in which round, and
 > **Moved after launch 2026-11-06 (Teran):** too complex for now. The build is kept in `git stash`
 > ("Story 7.3 comp/void - reverted 2026-11-06"); it was never committed.
 >
+> **2026-11-14:** the VOID part is now Story 7.5 (go-live), as an `ITEM_VOIDED` event with owner-PIN
+> approval. 7.3 keeps comps, reversing records, the `comp` permission and reassignment.
+>
 > **Amended 2026-11-04 (Teran).** These override the criteria below where they differ:
 > - **Where:** comp from the SENT items on the order screen and from the bill screen. The order-history
 >   view (7.1/7.2) is post-launch, so it is not the entry point.
@@ -2199,6 +2202,44 @@ So that I can investigate discrepancies, verify staff actions, and produce accou
 **Given** the audit trail displayed in the view
 **When** any record is inspected at any role level
 **Then** no update or delete action is available in the UI; the view is strictly read-only; underlying records remain protected by the PostgreSQL RULE from Story 1.3
+
+---
+
+### Story 7.5: Void a Sent Item (go-live)
+
+> **Added 2026-11-14** by sprint-change-proposal-2026-11-14.md: the void part of 7.3, for launch.
+> Overrides the 2026-11-04 note on 7.3 for voids: a void is an `ITEM_VOIDED` order event, not a
+> `comp_record`. Rebuilt small; the 7.3 stash is reference only (its VOID ticket printing is reusable).
+
+As a waiter,
+I want to void an item sent by mistake, with the owner's approval,
+So that the guest is not charged and the kitchen stops making it.
+
+**Acceptance Criteria:**
+
+**Given** a sent line on an open order whose units are not on a bill
+**When** the waiter taps Void on it, picks how many (1 to the unbilled units) and a reason ("Entered by mistake", "Guest changed mind", "Kitchen can't make it", "Other" + note)
+**Then** a staff member with the owner role enters their PIN on the same device to approve; on approval an `ITEM_VOIDED` order event is written, linked to the original line, with the quantity, reason, requesting staff and approving staff; the original event is not changed
+
+**Given** the void is approved
+**When** the order and bill views refresh
+**Then** the voided units are not billable, the order total and item counts drop, and a VOID ticket (`VOID · #042 · Table 5 · 1 × Fried Rice`) is queued to that item's station printer
+
+**Given** a wrong PIN, a non-owner PIN, or a quantity above the unbilled units
+**When** approval is attempted
+**Then** nothing is written and the reason is shown; repeated wrong PINs follow the login lockout rules
+
+**Given** the item is on a bill with no payments
+**When** an owner approves Cancel bill on the bill screen (reason required)
+**Then** an append-only bill cancellation is recorded (bill, reason, requester, approver); the bill and its lines are not modified; their items count as unbilled again; the cancelled bill no longer counts on the Dashboard, the end-of-day slip, or in "is the table finished"; a new bill can be generated
+
+**Given** a bill with any payment recorded
+**When** Cancel bill is attempted
+**Then** it is refused ("This bill has payments — it can't be cancelled")
+
+**Given** a void or a bill cancellation
+**When** the owner opens the Dashboard
+**Then** it appears in "Unclosed & corrections" with the item, reason, requester and approver
 
 ---
 
