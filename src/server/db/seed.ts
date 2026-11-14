@@ -173,7 +173,7 @@ async function main() {
         // Printed under the name on every guest bill (Teran, 2026-11-12).
         receiptHeader: 'Hikkaduwa\nTel +94 72 455 0082',
         receiptFooter: 'Thank you! Come again\nInstagram: carpe diem hikkaduwa\ncarpediemhikkaduwa.com',
-        receiptQrUrl: 'https://www.google.com/search?q=carpe+diem+hikkaduwa',
+        receiptQrUrl: 'https://g.page/r/CXdv1Yct8JRkEAI/review',
         receiptQrCaption: 'Scan to review us on Google',
         // The sun from the logo, as a 192-dot printer raster (made from the PNG once).
         receiptLogo: carpeDiemLogo,
