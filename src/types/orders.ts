@@ -74,6 +74,10 @@ export type SubmittedItemRow = {
   custom: boolean
   seatLabel: string | null
   submittedAt: string
+  /** Units voided (Story 7.5). `quantity` is what was SENT; it never shrinks. */
+  voidedQuantity: number
+  /** Units on a live bill. Units left to void = quantity − voided − billed. */
+  billedQuantity: number
 }
 
 /** One round of a session's ordering, oldest first. */

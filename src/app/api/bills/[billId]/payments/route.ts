@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { db } from '@/server/db'
 import {
   BillAlreadySettledError,
+  BillCancelledError,
   BillNotFoundError,
   OverpaymentError,
   recordPayments,
@@ -167,6 +168,9 @@ export async function POST(
     return NextResponse.json({ success: true, data: result }, { status: 201 })
   } catch (error) {
     if (error instanceof BillNotFoundError) return fail('BILL_NOT_FOUND', 'No such bill', 404)
+    if (error instanceof BillCancelledError) {
+      return fail('BILL_CANCELLED', 'This bill was cancelled. Use the new bill.', 409)
+    }
     if (error instanceof BillAlreadySettledError) {
       return fail('BILL_ALREADY_SETTLED', 'This bill is already paid', 409)
     }

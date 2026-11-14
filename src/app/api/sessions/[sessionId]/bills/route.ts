@@ -6,6 +6,7 @@ import { db } from '@/server/db'
 import { announcePayment } from '@/server/services/payment-announce'
 import { bills, orderSessions, staff, tenantConfig } from '@/server/db/schema'
 import { DUMMY_PIN_HASH } from '@/server/auth/dummy-pin-hash'
+import { liveBill } from '@/server/orders/units'
 import {
   BillAlreadyOpenError,
   BillTooLargeError,
@@ -240,7 +241,7 @@ export async function POST(
             // row on a part-settled table is usually a SEAT bill, so this
             // handed the client a seat bill's id for a consolidated 409. The
             // 6.2 review predicted this in a comment; 6.4 is the moment.
-            .where(and(eq(bills.sessionId, sessionId), eq(bills.type, 'consolidated')))
+            .where(and(eq(bills.sessionId, sessionId), eq(bills.type, 'consolidated'), liveBill))
             .orderBy(asc(bills.createdAt))
             .limit(1)
           billId = winner?.id ?? ''

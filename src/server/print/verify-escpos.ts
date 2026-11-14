@@ -71,6 +71,22 @@ async function main() {
   check('BOT and KOT-P are typed correctly (FR14-16)',
     text(bot).includes('BOT') && text(kotp).includes('KOT-P'))
 
+  // ── A VOID ticket (Story 7.5) ─────────────────────────────────────────────
+  const voided = text(buildTicket(ticket({
+    void: true,
+    dailyNumber: 42,
+    businessDate: '2026-11-04',
+    alsoFor: ['bar'],
+    lines: [{ eventId: 'v', name: 'Fried Rice', quantity: 1, modifierText: null, seatLabel: 'Seat 1', seatNote: null }],
+  })))
+  check('a void prints VOID KOT #042 in the header',
+    voided.includes('VOID KOT #042'), voided.split('\n').find((l) => l.includes('VOID')))
+  check('a void says when it was voided and which round the dish was on',
+    voided.includes('VOID  ') && voided.includes('(Round 2)') && voided.includes('2:34 PM'))
+  check('a void carries the dish and no SERVE WITH line',
+    voided.includes('1 x Fried Rice') && !voided.includes('SERVE WITH'))
+  check('an ordinary ticket never says VOID', !asText.includes('VOID'))
+
   const counter = buildTicket(ticket({ tableLabels: ['COUNTER'], usesSeats: false }))
   check('a counter sale prints COUNTER and no seat headings (FR18)',
     text(counter).includes('COUNTER') && !text(counter).includes('Seat 1'))

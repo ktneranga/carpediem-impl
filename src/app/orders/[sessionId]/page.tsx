@@ -136,7 +136,7 @@ export default async function OrderPage({
 
   // Drives which close reasons the screen offers, and the walkout message's
   // count. DISHES — the sum of ITEM_ADDED quantities (`dishCount`) — not rows;
-  // ITEM_REMOVED is not subtracted because nothing writes it yet. Every
+  // voided units are subtracted (Story 7.5). Every
   // "items" figure in the app uses the same expression.
   const [items] = await db
     .select({ total: dishCount })

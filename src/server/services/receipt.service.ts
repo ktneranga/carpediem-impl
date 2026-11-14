@@ -223,7 +223,8 @@ export async function printBill(
   { billId, staffId = null }: { billId: string; staffId?: string | null },
 ): Promise<{ jobId: string }> {
   const bill = await getBill(tx, billId)
-  if (!bill) throw new ReceiptBillNotFoundError()
+  // A cancelled bill (Story 7.5) is never handed to a guest again.
+  if (!bill || bill.cancelledAt) throw new ReceiptBillNotFoundError()
   await lockOpenSession(tx, bill.sessionId)
 
   const heading = await readHeading(tx, bill.sessionId, staffId)

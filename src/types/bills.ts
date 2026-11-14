@@ -72,6 +72,8 @@ export type BillDetail = BillTotals & {
    */
   seatLabel: string | null
   createdAt: string
+  /** ISO when the bill was cancelled (Story 7.5); null on a live bill. A cancelled bill counts nowhere. */
+  cancelledAt: string | null
   lines: BillLineDetail[]
   comps: BillCompDetail[]
 }

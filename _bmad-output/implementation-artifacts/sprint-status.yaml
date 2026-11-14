@@ -125,7 +125,7 @@ development_status:
   7-2-implement-per-order-item-history-view: backlog
   7-3-implement-comp-recording-and-item-reassignment: backlog
   7-4-implement-full-audit-trail-view: backlog
-  7-5-void-a-sent-item: ready-for-dev  # added 2026-11-14 — go-live (void + cancel unpaid bill, owner-PIN approval)
+  7-5-void-a-sent-item: review  # added 2026-11-14 — go-live (void + cancel unpaid bill, owner-PIN approval)
   epic-7-retrospective: optional
 
   # ── Epic 8: Inventory Management ─────────────────────────────────────────

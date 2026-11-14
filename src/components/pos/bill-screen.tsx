@@ -21,6 +21,7 @@ import { loginUrl } from '@/lib/return-to'
 import { routeForDestination } from '@/lib/design'
 import { cn } from '@/lib/utils'
 import { ActionStripShell } from '@/components/pos/action-strip-chrome'
+import { VoidSheet } from '@/components/pos/void-sheet'
 import type { ProductionDestination } from '@/types/orders'
 
 export type BillScreenLine = {
@@ -337,6 +338,7 @@ export function BillScreen({
   draft,
   draftError = null,
   seats,
+  canApprove = false,
 }: {
   sessionId: string
   tableLabel: string
@@ -348,8 +350,27 @@ export function BillScreen({
   /** Why the unbilled part could not be priced, when it could not (P2). */
   draftError?: string | null
   seats: { id: string; name: string }[]
+  /** The signed-in staff is an owner: Cancel bill needs no PIN (Story 7.5). */
+  canApprove?: boolean
 }) {
   const router = useRouter()
+  /** The unpaid bill being cancelled (Story 7.5). */
+  const [cancelling, setCancelling] = useState<BillScreenBill | null>(null)
+  /**
+   * "Cancel bill" under an UNPAID recorded bill (Story 7.5). A rare action, so
+   * a small text control under the totals, never a strip button. A bill with
+   * any payment shows nothing: the server would refuse it.
+   */
+  const cancelControl = (bill: BillScreenBill) =>
+    bill.paidPaisa === 0 ? (
+      <button
+        type="button"
+        onClick={() => setCancelling(bill)}
+        className="h-11 self-start rounded-control px-sp-2 text-fs-14 font-semibold text-slate-600 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 night:text-night-second"
+      >
+        Cancel bill
+      </button>
+    ) : null
   const storageKey = `bill-split:${sessionId}`
   const draftLines = draft?.lines ?? []
 
@@ -972,6 +993,7 @@ export function BillScreen({
                   due={bill.totalPaisa - bill.paidPaisa}
                   {...printProps(bill.billId, { kind: 'bill', key: bill.billId, title: bill.label, bill })}
                 />
+                {cancelControl(bill)}
               </Column>
             ))}
 
@@ -1109,6 +1131,7 @@ export function BillScreen({
                 onSettle={() => settle(wholePayables[0]!)}
                 {...printProps(wholePayables[0]!.key, wholePayables[0]!)}
               />
+              {wholePayables[0]!.kind === 'bill' ? cancelControl(wholePayables[0]!.bill) : null}
               {/* Offered from two DRINKS, not two lines: "2× Lion Lager" is one
                   line, and since migration 0025 the split gives one to each
                   person. Counting lines hid the card on exactly the bar tab
@@ -1129,6 +1152,7 @@ export function BillScreen({
                   onSettle={() => settle(payable)}
                   {...printProps(payable.key, payable)}
                 />
+                {payable.kind === 'bill' ? cancelControl(payable.bill) : null}
                 {payable.kind === 'draft' && itemCount(draftLines) >= 2 ? (
                   <SplitCard onSplit={startSplit} />
                 ) : null}
@@ -1248,6 +1272,22 @@ export function BillScreen({
           {closing ? 'Closing…' : allPaid ? 'All paid · Close table' : 'Close table'}
         </button>
       </ActionStripShell>
+
+      {cancelling ? (
+        <VoidSheet
+          sessionId={sessionId}
+          target={{ mode: 'cancel-bill', billId: cancelling.billId, label: cancelling.label, totalPaisa: cancelling.totalPaisa }}
+          needsApproval={!canApprove}
+          onCancel={() => setCancelling(null)}
+          onDone={() => {
+            // The bill is gone and its items are unbilled again: back to the
+            // order, where the wrong item can be voided before a new bill.
+            setCancelling(null)
+            router.push(`/orders/${sessionId}`)
+            router.refresh()
+          }}
+        />
+      ) : null}
 
       {askClose ? (
         <CloseAfterPaymentDialog

@@ -125,12 +125,8 @@ export const ALL_ZONES_ICON: LucideIcon = LayoutGrid
  * owner-configured and there is no column for it. Renaming "Tables" switches
  * seats off there. If that ever bites, this becomes a per-zone setting.
  */
-const SEATED_ZONES = new Set(['tables'])
-
-export function zoneUsesSeats(zoneName: string | null): boolean {
-  // A counter sale has no zone, and no seats.
-  return zoneName !== null && SEATED_ZONES.has(zoneName.trim().toLowerCase())
-}
+// In its own module (no icons), so server code run outside Next can use it.
+export { zoneUsesSeats } from '@/lib/zone-seats'
 
 export function zoneIcon(zoneName: string): LucideIcon {
   return ZONE_ICONS[zoneName.trim().toLowerCase()] ?? LayoutGrid

@@ -102,6 +102,44 @@ export function buildTicketPayloads(input: {
 }
 
 /**
+ * The ticket that tells a station to STOP making something (Story 7.5).
+ *
+ * One line, the voided units of one dish, to the station that dish went to.
+ * Copied and sanitized exactly like a round's ticket, for the same reasons: it
+ * must print the header the order has now even if the printer is out of paper
+ * for ten minutes, and every string on it reaches printer firmware. No SERVE
+ * WITH: the void concerns this station only.
+ */
+export function buildVoidTicketPayload(input: {
+  destination: ProductionDestination
+  roundNumber: number
+  tableLabels: string[]
+  usesSeats: boolean
+  /** The void row's `created_at`: PostgreSQL's clock, not Node's. */
+  voidedAt: Date
+  timeZone?: string
+  dailyNumber: number
+  businessDate: string
+  line: TicketLine
+}): TicketPayload {
+  return {
+    destination: input.destination,
+    roundNumber: input.roundNumber,
+    tableLabels:
+      input.tableLabels.length > 0
+        ? input.tableLabels.map((label) => sanitizeTicketText(label) ?? label)
+        : ['COUNTER'],
+    usesSeats: input.usesSeats,
+    submittedAt: input.voidedAt.toISOString(),
+    timeZone: input.timeZone,
+    dailyNumber: input.dailyNumber,
+    businessDate: input.businessDate,
+    void: true,
+    lines: [sanitizeLine(input.line)],
+  }
+}
+
+/**
  * Free text from `tenant_config` as printable lines: split on line breaks
  * BEFORE cleaning, because `sanitizeTicketText` folds a newline to a space and
  * "No 12, Galle Road" and "Tel 011 234 5678" are two lines on purpose.

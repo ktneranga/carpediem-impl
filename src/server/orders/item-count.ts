@@ -1,6 +1,6 @@
 import 'server-only'
 import { sql } from 'drizzle-orm'
-import { orderEvents } from '@/server/db/schema'
+import { liveUnits } from '@/server/orders/units'
 
 /**
  * How many DISHES an order holds: the sum of `ITEM_ADDED` quantities.
@@ -15,12 +15,15 @@ import { orderEvents } from '@/server/db/schema'
  * The abandoned-vs-walkout decision itself was never wrong: it only tests the
  * count against zero, and rows and quantities always agreed on that.
  *
+ * Voided units (Story 7.5) are subtracted: a voided dish was never served,
+ * and an order whose every unit is voided counts as nothing ordered.
+ *
  * One expression, shared, so the sites cannot drift apart again. Callers must
  * still filter to `event_type = 'ITEM_ADDED'` — this sums what it is given.
  * `sum()` of an int column is a bigint, which the driver returns as a string;
  * `mapWith(Number)` turns it back into a number.
  */
-export const dishCount = sql<number>`coalesce(sum(${orderEvents.quantity}), 0)`.mapWith(Number)
+export const dishCount = sql<number>`coalesce(sum(${liveUnits}), 0)`.mapWith(Number)
 
 /**
  * What an order has RUN UP so far, in integer paisa.
@@ -36,5 +39,5 @@ export const dishCount = sql<number>`coalesce(sum(${orderEvents.quantity}), 0)`.
  * contract as `dishCount`: filter to `event_type = 'ITEM_ADDED'` yourself.
  */
 export const dishTotalPaisa = sql<number>`
-  coalesce(sum(${orderEvents.quantity} * ${orderEvents.unitPricePaisa}), 0)
+  coalesce(sum(${liveUnits} * "order_events"."unit_price_paisa"), 0)
 `.mapWith(Number)

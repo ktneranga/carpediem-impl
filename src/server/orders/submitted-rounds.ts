@@ -2,6 +2,7 @@ import { and, asc, eq, sql } from 'drizzle-orm'
 import { optionText } from '@/lib/options'
 import { db } from '@/server/db'
 import { menuItems, orderEvents, seatSlots } from '@/server/db/schema'
+import { billedUnits, voidedUnits } from '@/server/orders/units'
 import type { SubmittedRoundRow } from '@/types/orders'
 
 export type { SubmittedItemRow, SubmittedRoundRow } from '@/types/orders'
@@ -38,6 +39,8 @@ export async function loadSubmittedRounds(sessionId: string): Promise<SubmittedR
       id: orderEvents.id,
       roundNumber: roundOrder,
       quantity: orderEvents.quantity,
+      voidedQuantity: voidedUnits,
+      billedQuantity: billedUnits,
       unitPricePaisa: orderEvents.unitPricePaisa,
       modifierText: orderEvents.modifierText,
       // The options as they were at send (Story 4.8) — a snapshot, so a later
@@ -84,6 +87,8 @@ export async function loadSubmittedRounds(sessionId: string): Promise<SubmittedR
       custom: row.customName !== null,
       seatLabel: row.seatLabel,
       submittedAt: row.createdAt.toISOString(),
+      voidedQuantity: Number(row.voidedQuantity),
+      billedQuantity: Number(row.billedQuantity),
     })
   }
 

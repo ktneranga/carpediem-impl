@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { db } from '@/server/db'
 import { announcePayment } from '@/server/services/payment-announce'
 import { bills, orderSessions, staff, tenantConfig } from '@/server/db/schema'
+import { liveBill } from '@/server/orders/units'
 import { DUMMY_PIN_HASH } from '@/server/auth/dummy-pin-hash'
 import {
   BillTooLargeError,
@@ -167,7 +168,7 @@ export async function POST(
           const [winner] = await db
             .select({ id: bills.id })
             .from(bills)
-            .where(and(eq(bills.sessionId, sessionId), eq(bills.seatSlotId, seatId)))
+            .where(and(eq(bills.sessionId, sessionId), eq(bills.seatSlotId, seatId), liveBill))
             .limit(1)
           billId = winner?.id ?? ''
         } catch (reReadError) {

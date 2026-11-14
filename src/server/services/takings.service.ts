@@ -56,6 +56,7 @@ const spanOrders = (tenantId: string, from: string, to: string) => sql`(
  * What was sold and paid over a span of business days — the ONE definition the
  * Dashboard and the end-of-day slip share, so their figures can never differ.
  * Comps are the comps on bills (`bill_comps`): items − comps = subtotal.
+ * Cancelled bills (Story 7.5) count nowhere.
  */
 export type Sales = {
   orders: number
@@ -85,15 +86,15 @@ export async function loadSales(
              coalesce(sum(service_charge_paisa), 0)::bigint as service,
              coalesce(sum(tax_paisa), 0)::bigint as tax,
              coalesce(sum(total_paisa), 0)::bigint as total
-        from bills where session_id in ${span}`),
+        from bills where session_id in ${span} and cancelled_at is null`),
     rows<{ n: number }>(executor, sql`
       select coalesce(sum(l.amount_paisa), 0)::bigint as n
         from bill_lines l join bills b on b.id = l.bill_id
-       where b.session_id in ${span}`),
+       where b.session_id in ${span} and b.cancelled_at is null`),
     rows<{ n: number; lines: number }>(executor, sql`
       select coalesce(sum(c.amount_paisa), 0)::bigint as n, count(*)::int as lines
         from bill_comps c join bills b on b.id = c.bill_id
-       where b.session_id in ${span}`),
+       where b.session_id in ${span} and b.cancelled_at is null`),
     rows<{ cash: number; card: number; transfer: number }>(executor, sql`
       select coalesce(sum(amount_paisa) filter (where method = 'cash'), 0)::bigint as cash,
              coalesce(sum(amount_paisa) filter (where method = 'card'), 0)::bigint as card,
@@ -136,7 +137,7 @@ export async function loadTakings(
     rows<{ n: number; owed: number }>(executor, sql`
       select count(*)::int as n,
              coalesce(sum(
-               (select coalesce(sum(b.total_paisa), 0) from bills b where b.session_id = s.id)
+               (select coalesce(sum(b.total_paisa), 0) from bills b where b.session_id = s.id and b.cancelled_at is null)
              - (select coalesce(sum(p.amount_paisa), 0) from payment_records p where p.session_id = s.id)
              ), 0)::int as owed
         from order_sessions s

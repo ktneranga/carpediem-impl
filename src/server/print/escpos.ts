@@ -384,7 +384,11 @@ export function buildTicket(ticket: TicketPayload): Buffer {
   // The order number beside the station, at the same size (Teran,
   // 2026-11-02): "KOT #042" is what a cook calls across the pass.
   const number = orderNumberOf(ticket)
-  emit(number ? `${ticketTypeOf(ticket.destination)} ${dailyOrderLabel(number)}` : ticketTypeOf(ticket.destination))
+  // A void says so FIRST, at the same size: "VOID KOT #042" is the one ticket
+  // a cook must not read as an order (Story 7.5).
+  const isVoid = ticket.void === true
+  const type = `${isVoid ? 'VOID ' : ''}${ticketTypeOf(ticket.destination)}`
+  emit(number ? `${type} ${dailyOrderLabel(number)}` : type)
   command(SIZE_NORMAL)
 
   // FR18: EVERY table on the session, or COUNTER where it has none. This line
@@ -399,13 +403,14 @@ export function buildTicket(ticket: TicketPayload): Buffer {
 
   // The date as well as the time (Teran, 2026-11-02): a ticket found the
   // next morning, or quoted in a dispute, says which day it was.
-  emit(
-    `Round ${ticket.roundNumber}    ${calendarDate(ticket.submittedAt, ticket.timeZone)}  ${clockTime(ticket.submittedAt, ticket.timeZone)}`,
-  )
+  // On a void the time is WHEN it was voided, and the round says which ticket
+  // the dish was on.
+  const when = `${calendarDate(ticket.submittedAt, ticket.timeZone)}  ${clockTime(ticket.submittedAt, ticket.timeZone)}`
+  emit(isVoid ? `VOID  ${when}  (Round ${ticket.roundNumber})` : `Round ${ticket.roundNumber}    ${when}`)
   // The round's other stations, by name only (Teran, 2026-11-02): one line
   // tells the kitchen the pizza and the drinks are coming for the same table,
   // without spending paper on their items.
-  const serveWith = serveWithLine(ticket)
+  const serveWith = isVoid ? null : serveWithLine(ticket)
   if (serveWith) {
     command(BOLD_ON)
     for (const wrapped of wrapLine(serveWith)) emit(wrapped)

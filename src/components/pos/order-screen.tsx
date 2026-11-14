@@ -14,7 +14,8 @@ import {
 } from '@/components/pos/order-action-strip'
 import { SeatSelector, type SeatSlot } from '@/components/pos/seat-selector'
 import { ModifierSheet } from '@/components/pos/modifier-sheet'
-import { RoundHistory } from '@/components/pos/round-history'
+import { RoundHistory, voidableUnits } from '@/components/pos/round-history'
+import { VoidSheet, type VoidSheetTarget } from '@/components/pos/void-sheet'
 import {
   StagedRoundList,
   type StagedLineProblem,
@@ -838,6 +839,19 @@ export function OrderScreen({
   // send id, minted at open, so a retry after a lost response is a replay, not
   // a second charge.
   const [customSheet, setCustomSheet] = useState<{ seatId: string; sendId: string } | null>(null)
+
+  // ── Void a sent item (Story 7.5) ──────────────────────────────────────────
+  // An owner approves their own void; anyone else needs an owner's PIN on this
+  // tablet (`canManage` is "is an owner"). After it, the history, the bill
+  // state and the floor all move — refresh all three.
+  const [voidTarget, setVoidTarget] = useState<VoidSheetTarget | null>(null)
+  function afterVoid() {
+    setVoidTarget(null)
+    void queryClient.invalidateQueries({ queryKey: ['orders', sessionId] })
+    void queryClient.invalidateQueries({ queryKey: billQueryKey })
+    void queryClient.invalidateQueries({ queryKey: ['tables'] })
+    void queryClient.invalidateQueries({ queryKey: COUNTER_QUERY_KEY })
+  }
   const customSheetSeat = customSheet
     ? (seats.find((seat) => seat.id === customSheet.seatId) ?? null)
     : null
@@ -1262,8 +1276,9 @@ export function OrderScreen({
   // `submittedRounds` is a live query, so it knows about anything sent since.
   // Taking the larger of the two covers both directions: the server's count
   // at load, and whatever this tablet has sent on top of it.
+  // Voided units (Story 7.5) are not on the table.
   const sentItemCount = submittedRounds.reduce(
-    (total, round) => total + round.items.reduce((sum, item) => sum + item.quantity, 0),
+    (total, round) => total + round.items.reduce((sum, item) => sum + item.quantity - item.voidedQuantity, 0),
     0,
   )
   const liveItemCount = Math.max(itemCount, sentItemCount)
@@ -1343,7 +1358,7 @@ export function OrderScreen({
   const sentPaisa = submittedRounds.reduce(
     (total, round) =>
       total +
-      round.items.reduce((sum, item) => sum + (item.unitPricePaisa ?? 0) * item.quantity, 0),
+      round.items.reduce((sum, item) => sum + (item.unitPricePaisa ?? 0) * (item.quantity - item.voidedQuantity), 0),
     0,
   )
 
@@ -1729,7 +1744,19 @@ export function OrderScreen({
           {/* The round. Scrolls on its own; the seats above and the total below
               stay put. History sits ABOVE the unsent lines (AC-6). */}
           <div className="flex min-h-0 flex-1 flex-col gap-sp-3 overflow-y-auto p-sp-4">
-            <RoundHistory rounds={submittedRounds} showSeats={usesSeats} />
+            <RoundHistory
+              rounds={submittedRounds}
+              showSeats={usesSeats}
+              onVoid={(item) =>
+                setVoidTarget({
+                  mode: 'void',
+                  orderEventId: item.id,
+                  name: item.name,
+                  unitPricePaisa: item.unitPricePaisa,
+                  maxQuantity: voidableUnits(item),
+                })
+              }
+            />
 
             <StagedRoundList
               showSeats={usesSeats}
@@ -1836,6 +1863,16 @@ export function OrderScreen({
             }
             setSheet(null)
           }}
+        />
+      ) : null}
+
+      {voidTarget ? (
+        <VoidSheet
+          sessionId={sessionId}
+          target={voidTarget}
+          needsApproval={!canManage}
+          onCancel={() => setVoidTarget(null)}
+          onDone={afterVoid}
         />
       ) : null}
 

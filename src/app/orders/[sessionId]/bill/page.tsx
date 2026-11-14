@@ -1,3 +1,4 @@
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
@@ -186,6 +187,8 @@ export default async function BillPage({
       draft={draft}
       draftError={draftError}
       seats={seats}
+      // Cancel bill (Story 7.5): an owner approves their own; others need an owner's PIN.
+      canApprove={(await headers()).get('x-staff-role') === 'owner'}
     />
   )
 }

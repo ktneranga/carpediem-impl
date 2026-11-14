@@ -1,7 +1,8 @@
 import 'server-only'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '@/server/db'
-import { billLines, bills, orderEvents, paymentRecords } from '@/server/db/schema'
+import { bills, orderEvents, paymentRecords } from '@/server/db/schema'
+import { hasUnbilledUnits, liveBill } from '@/server/orders/units'
 import { hasUnbilledItems } from '@/server/services/bill.service'
 import { lockOpenSession } from '@/server/services/table-session.service'
 import type { PaymentState } from '@/types/tables'
@@ -28,6 +29,9 @@ export type BillPayments = {
 export class BillNotFoundError extends Error {}
 /** The bill's payments already sum to its total. */
 export class BillAlreadySettledError extends Error {}
+
+/** A cancelled bill (Story 7.5) takes no payment; the new bill does. */
+export class BillCancelledError extends Error {}
 /** The tenders would take the bill past its total. Carries what is still owed. */
 export class OverpaymentError extends Error {
   constructor(readonly outstandingPaisa: number) {
@@ -127,11 +131,12 @@ export async function recordPayments(
   cashRecordId: string | null
 }> {
   const [bill] = await tx
-    .select({ sessionId: bills.sessionId, totalPaisa: bills.totalPaisa })
+    .select({ sessionId: bills.sessionId, totalPaisa: bills.totalPaisa, cancelledAt: bills.cancelledAt })
     .from(bills)
     .where(eq(bills.id, billId))
     .limit(1)
   if (!bill) throw new BillNotFoundError()
+  if (bill.cancelledAt) throw new BillCancelledError()
 
   // Throws SessionAlreadyClosedError for a closed session: a closed table
   // takes no more money, and the error says so rather than recording it.
@@ -196,7 +201,7 @@ export async function isFullyPaid(tx: Tx | typeof db, sessionId: string): Promis
   const sessionBills = await tx
     .select({ id: bills.id, totalPaisa: bills.totalPaisa })
     .from(bills)
-    .where(eq(bills.sessionId, sessionId))
+    .where(and(eq(bills.sessionId, sessionId), liveBill))
   if (sessionBills.length === 0) return false
 
   const paidByBill = new Map(
@@ -288,13 +293,13 @@ export async function sessionPaymentStates(
           and(
             inArray(orderEvents.sessionId, ids),
             eq(orderEvents.eventType, 'ITEM_ADDED'),
-            sql`${orderEvents.quantity} > coalesce((select sum(${billLines.quantity}) from ${billLines} where ${billLines.orderEventId} = ${orderEvents.id}), 0)`,
+            hasUnbilledUnits,
           ),
         ),
       executor
         .select({ id: bills.id, sessionId: bills.sessionId, totalPaisa: bills.totalPaisa })
         .from(bills)
-        .where(inArray(bills.sessionId, ids)),
+        .where(and(inArray(bills.sessionId, ids), liveBill)),
       executor
         .select({
           sessionId: paymentRecords.sessionId,

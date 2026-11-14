@@ -13,6 +13,7 @@ import {
   uniqueIndex,
   primaryKey,
   check,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core'
 // Type-only, and from a module that imports nothing. It types the `print_jobs`
 // ticket column so a malformed payload is a compile error rather than a
@@ -730,9 +731,25 @@ export const orderEvents = pgTable('order_events', {
    * that lock inside the transaction. Do not pre-check and hope.
    */
   roundNumber:    integer('round_number'),
+  /**
+   * On an `ITEM_VOIDED` row (Story 7.5): the `ITEM_ADDED` line it voids, and the
+   * owner-role staff member who approved it (`staff_id` is who asked). Voided
+   * units are never billable; the original row is never touched. The trigger
+   * `order_event_void_within_quantity` (migration 0043) stops an over-void.
+   */
+  voidsEventId:      uuid('voids_event_id').references((): AnyPgColumn => orderEvents.id),
+  approvedByStaffId: uuid('approved_by_staff_id').references(() => staff.id),
+  /** The tablet's id for a void request, so a double tap writes one row. */
+  requestId:         uuid('request_id'),
   createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_order_events_session_id').on(t.sessionId),
+  index('idx_order_events_voids_event').on(t.voidsEventId).where(sql`${t.voidsEventId} IS NOT NULL`),
+  uniqueIndex('idx_order_events_session_request').on(t.sessionId, t.requestId).where(sql`${t.requestId} IS NOT NULL`),
+  check(
+    'order_events_void_shape',
+    sql`${t.eventType} <> 'ITEM_VOIDED' OR (${t.voidsEventId} IS NOT NULL AND ${t.approvedByStaffId} IS NOT NULL AND ${t.quantity} > 0)`,
+  ),
   index('idx_order_events_staff_id').on(t.staffId),
   index('idx_order_events_created_at').on(t.createdAt),
   index('idx_order_events_seat_slot_id').on(t.seatSlotId),
@@ -838,8 +855,24 @@ export const bills = pgTable('bills', {
   personLabel: text('person_label'),
 
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+
+  /**
+   * A CANCELLED bill (Story 7.5): an unpaid bill taken back so its items can be
+   * corrected and billed again. Set once, all four together, and never changed —
+   * `immutable_bills` (migration 0043) allows exactly that one update. A
+   * cancelled bill counts nowhere: use `liveBill` (`server/orders/units.ts`).
+   */
+  cancelledAt:              timestamp('cancelled_at', { withTimezone: true }),
+  cancelledByStaffId:       uuid('cancelled_by_staff_id').references(() => staff.id),
+  cancelApprovedByStaffId:  uuid('cancel_approved_by_staff_id').references(() => staff.id),
+  cancelReason:             text('cancel_reason'),
 }, (t) => [
   index('idx_bills_session_id').on(t.sessionId),
+  check(
+    'bills_cancel_all_or_none',
+    sql`(${t.cancelledAt} IS NULL AND ${t.cancelledByStaffId} IS NULL AND ${t.cancelApprovedByStaffId} IS NULL AND ${t.cancelReason} IS NULL)
+     OR (${t.cancelledAt} IS NOT NULL AND ${t.cancelledByStaffId} IS NOT NULL AND ${t.cancelApprovedByStaffId} IS NOT NULL AND length(trim(${t.cancelReason})) > 0)`,
+  ),
   /**
    * One bill per seat, decided by the database (Story 6.4, AC-6 and AC-9).
    *
@@ -854,7 +887,8 @@ export const bills = pgTable('bills', {
    * It is raised by the `bills` INSERT, not the `bill_lines` one, so the
    * service catches it around that statement — see `generateSeatBill`.
    */
-  uniqueIndex('idx_bills_seat_slot').on(t.seatSlotId).where(sql`${t.seatSlotId} IS NOT NULL`),
+  // Not cancelled (Story 7.5): a seat whose bill was cancelled is billed again.
+  uniqueIndex('idx_bills_seat_slot').on(t.seatSlotId).where(sql`${t.seatSlotId} IS NOT NULL AND ${t.cancelledAt} IS NULL`),
   index('idx_bills_session_seat').on(t.sessionId, t.seatSlotId),
 ])
 

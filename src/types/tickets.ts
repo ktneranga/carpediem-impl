@@ -62,6 +62,12 @@ export type TicketPayload = {
    */
   dailyNumber?: number
   businessDate?: string
+  /**
+   * A VOID ticket (Story 7.5): these units were voided, stop making them.
+   * Prints `VOID KOT #042`, and `submittedAt` is the moment of the void, not
+   * of the round. Optional: every job queued before it is an ordinary ticket.
+   */
+  void?: true
   lines: TicketLine[]
 }
 

@@ -1,6 +1,6 @@
 # Story 7.5: Void a Sent Item
 
-Status: ready-for-dev
+Status: review
 
 <!-- Go-live. Added 2026-11-14 by sprint-change-proposal-2026-11-14.md. Next after 9-5, before 11-3 lite.
      Testing: verify scripts during dev; the screen-level pass is in the final round (launch rush). -->
@@ -85,63 +85,63 @@ so that the guest is not charged and the kitchen stops making it.
 
 ## Tasks / Subtasks
 
-- [ ] **T1 — Migration `0043_void_and_bill_cancel.sql`** (AC 3, 4, 7, 9)
-  - [ ] `order_events`: add `voids_event_id uuid NULL REFERENCES order_events(id)`,
+- [x] **T1 — Migration `0043_void_and_bill_cancel.sql`** (AC 3, 4, 7, 9)
+  - [x] `order_events`: add `voids_event_id uuid NULL REFERENCES order_events(id)`,
         `approved_by_staff_id uuid NULL REFERENCES staff(id)`, `request_id uuid NULL`; partial index on
         `voids_event_id` where not null; unique `(session_id, request_id)` where not null.
         Check: `event_type <> 'ITEM_VOIDED' OR (voids_event_id IS NOT NULL AND approved_by_staff_id IS NOT NULL AND quantity > 0)`.
-  - [ ] `bills`: add the four `cancel*` columns (nullable). Check: all four NULL or all four set
+  - [x] `bills`: add the four `cancel*` columns (nullable). Check: all four NULL or all four set
         (`cancel_reason` non-empty).
-  - [ ] Replace `immutable_bills` with a function allowing only the one-way cancel stamp (Decisions).
+  - [x] Replace `immutable_bills` with a function allowing only the one-way cancel stamp (Decisions).
         Keep `immutable_bill_lines` / `immutable_bill_comps` as they are.
-  - [ ] Recreate `idx_bills_seat_slot` as `UNIQUE (seat_slot_id) WHERE seat_slot_id IS NOT NULL AND cancelled_at IS NULL`.
-  - [ ] Replace `bill_lines_within_event_quantity()` (0027): billed = bill_lines on bills with
+  - [x] Recreate `idx_bills_seat_slot` as `UNIQUE (seat_slot_id) WHERE seat_slot_id IS NOT NULL AND cancelled_at IS NULL`.
+  - [x] Replace `bill_lines_within_event_quantity()` (0027): billed = bill_lines on bills with
         `cancelled_at IS NULL`; also add voided units of the event; keep `FOR UPDATE` on the event.
-  - [ ] New trigger `order_event_void_within_quantity` (BEFORE INSERT on `order_events` when
+  - [x] New trigger `order_event_void_within_quantity` (BEFORE INSERT on `order_events` when
         `ITEM_VOIDED`): lock the voided row, refuse over-void (AC 4); also refuse when `voids_event_id`
         is not an `ITEM_ADDED` of the same session.
-  - [ ] Mirror the columns/indexes in `schema.ts` (`drizzle-kit generate` then hand-edit the SQL as
+  - [x] Mirror the columns/indexes in `schema.ts` (`drizzle-kit generate` then hand-edit the SQL as
         earlier migrations do; keep the journal/snapshot consistent).
-- [ ] **T2 — One definition of "units left"** (AC 5, 9). New `src/server/orders/units.ts`:
-  - [ ] `billedUnits` SQL (bill_lines joined to `bills` with `cancelled_at IS NULL`) and `voidedUnits`
+- [x] **T2 — One definition of "units left"** (AC 5, 9). New `src/server/orders/units.ts`:
+  - [x] `billedUnits` SQL (bill_lines joined to `bills` with `cancelled_at IS NULL`) and `voidedUnits`
         SQL (sum of `ITEM_VOIDED.quantity` where `voids_event_id = order_events.id`), both correlated on
         `order_events.id`, plus `liveUnits = quantity − voidedUnits`.
-  - [ ] Replace the inline billed-units copies: `bill.service.ts` (`collectBillable`, `hasUnbilledItems`),
+  - [x] Replace the inline billed-units copies: `bill.service.ts` (`collectBillable`, `hasUnbilledItems`),
         `payment.service.ts` (~line 290). Unbilled now means `quantity > billed + voided`.
-  - [ ] `item-count.ts`: `dishCount` / `dishTotalPaisa` subtract voided units (callers still filter
+  - [x] `item-count.ts`: `dishCount` / `dishTotalPaisa` subtract voided units (callers still filter
         `ITEM_ADDED`). Update the comment in `app/orders/[sessionId]/page.tsx:139`.
-  - [ ] `submitted-rounds.ts`: return `voidedQuantity` per line so round history can show "1 voided"
+  - [x] `submitted-rounds.ts`: return `voidedQuantity` per line so round history can show "1 voided"
         and offer Void only while units are left.
-- [ ] **T3 — `src/server/services/void.service.ts`** (AC 2, 3, 6, 7, 8)
-  - [ ] Port from the 7.3 stash (reference only, do not `stash pop` — migrations collide):
+- [x] **T3 — `src/server/services/void.service.ts`** (AC 2, 3, 6, 7, 8)
+  - [x] Port from the 7.3 stash (reference only, do not `stash pop` — migrations collide):
         `git show "stash@{0}^3:src/server/services/comp.service.ts"` → `findApprover` (constant-time loop,
         `DUMMY_PIN_HASH`), the wrong-PIN lockout map, `resolveApproval`, the VOID ticket block and
         `findVoidRound`. Narrow the approver to `role = 'owner'` and active.
-  - [ ] `voidItem(tx, { sessionId, orderEventId, quantity, reason, note, requestId, staffId, approverId })`:
+  - [x] `voidItem(tx, { sessionId, orderEventId, quantity, reason, note, requestId, staffId, approverId })`:
         `lockOpenSession`, replay on `requestId`, check units left, insert, queue the ticket.
-  - [ ] `cancelBill(tx, { billId, reason, note, staffId, approverId })`: lock the session, refuse paid /
+  - [x] `cancelBill(tx, { billId, reason, note, staffId, approverId })`: lock the session, refuse paid /
         cancelled / closed, stamp.
-- [ ] **T4 — VOID ticket printing** (AC 6). Port from the stash diff (`git diff "stash@{0}^1" "stash@{0}" -- src/server/print src/types/tickets.ts`):
+- [x] **T4 — VOID ticket printing** (AC 6). Port from the stash diff (`git diff "stash@{0}^1" "stash@{0}" -- src/server/print src/types/tickets.ts`):
       `TicketPayload.void?: true`, `buildVoidTicketPayload` in `ticket.ts`, the `VOID ` prefix and
       no SERVE WITH in `escpos.ts`. Add a case to `verify-escpos.ts`.
-- [ ] **T5 — Routes** (AC 2, 8, 11, 12)
-  - [ ] `POST /api/sessions/[sessionId]/voids` `{ orderEventId, quantity, reason, note?, approverPin?, requestId }` → 201.
-  - [ ] `POST /api/bills/[billId]/cancel` `{ reason, note?, approverPin? }` → 200.
-  - [ ] zod bodies; never echo the PIN; error codes `INVALID_PIN`, `PIN_LOCKED`, `NOT_ENOUGH_UNITS`,
+- [x] **T5 — Routes** (AC 2, 8, 11, 12)
+  - [x] `POST /api/sessions/[sessionId]/voids` `{ orderEventId, quantity, reason, note?, approverPin?, requestId }` → 201.
+  - [x] `POST /api/bills/[billId]/cancel` `{ reason, note?, approverPin? }` → 200.
+  - [x] zod bodies; never echo the PIN; error codes `INVALID_PIN`, `PIN_LOCKED`, `NOT_ENOUGH_UNITS`,
         `BILL_HAS_PAYMENTS`, `BILL_CANCELLED`, `SESSION_CLOSED`. After commit: wake the print queue and emit
         the socket events (AC 11), same helpers as `orders/route.ts`.
-- [ ] **T6 — Cancelled bills out of every reader** (AC 9) — see the list below. Prefer one Drizzle
+- [x] **T6 — Cancelled bills out of every reader** (AC 9) — see the list below. Prefer one Drizzle
       condition `liveBill = isNull(bills.cancelledAt)` and one SQL fragment for raw queries.
-- [ ] **T7 — Order screen** (AC 1, 2): `round-history.tsx` — a small Void icon per sent line with units left
+- [x] **T7 — Order screen** (AC 1, 2): `round-history.tsx` — a small Void icon per sent line with units left
       (rare action → small icon by the line, not a strip button); "1 voided" note on the line.
       New `components/pos/void-sheet.tsx` (reason chips, stepper, note, then `PINPad` for a waiter).
       The stash's `comp-sheet.tsx` (`git show "stash@{0}^3:src/components/pos/comp-sheet.tsx"`) is the layout
       reference. Refresh the order after success.
-- [ ] **T8 — Bill screen** (AC 7, 8): small "Cancel bill" action on an unpaid bill; same sheet pattern.
-- [ ] **T9 — Dashboard** (AC 10): `insights.service.ts` corrections query → also select the approver and
+- [x] **T8 — Bill screen** (AC 7, 8): small "Cancel bill" action on an unpaid bill; same sheet pattern.
+- [x] **T9 — Dashboard** (AC 10): `insights.service.ts` corrections query → also select the approver and
       the void's quantity; add the `cancelled` audit kind (badge "Bill cancelled", warn) in
       `insight-panels.tsx` `BADGES`.
-- [ ] **T10 — Verify script `src/server/services/verify-voids.ts`** (pattern: `verify-takings.ts`, throwaway
+- [x] **T10 — Verify script `src/server/services/verify-voids.ts`** (pattern: `verify-takings.ts`, throwaway
       tenant, local-only cleanup with guards disabled around deletes — add `bill_comps`, and re-enable).
       Cases: void 1 of 3 → 2 billable, bill total right; over-void refused by service AND by trigger
       (direct insert); waiter PIN refused; owner PIN accepted; owner self-approves; lockout after 5;
@@ -149,7 +149,7 @@ so that the guest is not charged and the kitchen stops making it.
       cancel unpaid bill → items billable again, same seat billable again; cancel paid bill refused;
       second cancel refused; any other UPDATE on `bills` still raises; `loadSales` and `loadInsights`
       ignore the cancelled bill; dishCount drops; voids and cancel appear in `audit`.
-- [ ] **T11 — Regression:** run `verify-bills`, `verify-takings`, `verify-insights`, `verify-dashboard`,
+- [x] **T11 — Regression:** run `verify-bills`, `verify-takings`, `verify-insights`, `verify-dashboard`,
       `verify-custom-charge`, `verify-options`, `verify-escpos`; `npx tsc --noEmit`; `npx eslint` on touched files.
 
 ## Dev Notes
@@ -235,10 +235,95 @@ Changed: `schema.ts`, `item-count.ts`, `submitted-rounds.ts`, `bill.service.ts`,
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
+
+- `npx tsx --conditions=react-server --env-file=.env src/server/services/verify-voids.ts` → 34/34.
+- Regression: verify-bills 119/119, verify-takings 22/22, verify-insights 24/24, verify-dashboard 17/17,
+  verify-custom-charge 22/22, verify-options 33/33, verify-floor-admin 30/30, verify-menu-admin 31/31,
+  verify-order-number 15/15, verify-sold-out 32/32, verify-staff-admin 39/39, verify-drawer 39/39,
+  verify-escpos 58/58. `npx tsc --noEmit` clean; eslint clean on touched files.
+- Not regressions, environment only: verify-manage needs `VERIFY_MANAGE_PASSWORD` (a Manage password is
+  set locally); verify-queue's "PRINTER_IP → real transport" check fails because the local `.env` points
+  at a USB printer (`usb:XP-80C`).
 
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created.
+- **Migration 0043** applied locally: void columns + CHECK on `order_events`, cancel stamp + all-or-none
+  CHECK on `bills`, `immutable_bills` now `bills_allow_cancel_once()` (one NULL→set transition of the four
+  cancel columns, everything else still raises — verified for other UPDATEs, a second stamp, DELETE),
+  `idx_bills_seat_slot` skips cancelled bills, `bill_lines_within_event_quantity()` counts live bills
+  and voided units, new `order_event_void_within_quantity` trigger (locks the line; also refuses a void
+  of a non-item or another session's line).
+- **Found and fixed during dev — Drizzle unqualified columns.** In a single-table query Drizzle prints
+  select-list columns without the table name, so a correlated subquery written with `${orderEvents.id}`
+  bound to the INNER table (`v.voids_event_id = v.id`, always false). It let a paid bill be cancelled in
+  the first test run. `server/orders/units.ts` and `cancelBill` now spell the outer columns out; the
+  verify script covers both paths.
+- **One definition of units:** `server/orders/units.ts` (`billedUnits`, `voidedUnits`, `liveUnits`,
+  `hasUnbilledUnits`, `liveBill`) replaces the three inline billed-units copies; `dishCount` /
+  `dishTotalPaisa` subtract voids.
+- **Approval:** owner role only (no manager role exists); an owner self-approves. Wrong-PIN lockout
+  (5 → 5 min, per requester, in memory) ported from the 7.3 stash. Dashboard shows "X, approved by Y",
+  or just the name when the owner approved their own.
+- **Cancelled bills count nowhere:** bill lookups, billing, payments (`BillCancelledError` → 409
+  `BILL_CANCELLED`), receipt printing, `loadSales`/`loadTakings`, every insights query, and the
+  "Bill printed, not settled" audit flag.
+- `zoneUsesSeats` moved to `lib/zone-seats.ts` (re-exported from `lib/design.ts`, callers unchanged) so
+  the void service can run outside Next without loading the icon set.
+- `verify-custom-charge.ts`: its dish picker now skips inactive dishes (it had picked a deleted
+  "ZZ Verify SO Prawns" left by a sold-out run and got 422). Test fixture only.
+- **Known limit, for Story 7.3:** a comp attached to a cancelled bill cannot be re-attached
+  (`idx_bill_comps_comp_record` is one row per comp). Nothing writes comps before 7.3.
+- Screen-level testing (void sheet, Cancel bill, VOID ticket on a real printer) is for the final
+  test round (launch rush).
 
 ### File List
+
+New:
+- src/server/db/migrations/0043_void_and_bill_cancel.sql
+- src/server/db/migrations/meta/0043_snapshot.json
+- src/server/orders/units.ts
+- src/server/orders/announce-floor.ts
+- src/server/services/void.service.ts
+- src/server/services/verify-voids.ts
+- src/app/api/sessions/[sessionId]/voids/route.ts
+- src/app/api/bills/[billId]/cancel/route.ts
+- src/components/pos/void-sheet.tsx
+- src/types/voids.ts
+- src/lib/zone-seats.ts
+
+Modified:
+- src/server/db/schema.ts
+- src/server/db/migrations/meta/_journal.json
+- src/server/orders/item-count.ts
+- src/server/orders/submitted-rounds.ts
+- src/server/services/bill.service.ts
+- src/server/services/payment.service.ts
+- src/server/services/receipt.service.ts
+- src/server/services/takings.service.ts
+- src/server/services/insights.service.ts
+- src/server/services/verify-custom-charge.ts
+- src/server/print/ticket.ts
+- src/server/print/escpos.ts
+- src/server/print/verify-escpos.ts
+- src/types/bills.ts
+- src/types/orders.ts
+- src/types/tickets.ts
+- src/lib/design.ts
+- src/app/api/bills/[billId]/payments/route.ts
+- src/app/api/sessions/[sessionId]/bills/route.ts
+- src/app/api/sessions/[sessionId]/seats/[seatId]/bill/route.ts
+- src/app/orders/[sessionId]/page.tsx
+- src/app/orders/[sessionId]/bill/page.tsx
+- src/components/pos/round-history.tsx
+- src/components/pos/order-screen.tsx
+- src/components/pos/bill-screen.tsx
+- src/components/manage/dashboard/insight-panels.tsx
+
+### Change Log
+
+- 2026-11-14: Story 7.5 implemented — void a sent item (owner-PIN approval, VOID ticket), cancel an
+  unpaid bill, voids and cancelled bills excluded everywhere, dashboard audit rows. Status → review.

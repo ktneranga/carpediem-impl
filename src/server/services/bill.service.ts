@@ -15,6 +15,7 @@ import {
   tenantConfig,
 } from '@/server/db/schema'
 import { lockOpenSession } from '@/server/services/table-session.service'
+import { billedUnits, hasUnbilledUnits, liveBill, voidedUnits } from '@/server/orders/units'
 import { optionText } from '@/lib/options'
 import type { BillDetail, BillLineDetail, BillTotals } from '@/types/bills'
 
@@ -249,15 +250,16 @@ async function collectBillable(
   sessionId: string,
   { seatId, eventIds }: { seatId?: string; eventIds?: string[] } = {},
 ) {
-  // Units of this event already on some bill (migration 0025). An event is
-  // billable while this is below its quantity.
-  const billedUnits = sql<number>`coalesce((select sum(${billLines.quantity}) from ${billLines} where ${billLines.orderEventId} = ${orderEvents.id}), 0)::int`
+  // Units of this event already TAKEN — on a live bill (migration 0025) or
+  // voided (Story 7.5). An event is billable while this is below its quantity.
+  // One definition: `server/orders/units.ts`.
+  const takenUnits = sql<number>`(${billedUnits} + ${voidedUnits})`
 
   const rows = await tx
     .select({
       eventId: orderEvents.id,
       quantity: orderEvents.quantity,
-      billedQuantity: billedUnits,
+      takenQuantity: takenUnits,
       unitPricePaisa: orderEvents.unitPricePaisa,
       modifierText: orderEvents.modifierText,
       // The options as sent (Story 4.8). Display only: the unit price above
@@ -294,7 +296,9 @@ async function collectBillable(
         //
         // UNITS, since migration 0025: an event of 2 with one unit on a
         // person's bill still has one to bill.
-        sql`${orderEvents.quantity} > ${billedUnits}`,
+        // Voided units (Story 7.5) are never billable, and a cancelled bill
+        // claims nothing.
+        hasUnbilledUnits,
         // A seat bill covers one seat. A consolidated bill passes no seat and
         // therefore also picks up events with a NULL `seat_slot_id`, which no
         // seat bill could ever reach.
@@ -367,7 +371,8 @@ export async function findConsolidatedBill(tx: Tx, sessionId: string) {
   const [existing] = await tx
     .select({ id: bills.id })
     .from(bills)
-    .where(and(eq(bills.sessionId, sessionId), eq(bills.type, 'consolidated')))
+    // A cancelled bill (Story 7.5) is not "the bill" — the session is billed again.
+    .where(and(eq(bills.sessionId, sessionId), eq(bills.type, 'consolidated'), liveBill))
     .orderBy(asc(bills.createdAt))
     .limit(1)
 
@@ -379,7 +384,7 @@ export async function findSeatBill(tx: Tx, sessionId: string, seatId: string) {
   const [existing] = await tx
     .select({ id: bills.id })
     .from(bills)
-    .where(and(eq(bills.sessionId, sessionId), eq(bills.seatSlotId, seatId)))
+    .where(and(eq(bills.sessionId, sessionId), eq(bills.seatSlotId, seatId), liveBill))
     .limit(1)
 
   return existing ?? null
@@ -399,7 +404,7 @@ export async function billedSeats(
     .select({ billId: bills.id, seatSlotId: bills.seatSlotId, seatLabel: seatSlots.seatLabel })
     .from(bills)
     .innerJoin(seatSlots, eq(seatSlots.id, bills.seatSlotId))
-    .where(and(eq(bills.sessionId, sessionId), isNotNull(bills.seatSlotId)))
+    .where(and(eq(bills.sessionId, sessionId), isNotNull(bills.seatSlotId), liveBill))
 
   return new Map(
     rows.map((row) => [row.seatSlotId!, { billId: row.billId, seatLabel: row.seatLabel }]),
@@ -556,7 +561,7 @@ export async function priceBillable(
   // Asking for more than is left is refused whole, never trimmed — a guest
   // must not be billed for fewer cashews than the screen showed them.
   const lineQuantities = events.map((event) => {
-    const left = event.quantity - event.billedQuantity
+    const left = event.quantity - event.takenQuantity
     const want = requested?.get(event.eventId) ?? left
     if (want < 1 || want > left) throw new ItemsNotBillableError()
     return want
@@ -568,7 +573,7 @@ export async function priceBillable(
   // comps until Epic 7; this keeps the rule honest for when something does.
   const finishing = new Set(
     events
-      .filter((event, index) => lineQuantities[index] === event.quantity - event.billedQuantity)
+      .filter((event, index) => lineQuantities[index] === event.quantity - event.takenQuantity)
       .map((event) => event.eventId),
   )
   const comps = allComps.filter((comp) => finishing.has(comp.orderEventId))
@@ -790,6 +795,7 @@ async function buildBill(
     // `seat_slots` join that migration 0019 removed (code review 2026-10-13).
     seatLabel: seatId ? (events[0]?.seatLabel ?? null) : null,
     createdAt: bill!.createdAt.toISOString(),
+    cancelledAt: null,
     ...totals,
     lines: events.map((event, index) => ({
       orderEventId: event.eventId,
@@ -836,6 +842,7 @@ export async function getBill(
       seatSlotId: bills.seatSlotId,
       personLabel: bills.personLabel,
       createdAt: bills.createdAt,
+      cancelledAt: bills.cancelledAt,
     })
     .from(bills)
     .where(eq(bills.id, billId))
@@ -906,6 +913,7 @@ export async function getBill(
     seatLabel: bill.seatSlotId ? (lines[0]?.seatLabel ?? null) : null,
     personLabel: bill.personLabel,
     createdAt: bill.createdAt.toISOString(),
+    cancelledAt: bill.cancelledAt ? bill.cancelledAt.toISOString() : null,
     subtotalPaisa: bill.subtotalPaisa,
     serviceChargePaisa: bill.serviceChargePaisa,
     taxPaisa: bill.taxPaisa,
@@ -936,7 +944,8 @@ export async function loadSessionBills(
   const rows = await executor
     .select({ id: bills.id })
     .from(bills)
-    .where(eq(bills.sessionId, sessionId))
+    // Cancelled bills (Story 7.5) are not the session's bills any more.
+    .where(and(eq(bills.sessionId, sessionId), liveBill))
     .orderBy(asc(bills.createdAt))
 
   const loaded = await Promise.all(rows.map((row) => getBill(executor, row.id)))
@@ -981,7 +990,8 @@ export async function hasUnbilledItems(
         eq(orderEvents.eventType, 'ITEM_ADDED'),
         // Units, since migration 0025: one cashew of two on a person's bill
         // leaves the other unbilled, and the table must not close over it.
-        sql`${orderEvents.quantity} > coalesce((select sum(${billLines.quantity}) from ${billLines} where ${billLines.orderEventId} = ${orderEvents.id}), 0)`,
+        // Voided units and cancelled bills (Story 7.5): `server/orders/units.ts`.
+        hasUnbilledUnits,
       ),
     )
     .limit(1)

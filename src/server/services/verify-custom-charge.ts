@@ -89,7 +89,7 @@ async function makeSession(): Promise<{ sessionId: string; seatId: string; seat2
 /** A dish the send route accepts with no options. */
 async function plainDish(): Promise<{ id: string; price_paisa: number }> {
   const [item] = await sql(`SELECT id, price_paisa FROM menu_items m
-    WHERE m.is_available
+    WHERE m.is_available AND m.is_active
       AND NOT EXISTS (
         SELECT 1 FROM modifier_groups g
          WHERE g.menu_item_id = m.id AND g.is_active AND g.is_required)
