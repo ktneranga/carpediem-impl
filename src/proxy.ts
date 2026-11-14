@@ -3,6 +3,7 @@ import { SESSION_COOKIE_NAME, touchSession, validateSession } from '@/server/ser
 import { isRoleAllowed } from '@/server/auth/permissions'
 import { isManagePath, loginUrl, manageUnlockUrl } from '@/lib/return-to'
 import { needsManageSession } from '@/server/auth/manage-gate'
+import { isProvisioned } from '@/server/services/setup-state'
 import {
   MANAGE_COOKIE_NAME,
   manageCookieOptions,
@@ -34,6 +35,11 @@ function isPublic(request: NextRequest): boolean {
   // Listed exactly, not by prefix: a future /api/vendor/* route must not turn
   // public just by where it lives.
   if (VENDOR_PATHS.has(pathname)) return true
+
+  // First-run setup (spec-first-run-setup): the page redirects to /login and
+  // the API refuses once a restaurant exists, so being public costs nothing.
+  if (pathname === '/setup') return true
+  if (pathname === '/api/setup' && request.method === 'POST') return true
 
   // Login is the one auth endpoint that cannot require a session.
   // Logout deliberately is NOT public — it needs a session to know what to
@@ -101,6 +107,15 @@ export async function proxy(request: NextRequest) {
   headers.delete('x-manage-unlocked')
 
   if (isPublic(request)) {
+    // An empty install has nobody to sign in: send /login to the setup screen.
+    if (request.nextUrl.pathname === '/login' && request.method === 'GET') {
+      try {
+        if (!(await isProvisioned())) return NextResponse.redirect(new URL('/setup', request.url))
+      } catch (error) {
+        // Database down: show the PIN pad; its own error says what is wrong.
+        console.error('[proxy] Setup check failed:', error)
+      }
+    }
     return NextResponse.next({ request: { headers } })
   }
 

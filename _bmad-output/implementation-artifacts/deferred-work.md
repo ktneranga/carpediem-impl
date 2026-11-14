@@ -299,3 +299,12 @@
 - **Vendor cookie over plain HTTP** — `secure` follows `HTTPS_ENABLED`, like every cookie in the app; on restaurant Wi-Fi a sniffed cookie gives a database download for 30 minutes. Goes with turning HTTPS on for the install.
 - **`.env.example` is gitignored** (`.gitignore` matches `.env*`), so its documented variables (VENDOR_SECRET etc.) never reach the repo. Un-ignore it with `!.env.example`.
 - **"Vendor access" line in Manage is desktop-only** (`hidden md:block`); on a phone the owner does not see it.
+
+## Deferred goal (split from first-run setup, Teran 2026-11-14)
+
+- **Manage → Restaurant settings** — edit bill header lines (name/address/phone), footer lines (e.g. Instagram, thank-you), service charge, tax, business-day turnover hour, review QR link + caption, and upload a logo (PNG/JPG) that the app converts to the printer's 1-bit raster (fit 576 dots, black and white, preview) into `tenant_config.receipt_logo`. No Google logo / second QR for now. Next quick-dev after first-run setup.
+
+## From spec-first-run-setup review (2026-11-14)
+
+- **An empty install can be claimed by anyone on its network** until the form is submitted (no setup token). Mitigation for now: install with the POS off the restaurant Wi-Fi, or set up straight after `docker compose up`. A one-time token printed in the container log would close it.
+- **`isProvisioned` caches `true` per module copy** — if the database is emptied under a running server, the proxy keeps showing the PIN pad until a restart (the /setup page itself re-checks). Rare; restart after wiping.
