@@ -398,8 +398,9 @@ All 9 capabilities defined in the Product Scope MVP section are load-bearing —
 4. Manage area (FR70): menu with prices, options and sold-out (FR56, FR36); staff and PINs (FR58); end-of-day takings by business date (FR50, FR54 subset).
 5. Nightly backup, local plus an off-site copy (NFR-R4).
 6. Installed on site: starts on boot, survives a power cut, Tailscale for the owner, printer and tablets tested at the furthest table (NFR-R6).
+7. Per-user permissions (FR67, Story 10.6, added 2026-11-14): custom charge, void approval, no-sale drawer, chosen Manage areas, granted by the owner per staff member.
 
-After launch: comp and void (7.3), audit timeline views (7.1, 7.2, 7.4), KDS, portion counts, dashboard charts, table/zone editor, per-user permissions, branding, vendor APIs, then Epic 13 (cloud hub and FR71), then Epic 12 (cloud order relay) only if site Wi-Fi proves a problem.
+After launch: comp and void (7.3), audit timeline views (7.1, 7.2, 7.4), KDS, portion counts, dashboard charts, table/zone editor, branding, vendor APIs, then Epic 13 (cloud hub and FR71), then Epic 12 (cloud order relay) only if site Wi-Fi proves a problem.
 
 ### Post-MVP Roadmap
 

@@ -2794,9 +2794,17 @@ So that I can enable or disable optional capabilities and match the system's app
 
 > **Added 2026-10-31** *(sprint-change-proposal-2026-10-31.md)* · FR67
 
-- The owner grants or revokes individual permissions for individual staff in the back office, beyond their role.
-- First permission: `custom_charge` (Story 4.9).
-- Checked on the server for every gated action; changes are audited.
+> **Brought into go-live 2026-11-14** (sprint-change-proposal-2026-11-14-permissions.md).
+
+- In Manage → Staff the owner grants or revokes, per staff member: `custom_charge`, `approve_voids`,
+  `open_cash_drawer`, and Manage areas Dashboard / Menu / Floor / Settings (each separately).
+  Staff management is never grantable; owners hold every permission implicitly.
+- `approve_voids`: the holder voids and cancels unpaid bills without a PIN prompt, and their PIN
+  approves other staff's voids (same lockout as today).
+- Manage areas: a holder signed in with their own PIN opens exactly their granted areas — pages
+  and APIs — with no Manage password; every other Manage page and API is refused (403).
+- Checked on the server for every gated action (proxy + routes); screens hide what is not allowed.
+- Every grant and revoke is recorded (who, whom, what, when).
 
 ---
 

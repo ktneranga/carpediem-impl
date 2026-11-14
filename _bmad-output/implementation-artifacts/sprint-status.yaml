@@ -41,8 +41,8 @@ project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 
-# GO-LIVE ORDER (sprint-change-proposal-2026-11-04.md; 7-5 added by sprint-change-proposal-2026-11-14.md):
-#   review 4-8 → 6-6 → 6-7 → 10-0 → 10-4 → 10-3 (lite, added 2026-11-13) → 8-3 → 10-2 → 9-5 → 7-5 (void) → 11-3 (lite) → 1-4 (install)
+# GO-LIVE ORDER (sprint-change-proposal-2026-11-04.md; 7-5 added by sprint-change-proposal-2026-11-14.md; 10-6 by sprint-change-proposal-2026-11-14-permissions.md):
+#   review 4-8 → 6-6 → 6-7 → 10-0 → 10-4 → 10-3 (lite, added 2026-11-13) → 8-3 → 10-2 → 9-5 → 7-5 (void) → 10-6 (permissions) → 11-3 (lite) → 1-4 (install)
 # Everything else is after launch. 7-3 moved after launch 2026-11-06 (Teran): too complex for now;
 # the built work is in `git stash` ("Story 7.3 comp/void - reverted 2026-11-06").
 
@@ -146,14 +146,14 @@ development_status:
   epic-9-retrospective: optional
 
   # ── Epic 10: System Configuration & Staff Management ─────────────────────
-  epic-10: backlog
+  epic-10: in-progress
   10-0-manage-area-and-owner-password: review  # added 2026-11-04 — go-live
   10-1-build-hamburgerdrawer-component: backlog
   10-2-implement-staff-account-management: review
   10-3-implement-zone-table-and-station-configuration: review  # LITE (zones + tables) brought into go-live 2026-11-13 — stations later
   10-4-implement-menu-management: review
   10-5-implement-tenant-feature-flags-and-brand-customization: backlog
-  10-6-implement-per-user-permissions: backlog  # added 2026-10-31
+  10-6-implement-per-user-permissions: ready-for-dev  # added 2026-10-31; brought into go-live 2026-11-14 (4 permissions + Manage areas)
   epic-10-retrospective: optional
 
   # ── Epic 11: Vendor Support APIs & Infrastructure ─────────────────────────
