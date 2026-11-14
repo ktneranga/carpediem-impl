@@ -22,6 +22,11 @@ FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+# pg_dump for the vendor database export (spec-11-1-vendor-access-export).
+# Version 17, the same as the db service's postgres:17 image: pg_dump refuses
+# a server newer than itself.
+RUN apk add --no-cache postgresql17-client
+
 # All deps (includes devDeps for drizzle-kit and cross-env)
 COPY --from=deps /app/node_modules ./node_modules
 

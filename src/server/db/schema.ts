@@ -441,6 +441,23 @@ export const modifierOptions = pgTable('modifier_options', {
 export const configChangeOriginEnum = pgEnum('config_change_origin', ['local', 'cloud'])
 
 /**
+ * Vendor access (spec-11-1-vendor-access-export, 2026-11-14): every sign-in at
+ * `/vendor` and every database export, append-only. A `sign_in` row's id IS
+ * the vendor session (its cookie carries it, signed); it lives 30 minutes from
+ * `created_at`. The owner sees the latest row in Manage.
+ */
+export const vendorAccessKindEnum = pgEnum('vendor_access_kind', ['sign_in', 'export'])
+
+export const vendorAccessEvents = pgTable('vendor_access_events', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  tenantId:  uuid('tenant_id').notNull().references(() => tenants.id),
+  kind:      vendorAccessKindEnum('kind').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+}, (t) => [
+  index('idx_vendor_access_events_tenant_created').on(t.tenantId, t.createdAt),
+])
+
+/**
  * Every configuration write, in the same transaction as the write (Story 10.4).
  * Nothing reads it until the cloud sync (Epic 13), which will set `synced_at`;
  * writing it now means sync needs no rework. DELETE is refused by trigger.

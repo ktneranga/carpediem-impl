@@ -21,11 +21,19 @@ import {
 
 /** Reachable without a session. Everything else requires one. */
 const PUBLIC_PATHS = new Set(['/login', '/api/health'])
+const VENDOR_PATHS = new Set(['/vendor', '/api/vendor/login', '/api/vendor/logout', '/api/vendor/export'])
 
 function isPublic(request: NextRequest): boolean {
   const { pathname } = request.nextUrl
 
   if (PUBLIC_PATHS.has(pathname)) return true
+
+  // Vendor access (spec-11-1-vendor-access-export): its own password and
+  // cookie, checked by the handlers. A vendor gets no staff session here —
+  // the x-staff-* headers stripped above are never set on these paths.
+  // Listed exactly, not by prefix: a future /api/vendor/* route must not turn
+  // public just by where it lives.
+  if (VENDOR_PATHS.has(pathname)) return true
 
   // Login is the one auth endpoint that cannot require a session.
   // Logout deliberately is NOT public — it needs a session to know what to

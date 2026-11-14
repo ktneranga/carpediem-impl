@@ -291,3 +291,11 @@
 - **Close-after-payment dialog** [`bill-screen.tsx`] - no focus trap; `allPaid` is read at payment time, so a round added on another tablet before the tap gives a 409 on Close.
 - **Malformed receipt payloads** [`escpos.ts` `money`, `amountLines`] - non-number amounts print as LKR 0 and null `lines` entries throw and retry until dead, instead of failing the job with an alert.
 - **Zero-total (all-comped) bill gets no auto-receipt** [`payments/route.ts`, `printBill`] - the table shows ✓ Paid with no payment, so Settle never runs. Teran chose to keep it manual (reason: rare case).
+
+## From spec-11-1-vendor-access-export review (2026-11-14)
+
+- **Vendor sign-out does not end the session server-side** — it clears the cookie; a copied cookie stays valid for the rest of its 30 minutes. Fix with a `sign_out` row that `validateVendorSession` checks. Low.
+- **Vendor lockout is process-wide** — anyone on the LAN can keep `/vendor` locked by sending 5 wrong passwords every 15 minutes (by design in the spec: one POS server, no reliable client IP behind the custom server). Revisit with 11-1 proper (Tailscale-only vendor access).
+- **Vendor cookie over plain HTTP** — `secure` follows `HTTPS_ENABLED`, like every cookie in the app; on restaurant Wi-Fi a sniffed cookie gives a database download for 30 minutes. Goes with turning HTTPS on for the install.
+- **`.env.example` is gitignored** (`.gitignore` matches `.env*`), so its documented variables (VENDOR_SECRET etc.) never reach the repo. Un-ignore it with `!.env.example`.
+- **"Vendor access" line in Manage is desktop-only** (`hidden md:block`); on a phone the owner does not see it.

@@ -19,7 +19,16 @@ const itemClass = cn(
  * (Story 8.3) — only the sections marked `waiter`; the owner also gets
  * "Open Manage", which asks for the password (Teran, 2026-11-13).
  */
-export function ManageNav({ owner, unlocked }: { owner: boolean; unlocked: boolean }) {
+export function ManageNav({
+  owner,
+  unlocked,
+  vendorLastUsed,
+}: {
+  owner: boolean
+  unlocked: boolean
+  /** "signed in 14 Nov, 21:30 · last export 14 Nov, 21:31", or "never"; undefined = not shown. */
+  vendorLastUsed?: string
+}) {
   const pathname = usePathname()
   const [locking, setLocking] = useState(false)
 
@@ -89,6 +98,12 @@ export function ManageNav({ owner, unlocked }: { owner: boolean; unlocked: boole
 
       {unlocked ? (
         <div className="flex gap-sp-1 md:mt-auto md:flex-col">
+          {vendorLastUsed !== undefined ? (
+            // Small and muted: the owner should be able to see it, not act on it.
+            <p className="hidden px-sp-3 text-fs-12 text-slate-500 md:block night:text-night-muted">
+              Vendor access: {vendorLastUsed}
+            </p>
+          ) : null}
           <button
             type="button"
             onClick={lock}
@@ -103,3 +118,4 @@ export function ManageNav({ owner, unlocked }: { owner: boolean; unlocked: boole
     </aside>
   )
 }
+
