@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Lock } from 'lucide-react'
+import { PasswordInput } from '@/components/password-input'
 import { cn } from '@/lib/utils'
 
 const MIN_BYTES = 8
@@ -127,8 +128,7 @@ export function UnlockForm({
 
       <label className="flex flex-col gap-sp-1">
         <span className="text-fs-14 font-semibold text-slate-900 night:text-night-text">Password</span>
-        <input
-          type="password"
+        <PasswordInput
           autoComplete={mode === 'set' ? 'new-password' : 'current-password'}
           autoFocus
           value={password}
@@ -140,8 +140,7 @@ export function UnlockForm({
       {mode === 'set' ? (
         <label className="flex flex-col gap-sp-1">
           <span className="text-fs-14 font-semibold text-slate-900 night:text-night-text">Type it again</span>
-          <input
-            type="password"
+          <PasswordInput
             autoComplete="new-password"
             value={confirm}
             onChange={(event) => setConfirm(event.target.value)}

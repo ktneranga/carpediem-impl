@@ -314,3 +314,8 @@
 - **Changing the business-day hour during service** can split one night's orders across two business dates (end-of-day and daily numbers shift). The Settings page only warns ("change it outside service hours"); a guard that refuses while orders are open would close it.
 - **No test that a NEW bill uses a changed rate** while an existing bill keeps its own — `bill.service` reads rates per bill (covered by verify-bills); note a later bill in a session that already has one keeps the first bill's pinned service rate, by design.
 - **Version check is to the millisecond** (`updated_at` stores microseconds); two saves in the same millisecond would not be told apart. Theoretical for one owner.
+
+## From spec-manage-ui-polish-prelaunch (2026-11-15 review)
+
+- Zone and category names have no uniqueness check (tables do: `checkLabelFree`). Switching an old "Bar" back on next to a new "Bar" shows two identical pills/categories. Pre-existing for create; restore makes it easier to hit.
+- Settings sample bill stamps the time in the browser's timezone, not the restaurant's `timeZone`. Cosmetic: the printed bill is correct.

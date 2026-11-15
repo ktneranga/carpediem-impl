@@ -203,6 +203,27 @@ async function run() {
   const restored = await api(manage, 'POST', `/api/manage/menu/items/${dishId}/restore`, { version: removed.body?.data?.version })
   check('restore puts it back', restored.status === 200 && !!dishOnMenu(await waiterMenu(waiter), dishId))
 
+  // Switches (Teran, 2026-11-15): a category goes off once its dishes are
+  // off, is still listed in Manage, and comes back on.
+  const dishV = async () => (await sql(`SELECT version FROM menu_items WHERE id = $1`, [dishId]))[0].version
+  const catV = async () => (await sql(`SELECT version FROM menu_categories WHERE id = $1`, [catId]))[0].version
+  const onInCat = await sql(`SELECT id, version FROM menu_items WHERE category_id = $1 AND is_active`, [catId])
+  for (const row of onInCat) await api(manage, 'DELETE', `/api/manage/menu/items/${row.id}?version=${row.version}`)
+  const catOff = await api(manage, 'DELETE', `/api/manage/menu/categories/${catId}?version=${await catV()}`)
+  check('a category with its dishes off can be switched off (200)', catOff.status === 200, JSON.stringify(catOff.body))
+  const manageList = (await api(manage, 'GET', '/api/manage/menu?removed=1')).body?.data as any[]
+  check('Manage still lists the switched-off category, marked off',
+    manageList?.some((c) => c.id === catId && c.isActive === false && c.items.some((i: any) => i.id === dishId)))
+  check('Manage without ?removed=1 leaves it out', !((await api(manage, 'GET', '/api/manage/menu')).body?.data as any[])?.some((c) => c.id === catId))
+  const dishInOffCat = await api(manage, 'POST', `/api/manage/menu/items/${dishId}/restore`, { version: await dishV() })
+  check('a dish cannot go on while its category is off (422)', dishInOffCat.status === 422, JSON.stringify(dishInOffCat.body))
+  const catOn = await api(manage, 'POST', `/api/manage/menu/categories/${catId}/restore`, { version: await catV() })
+  check('the category switches back on (200)', catOn.status === 200 && catOn.body?.data?.isActive === true, JSON.stringify(catOn.body))
+  const catOnStale = await api(manage, 'POST', `/api/manage/menu/categories/${catId}/restore`, { version: 1 })
+  check('an old version is refused (409 STALE)', catOnStale.status === 409 && catOnStale.body?.error?.code === 'STALE')
+  const dishOn = await api(manage, 'POST', `/api/manage/menu/items/${dishId}/restore`, { version: await dishV() })
+  check('then the dish goes back on the menu', dishOn.status === 200 && !!dishOnMenu(await waiterMenu(waiter), dishId))
+
   // Case 15: another tenant's (unknown) id.
   check('an unknown id is 404',
     (await api(manage, 'PATCH', `/api/manage/menu/items/00000000-0000-4000-8000-000000000000`, { version: 1, name: 'x' })).status === 404)

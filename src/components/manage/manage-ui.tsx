@@ -89,3 +89,64 @@ export function ConfirmDialog({
     </div>
   )
 }
+
+/**
+ * On/off for a category, dish, zone or table (Teran, 2026-11-15). Off: hidden
+ * from the POS, still listed (greyed) in Manage. 44px tall tap target around a
+ * smaller track.
+ */
+export function Switch({
+  on,
+  label,
+  disabled,
+  why,
+  onChange,
+}: {
+  on: boolean
+  /** What it switches, for screen readers: "Margherita". */
+  label: string
+  disabled?: boolean
+  /** Why it cannot be switched right now; shown on hover and read out. */
+  why?: string
+  onChange: (on: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={`${label}: ${on ? 'on' : 'off'}${why ? `. ${why}` : ''}`}
+      title={why ?? (on ? 'On the POS. Tap to turn off.' : 'Hidden from the POS. Tap to turn on.')}
+      disabled={disabled || why !== undefined}
+      onClick={() => onChange(!on)}
+      className={cn(
+        'inline-flex h-11 w-12 shrink-0 items-center justify-center rounded-control disabled:opacity-50',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          'relative h-6 w-10 rounded-full transition-colors',
+          on ? 'bg-brand-700 night:bg-brand-500' : 'bg-slate-300 night:bg-night-hairline',
+        )}
+      >
+        <span
+          className={cn(
+            'absolute top-0.5 left-0.5 size-5 rounded-full bg-white shadow transition-transform',
+            on ? 'translate-x-4' : 'translate-x-0',
+          )}
+        />
+      </span>
+    </button>
+  )
+}
+
+/** Small "Off" tag beside a switched-off row's name. */
+export function OffChip() {
+  return (
+    <span className="rounded-full bg-slate-200 px-sp-2 text-fs-12 font-bold text-slate-600 night:bg-night-raised night:text-night-muted">
+      Off
+    </span>
+  )
+}

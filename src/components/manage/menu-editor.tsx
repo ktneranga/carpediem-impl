@@ -2,7 +2,7 @@
 
 import { createElement, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Pencil, Plus, Trash2, Undo2, X } from 'lucide-react'
+import { Pencil, Plus, Trash2, X } from 'lucide-react'
 import { SortableList } from '@/components/manage/sortable-list'
 import {
   ApiError,
@@ -11,8 +11,10 @@ import {
   ConfirmDialog,
   icon,
   input,
+  OffChip,
   primary,
   secondary,
+  Switch,
 } from '@/components/manage/manage-ui'
 import type { ManageCategory, ManageGroup, ManageItem, ManageOption } from '@/server/services/menu-admin.service'
 import { menuCategoryIcon, routeForDestination } from '@/lib/design'
@@ -49,6 +51,11 @@ type Side = 'Food' | 'Drinks'
  */
 function sideOf(category: ManageCategory, addedTo: Record<string, Side>): Side {
   if (category.items.some((item) => item.isActive)) return isDrinksCategory(category) ? 'Drinks' : 'Food'
+  // Every dish switched off (or the category itself): its dishes still say
+  // which side it belongs on.
+  if (category.items.length > 0) {
+    return isDrinksCategory({ items: category.items.map((item) => ({ ...item, isActive: true })) }) ? 'Drinks' : 'Food'
+  }
   return addedTo[category.id] ?? 'Food'
 }
 
@@ -67,7 +74,6 @@ const call = (method: string, url: string, body?: unknown) => callApi(method, ur
 
 export function MenuEditor() {
   const queryClient = useQueryClient()
-  const [showRemoved, setShowRemoved] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editing, setEditing] = useState<{ mode: 'new' } | { mode: 'edit'; itemId: string } | null>(null)
   const [confirm, setConfirm] = useState<{ text: string; run: () => Promise<void> } | null>(null)
@@ -76,11 +82,11 @@ export function MenuEditor() {
   /** Empty categories added from the Drinks (or Food) side — see `sideOf`. */
   const [addedTo, setAddedTo] = useState<Record<string, Side>>({})
 
-  const queryKey = ['manage-menu', showRemoved] as const
+  // Switched-off categories and dishes are always listed, greyed (Teran,
+  // 2026-11-15): the switch is how they come back.
   const { data: categories = [], isLoading } = useQuery({
-    queryKey,
-    queryFn: async () =>
-      ((await call('GET', `/api/manage/menu${showRemoved ? '?removed=1' : ''}`)) as { data: ManageCategory[] }).data,
+    queryKey: ['manage-menu'],
+    queryFn: async () => ((await call('GET', '/api/manage/menu?removed=1')) as { data: ManageCategory[] }).data,
   })
 
   // A dish sold out or back on elsewhere (Story 8.3) bumps its version: reload,
@@ -89,7 +95,8 @@ export function MenuEditor() {
     void queryClient.invalidateQueries({ queryKey: ['manage-menu'] })
   })
 
-  const selected = categories.find((c) => c.id === selectedId) ?? categories[0] ?? null
+  const selected =
+    categories.find((c) => c.id === selectedId) ?? categories.find((c) => c.isActive) ?? categories[0] ?? null
   const editingItem =
     editing?.mode === 'edit' ? categories.flatMap((c) => c.items).find((i) => i.id === editing.itemId) ?? null : null
 
@@ -112,6 +119,12 @@ export function MenuEditor() {
     }
   }
 
+  /** A dish's switch: off hides it from the POS, on brings it back. */
+  const switchDish = (item: ManageItem) => (on: boolean) =>
+    on
+      ? run('POST', `/api/manage/menu/items/${item.id}/restore`, { version: item.version })
+      : run('DELETE', `/api/manage/menu/items/${item.id}?version=${item.version}`)
+
   /** A drag and drop: the new order of one whole list (Teran, 2026-11-13). */
   const reorder: Reorder = (kind, parentId, ids) => run('POST', '/api/manage/menu/reorder', { kind, parentId, ids })
 
@@ -119,10 +132,7 @@ export function MenuEditor() {
     <div className="flex flex-col gap-sp-4">
       <header className="flex flex-wrap items-center justify-between gap-sp-3">
         <h1 className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">Menu</h1>
-        <label className="flex min-h-11 items-center gap-sp-2 text-fs-14 font-semibold text-slate-700 night:text-night-second">
-          <input type="checkbox" className="size-5" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />
-          Show removed dishes
-        </label>
+        <p className="text-fs-14 text-slate-600 night:text-night-second">Switched off: hidden from the POS, kept here.</p>
       </header>
 
       {message ? (
@@ -138,10 +148,28 @@ export function MenuEditor() {
 
       <div className="flex flex-col gap-sp-4 lg:flex-row lg:items-start">
         {/* ── Categories ─────────────────────────────────────────────────── */}
-        <section aria-label="Categories" className="flex flex-col gap-sp-2 rounded-panel bg-white p-sp-3 lg:w-72 lg:shrink-0 night:bg-night-card">
+        <section aria-label="Categories" className="flex flex-col gap-sp-2 rounded-panel bg-white p-sp-3 lg:w-80 lg:shrink-0 night:bg-night-card">
           <h2 className="px-sp-2 text-fs-14 font-bold tracking-micro text-slate-500 uppercase night:text-night-muted">Categories</h2>
           {(['Food', 'Drinks'] as const).map((side) => {
-            const list = categories.filter((category) => sideOf(category, addedTo) === side)
+            const all = categories.filter((category) => sideOf(category, addedTo) === side)
+            const list = all.filter((category) => category.isActive)
+            const off = all.filter((category) => !category.isActive)
+            const row = (category: ManageCategory, handle: ReactNode) => (
+              <CategoryRow
+                key={category.version}
+                category={category}
+                handle={handle}
+                selected={selected?.id === category.id}
+                busy={busy}
+                onSelect={() => setSelectedId(category.id)}
+                onRename={(name) => run('PATCH', `/api/manage/menu/categories/${category.id}`, { version: category.version, name })}
+                onSwitch={(on) =>
+                  on
+                    ? run('POST', `/api/manage/menu/categories/${category.id}/restore`, { version: category.version })
+                    : run('DELETE', `/api/manage/menu/categories/${category.id}?version=${category.version}`)
+                }
+              />
+            )
             return (
               <div key={side} className="flex flex-col gap-sp-1">
                 <h3 className="px-sp-2 pt-sp-2 text-fs-12 font-bold text-slate-500 night:text-night-muted">{side}</h3>
@@ -153,32 +181,19 @@ export function MenuEditor() {
                   // One shared order for every category: the dragged side's
                   // categories take their new order in the slots they held.
                   onReorder={(sideIds) => {
+                    // Only switched-on categories are ordered (the server
+                    // refuses any other list).
                     const queue = [...sideIds]
-                    const ids = categories.map((category) =>
-                      sideOf(category, addedTo) === side ? queue.shift()! : category.id,
-                    )
+                    const ids = categories
+                      .filter((category) => category.isActive)
+                      .map((category) => (sideOf(category, addedTo) === side ? queue.shift()! : category.id))
                     return reorder('category', null, ids)
                   }}
-                  renderItem={(category, handle) => (
-                    <CategoryRow
-                      key={category.version}
-                      category={category}
-                      handle={handle}
-                      selected={selected?.id === category.id}
-                      busy={busy}
-                      onSelect={() => setSelectedId(category.id)}
-                      onRename={(name) => run('PATCH', `/api/manage/menu/categories/${category.id}`, { version: category.version, name })}
-                      onRemove={() =>
-                        setConfirm({
-                          text: `Remove the category "${category.name}"?`,
-                          run: async () => {
-                            await run('DELETE', `/api/manage/menu/categories/${category.id}?version=${category.version}`)
-                          },
-                        })
-                      }
-                    />
-                  )}
+                  renderItem={(category, handle) => row(category, handle)}
                 />
+                {off.map((category) => (
+                  <div key={category.id + category.version}>{row(category, <span className="size-11 shrink-0" />)}</div>
+                ))}
                 <AddCategory
                   side={side}
                   busy={busy}
@@ -205,12 +220,17 @@ export function MenuEditor() {
               {selected ? <CategoryIcon name={selected.name} className="size-5 text-slate-500 night:text-night-muted" /> : null}
               {selected?.name ?? 'No categories yet'}
             </h2>
-            {selected ? (
+            {selected?.isActive ? (
               <button type="button" className={primary} onClick={() => setEditing({ mode: 'new' })}>
                 <Plus className="size-4" aria-hidden="true" /> Add dish
               </button>
             ) : null}
           </div>
+          {selected && !selected.isActive ? (
+            <p className="px-sp-2 text-fs-14 text-slate-600 night:text-night-second">
+              This category is off: none of it shows on the POS. Switch it on in the list to add dishes or turn them on.
+            </p>
+          ) : null}
           {selected && selected.items.length === 0 ? (
             <p className="px-sp-2 py-sp-4 text-fs-14 text-slate-600 night:text-night-second">No dishes in this category.</p>
           ) : null}
@@ -227,15 +247,7 @@ export function MenuEditor() {
                   handle={handle}
                   busy={busy}
                   onEdit={() => setEditing({ mode: 'edit', itemId: item.id })}
-                  onRemove={() =>
-                    setConfirm({
-                      text: `Remove ${item.name} from the menu?`,
-                      run: async () => {
-                        await run('DELETE', `/api/manage/menu/items/${item.id}?version=${item.version}`)
-                      },
-                    })
-                  }
-                  onRestore={() => run('POST', `/api/manage/menu/items/${item.id}/restore`, { version: item.version })}
+                  onSwitch={switchDish(item)}
                 />
               )}
             />
@@ -250,9 +262,9 @@ export function MenuEditor() {
                       item={item}
                       handle={null}
                       busy={busy}
-                      onEdit={() => {}}
-                      onRemove={() => {}}
-                      onRestore={() => run('POST', `/api/manage/menu/items/${item.id}/restore`, { version: item.version })}
+                      onEdit={() => setEditing({ mode: 'edit', itemId: item.id })}
+                      onSwitch={switchDish(item)}
+                      categoryOff={!selected.isActive}
                     />
                   </li>
                 ))}
@@ -265,7 +277,9 @@ export function MenuEditor() {
         <ItemSheet
           key={editing.mode === 'edit' ? `${editingItem?.id}${editingItem?.version}` : 'new'}
           item={editing.mode === 'edit' ? editingItem : null}
-          categories={categories}
+          // Only categories that are on can take a dish (the server refuses
+          // the others); its own stays listed so the choice shows it.
+          categories={categories.filter((category) => category.isActive || category.id === selected.id)}
           defaultCategoryId={selected.id}
           defaultDestination={sideOf(selected, addedTo) === 'Drinks' ? 'bar' : 'kitchen'}
           busy={busy}
@@ -280,7 +294,7 @@ export function MenuEditor() {
       {confirm ? (
         <ConfirmDialog
           text={confirm.text}
-          note="Past orders and bills keep it. You can restore a removed dish."
+          note="Past orders and bills keep it."
           busy={busy}
           onCancel={() => setConfirm(null)}
           onConfirm={async () => {
@@ -302,7 +316,7 @@ function CategoryRow({
   busy,
   onSelect,
   onRename,
-  onRemove,
+  onSwitch,
 }: {
   category: ManageCategory
   handle: ReactNode
@@ -310,7 +324,7 @@ function CategoryRow({
   busy: boolean
   onSelect: () => void
   onRename: (name: string) => Promise<unknown>
-  onRemove: () => void
+  onSwitch: (on: boolean) => Promise<unknown>
 }) {
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(category.name)
@@ -343,19 +357,25 @@ function CategoryRow({
             )}
           >
             <CategoryIcon name={category.name} className="size-4 shrink-0 text-slate-500 night:text-night-muted" />
-            <span className="truncate">{category.name}</span>
-            <span className="text-fs-12 text-slate-500 night:text-night-muted">{category.items.filter((i) => i.isActive).length}</span>
+            <span className={cn('truncate', category.isActive ? '' : 'text-slate-400 night:text-night-muted')}>{category.name}</span>
+            {category.isActive ? (
+              <span className="text-fs-12 text-slate-500 night:text-night-muted">{category.items.filter((i) => i.isActive).length}</span>
+            ) : (
+              <OffChip />
+            )}
           </button>
           {selected ? (
-            <span className="flex">
-              <button type="button" aria-label={`Rename ${category.name}`} className={icon} onClick={() => setRenaming(true)}>
-                <Pencil className="size-4" aria-hidden="true" />
-              </button>
-              <button type="button" aria-label={`Remove ${category.name}`} className={icon} disabled={busy} onClick={onRemove}>
-                <Trash2 className="size-4" aria-hidden="true" />
-              </button>
-            </span>
+            <button type="button" aria-label={`Rename ${category.name}`} className={icon} onClick={() => setRenaming(true)}>
+              <Pencil className="size-4" aria-hidden="true" />
+            </button>
           ) : null}
+          <Switch
+            on={category.isActive}
+            label={category.name}
+            disabled={busy}
+            why={category.isActive && category.items.some((i) => i.isActive) ? 'Turn its dishes off first' : undefined}
+            onChange={(on) => void onSwitch(on)}
+          />
         </div>
       )}
     </div>
@@ -367,44 +387,41 @@ function DishRow({
   handle,
   busy,
   onEdit,
-  onRemove,
-  onRestore,
+  onSwitch,
+  categoryOff = false,
 }: {
   item: ManageItem
   handle: ReactNode
   busy: boolean
   onEdit: () => void
-  onRemove: () => void
-  onRestore: () => void
+  onSwitch: (on: boolean) => Promise<unknown>
+  /** Its category is off: it cannot go on until the category does. */
+  categoryOff?: boolean
 }) {
   return (
     <div className="flex flex-wrap items-center gap-sp-2 py-sp-2 pr-sp-2">
       {handle ?? <span className="size-11 shrink-0" />}
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className={cn('text-fs-16 font-bold', item.isActive ? 'text-slate-900 night:text-night-text' : 'text-slate-400 line-through night:text-night-muted')}>
+        <span className={cn('flex items-center gap-sp-2 text-fs-16 font-bold', item.isActive ? 'text-slate-900 night:text-night-text' : 'text-slate-400 night:text-night-muted')}>
           {item.name}
+          {item.isActive ? null : <OffChip />}
         </span>
         <span className="flex flex-wrap items-center gap-sp-2 text-fs-12 text-slate-600 night:text-night-second">
           <StationChip destination={item.productionDestination} />
           {item.groups.length > 0 ? `${item.groups.length} option group${item.groups.length === 1 ? '' : 's'}` : ''}
-          {item.isActive ? '' : 'removed'}
         </span>
       </div>
       <span className="text-fs-16 font-bold tabular-nums text-slate-900 night:text-night-text">{lkrFromPaisa(item.pricePaisa)}</span>
-      {item.isActive ? (
-        <>
-          <button type="button" aria-label={`Edit ${item.name}`} className={icon} onClick={onEdit}>
-            <Pencil className="size-4" aria-hidden="true" />
-          </button>
-          <button type="button" aria-label={`Remove ${item.name}`} className={icon} disabled={busy} onClick={onRemove}>
-            <Trash2 className="size-4" aria-hidden="true" />
-          </button>
-        </>
-      ) : (
-        <button type="button" className={secondary} disabled={busy} onClick={onRestore}>
-          <Undo2 className="size-4" aria-hidden="true" /> Restore
-        </button>
-      )}
+      <button type="button" aria-label={`Edit ${item.name}`} className={icon} onClick={onEdit}>
+        <Pencil className="size-4" aria-hidden="true" />
+      </button>
+      <Switch
+        on={item.isActive}
+        label={item.name}
+        disabled={busy}
+        why={!item.isActive && categoryOff ? 'Turn its category on first' : undefined}
+        onChange={(on) => void onSwitch(on)}
+      />
     </div>
   )
 }

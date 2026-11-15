@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ImageUp, Trash2 } from 'lucide-react'
+import { ImageUp, ReceiptText, Trash2, type LucideIcon } from 'lucide-react'
 import { ApiError, call as callApi, input, primary, secondary } from '@/components/manage/manage-ui'
 import { LOGO_WIDTHS, logoSize, rasterToRgba, toLogoRaster, type LogoRaster } from '@/lib/logo-raster'
 import type { Settings } from '@/server/services/settings.service'
+import { SampleBill } from '@/components/manage/settings/sample-bill'
 import { cn } from '@/lib/utils'
 
 /**
@@ -20,6 +21,20 @@ const KEY = ['manage-settings'] as const
 const MAX_FILE_BYTES = 5 * 1024 * 1024
 const label = 'text-fs-14 font-semibold text-slate-600 night:text-night-second'
 const hint = 'text-fs-12 text-slate-500 night:text-night-muted'
+
+/**
+ * The left column: the kinds of settings (Teran, 2026-11-15). One for now,
+ * Bill; later ones (printers, security, ...) become pages of their own.
+ */
+const PAGES: { id: string; title: string; icon: LucideIcon }[] = [{ id: 'bill', title: 'Bill', icon: ReceiptText }]
+
+/** A typed percent as basis points, or null while it is not a valid one (the preview leaves it out). */
+function bpOf(text: string, pattern: RegExp): number | null {
+  const trimmed = text.trim()
+  return pattern.test(trimmed) ? Math.round(Number(trimmed) * 100) : null
+}
+const SERVICE_PATTERN = /^\d{1,2}(\.\d{1,2})?$/
+const TAX_PATTERN = /^\d{1,2}$/
 
 type Form = {
   restaurantName: string
@@ -114,11 +129,11 @@ function SettingsForm({
   }
 
   async function save() {
-    if (!/^\d{1,2}(\.\d{1,2})?$/.test(form.servicePercent.trim())) {
+    if (!SERVICE_PATTERN.test(form.servicePercent.trim())) {
       setNote({ ok: false, text: 'Service charge: a percent like 10 or 2.5' })
       return
     }
-    if (!/^\d{1,2}$/.test(form.taxPercent.trim())) {
+    if (!TAX_PATTERN.test(form.taxPercent.trim())) {
       setNote({ ok: false, text: 'Tax: a whole percent like 0 or 5' })
       return
     }
@@ -150,7 +165,7 @@ function SettingsForm({
   }
 
   return (
-    <div className="flex max-w-3xl flex-col gap-sp-4">
+    <div className="flex flex-col gap-sp-4">
       <header className="flex flex-wrap items-center justify-between gap-sp-3">
         <h1 className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">Settings</h1>
         <div className="flex items-center gap-sp-3">
@@ -165,60 +180,93 @@ function SettingsForm({
         </div>
       </header>
 
-      <Card title="Bill">
-        <Field label="Restaurant name" hint="Printed large at the top of every bill.">
-          <input className={input} maxLength={60} value={form.restaurantName} onChange={(e) => set('restaurantName', e.target.value)} />
-        </Field>
-        <Field label="Header lines" hint="Under the name: address, phone. Up to 6 lines of 48 characters.">
-          <textarea className={cn(input, 'h-auto min-h-24 py-sp-2')} rows={4} value={form.receiptHeader} onChange={(e) => set('receiptHeader', e.target.value)} />
-        </Field>
-        <Field label="Footer lines" hint="At the end: Instagram, website, a thank-you. Up to 6 lines of 48 characters.">
-          <textarea className={cn(input, 'h-auto min-h-24 py-sp-2')} rows={4} value={form.receiptFooter} onChange={(e) => set('receiptFooter', e.target.value)} />
-        </Field>
-      </Card>
+      {/* Three columns on a wide screen: sections, the form, the sample bill.
+          Narrower, the form and then the sample stack. */}
+      <div className="grid items-start gap-sp-4 xl:grid-cols-[11rem_minmax(0,1fr)_auto]">
+        <nav aria-label="Settings" className="sticky top-sp-4 hidden flex-col gap-sp-1 rounded-panel bg-white p-sp-2 xl:flex night:bg-night-card">
+          {PAGES.map((page) => (
+            <span
+              key={page.id}
+              aria-current="page"
+              className="flex min-h-11 items-center gap-sp-2 rounded-control bg-brand-050 px-sp-3 text-fs-14 font-semibold text-brand-800 night:bg-night-raised night:text-brand-300"
+            >
+              <page.icon className="size-4 shrink-0" aria-hidden="true" />
+              {page.title}
+            </span>
+          ))}
+        </nav>
 
-      <Card title="Logo">
-        <LogoField logo={form.receiptLogo} onChange={(logo) => set('receiptLogo', logo)} />
-      </Card>
+        <div className="flex min-w-0 flex-col gap-sp-4">
+          <Card id="settings-bill" title="Bill">
+            <Field label="Restaurant name" hint="Printed large at the top of every bill.">
+              <input className={input} maxLength={60} value={form.restaurantName} onChange={(e) => set('restaurantName', e.target.value)} />
+            </Field>
+            <Field label="Header lines" hint="Under the name: address, phone. Up to 6 lines of 48 characters.">
+              <textarea className={cn(input, 'h-auto min-h-24 py-sp-2')} rows={4} value={form.receiptHeader} onChange={(e) => set('receiptHeader', e.target.value)} />
+            </Field>
+            <Field label="Footer lines" hint="At the end: Instagram, website, a thank-you. Up to 6 lines of 48 characters.">
+              <textarea className={cn(input, 'h-auto min-h-24 py-sp-2')} rows={4} value={form.receiptFooter} onChange={(e) => set('receiptFooter', e.target.value)} />
+            </Field>
+          </Card>
 
-      <Card title="Review QR">
-        <Field label="Link" hint="Printed as a QR code at the foot of the bill, e.g. your Google review page. Empty prints no QR.">
-          <input className={input} inputMode="url" placeholder="https://" value={form.receiptQrUrl} onChange={(e) => set('receiptQrUrl', e.target.value)} />
-        </Field>
-        <Field label="Caption" hint="The line under the QR.">
-          <input className={input} maxLength={48} value={form.receiptQrCaption} onChange={(e) => set('receiptQrCaption', e.target.value)} />
-        </Field>
-      </Card>
+          <Card id="settings-logo" title="Logo">
+            <LogoField logo={form.receiptLogo} onChange={(logo) => set('receiptLogo', logo)} />
+          </Card>
 
-      <Card title="Money">
-        <div className="grid gap-sp-3 sm:grid-cols-2">
-          <Field label="Service charge (%)" hint="On table orders. e.g. 10 or 2.5. New bills only.">
-            <input className={input} inputMode="decimal" value={form.servicePercent} onChange={(e) => set('servicePercent', e.target.value.replace(/[^\d.]/g, ''))} />
-          </Field>
-          <Field label="Tax (%)" hint="A whole percent. New bills only.">
-            <input className={input} inputMode="numeric" value={form.taxPercent} onChange={(e) => set('taxPercent', e.target.value.replace(/\D/g, ''))} />
-          </Field>
+          <Card id="settings-qr" title="Review QR">
+            <Field label="Link" hint="Printed as a QR code at the foot of the bill, e.g. your Google review page. Empty prints no QR.">
+              <input className={input} inputMode="url" placeholder="https://" value={form.receiptQrUrl} onChange={(e) => set('receiptQrUrl', e.target.value)} />
+            </Field>
+            <Field label="Caption" hint="The line under the QR.">
+              <input className={input} maxLength={48} value={form.receiptQrCaption} onChange={(e) => set('receiptQrCaption', e.target.value)} />
+            </Field>
+          </Card>
+
+          <Card id="settings-money" title="Money">
+            <div className="grid gap-sp-3 sm:grid-cols-2">
+              <Field label="Service charge (%)" hint="On table orders. e.g. 10 or 2.5. New bills only.">
+                <input className={input} inputMode="decimal" value={form.servicePercent} onChange={(e) => set('servicePercent', e.target.value.replace(/[^\d.]/g, ''))} />
+              </Field>
+              <Field label="Tax (%)" hint="A whole percent. New bills only.">
+                <input className={input} inputMode="numeric" value={form.taxPercent} onChange={(e) => set('taxPercent', e.target.value.replace(/\D/g, ''))} />
+              </Field>
+            </div>
+          </Card>
+
+          <Card id="settings-day" title="Business day">
+            <Field label="The day turns over at" hint="Orders after midnight count on the evening before until this hour. Applies to new orders — change it outside service hours.">
+              <select className={input} value={form.businessDayStartHour} onChange={(e) => set('businessDayStartHour', Number(e.target.value))}>
+                {Array.from({ length: 24 }, (_, hour) => (
+                  <option key={hour} value={hour}>
+                    {String(hour).padStart(2, '0')}:00
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </Card>
         </div>
-      </Card>
 
-      <Card title="Business day">
-        <Field label="The day turns over at" hint="Orders after midnight count on the evening before until this hour. Applies to new orders — change it outside service hours.">
-          <select className={input} value={form.businessDayStartHour} onChange={(e) => set('businessDayStartHour', Number(e.target.value))}>
-            {Array.from({ length: 24 }, (_, hour) => (
-              <option key={hour} value={hour}>
-                {String(hour).padStart(2, '0')}:00
-              </option>
-            ))}
-          </select>
-        </Field>
-      </Card>
+        <aside aria-label="Sample bill" className="flex flex-col gap-sp-2 xl:sticky xl:top-sp-4">
+          <h2 className="text-fs-14 font-bold tracking-micro text-slate-500 uppercase night:text-night-muted">Sample bill</h2>
+          <SampleBill
+            restaurantName={form.restaurantName}
+            header={form.receiptHeader}
+            footer={form.receiptFooter}
+            logo={form.receiptLogo}
+            qrUrl={form.receiptQrUrl}
+            qrCaption={form.receiptQrCaption}
+            serviceBp={bpOf(form.servicePercent, SERVICE_PATTERN)}
+            taxBp={bpOf(form.taxPercent, TAX_PATTERN)}
+          />
+        </aside>
+      </div>
     </div>
   )
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
-    <section aria-label={title} className="flex flex-col gap-sp-3 rounded-panel bg-white p-sp-4 night:bg-night-card">
+    <section id={id} aria-label={title} className="flex scroll-mt-sp-4 flex-col gap-sp-3 rounded-panel bg-white p-sp-4 night:bg-night-card">
       <h2 className="text-fs-16 font-extrabold text-slate-900 night:text-night-text">{title}</h2>
       {children}
     </section>
