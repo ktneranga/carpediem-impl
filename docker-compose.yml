@@ -108,8 +108,9 @@ services:
       - WATCHTOWER_LABEL_ENABLE=true
       - WATCHTOWER_SCOPE=${RESTAURANT_SCOPE:-default}
       - WATCHTOWER_CLEANUP=true
+      # Optional remote trigger. Metrics stay off: Watchtower refuses to start
+      # when the metrics API is on and this token is empty.
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
-      - WATCHTOWER_HTTP_API_METRICS=true
       # Credentials for pulling the private GHCR image. Needs read:packages ONLY.
       - REPO_USER=${REPO_USER:-}
       - REPO_PASS=${REPO_PASS:-}
