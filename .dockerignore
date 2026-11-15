@@ -5,3 +5,13 @@ node_modules
 *.log
 docker-compose*.yml
 Dockerfile
+# Secrets never enter the build context, even the throwaway builder stage
+# (it stays in the local build cache).
+.env
+.env.*
+!.env.example
+# Planning and tooling, not the app.
+_bmad
+_bmad-output
+.claude
+.github

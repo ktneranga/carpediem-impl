@@ -27,7 +27,10 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    # `master` builds the shared `stable` image. A restaurant branch (Teran,
+    # 2026-11-15: code may differ per restaurant) builds `stable-<branch>`, e.g.
+    # `carpe-diem` → `stable-carpe-diem`, which only that POS pulls.
+    branches: [master, carpe-diem]
   workflow_dispatch:
     inputs:
       restaurant:
@@ -67,8 +70,11 @@ jobs:
       - name: Resolve pointer tag
         id: naming
         run: |
+          # A manual run's `restaurant` input wins; otherwise the branch decides.
           if [ -n "${{ inputs.restaurant }}" ]; then
             echo "pointer_tag=stable-${{ inputs.restaurant }}" >> "$GITHUB_OUTPUT"
+          elif [ "${GITHUB_REF_NAME}" != "master" ]; then
+            echo "pointer_tag=stable-${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           else
             echo "pointer_tag=stable" >> "$GITHUB_OUTPUT"
           fi
@@ -133,12 +139,23 @@ jobs:
     permissions:
       contents: read
       packages: write
+    # Optional until Tailscale is set up (Teran, 2026-11-15): with the three
+    # secrets missing, every step below is skipped and the run stays green —
+    # the image is already pushed by `build`. Add TS_OAUTH_CLIENT_ID,
+    # TS_OAUTH_SECRET and DEPLOY_HEALTH_URL to turn the check (and its revert) on.
+    env:
+      HEALTH_CHECK_READY: ${{ secrets.TS_OAUTH_CLIENT_ID != '' && secrets.TS_OAUTH_SECRET != '' && secrets.DEPLOY_HEALTH_URL != '' }}
 
     steps:
+      - name: Health check not configured
+        if: env.HEALTH_CHECK_READY != 'true'
+        run: echo "::notice::Deployment health check skipped — Tailscale secrets are not set. The image was pushed; check the POS yourself."
+
       # Ephemeral key: CI runners are disposable and must not accumulate stale
       # tailnet nodes. Restrict this node in Tailscale ACLs to port 3000 only —
       # it has no business reaching Portainer on 9000.
       - name: Join tailnet
+        if: env.HEALTH_CHECK_READY == 'true'
         uses: tailscale/github-action@v3
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
@@ -149,6 +166,7 @@ jobs:
       # migrations. Waiting less than a full poll interval guarantees false
       # failures, so the deadline covers poll + start + margin.
       - name: Poll /api/health until healthy
+        if: env.HEALTH_CHECK_READY == 'true'
         id: health
         run: |
           TARGET="${{ secrets.DEPLOY_HEALTH_URL }}"

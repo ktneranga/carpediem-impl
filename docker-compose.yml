@@ -20,6 +20,10 @@ services:
       - SESSION_SECRET=${SESSION_SECRET}
       - PRINTER_IP=${PRINTER_IP:-}
       - PRINTER_PORT=${PRINTER_PORT:-9100}
+      # USB printer: a DEVICE PATH inside the container, e.g. /dev/usb/lp0 —
+      # Linux hosts only, with the `devices:` lines below uncommented. A Windows
+      # printer NAME cannot work here: the container has no Windows spooler.
+      - PRINTER_USB_NAME=${PRINTER_USB_NAME:-}
       - VENDOR_SECRET=${VENDOR_SECRET:-}
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
       - PORTAINER_URL=http://portainer:9000
@@ -32,6 +36,9 @@ services:
       # var cannot silently move it — but a process whose clock matches the
       # restaurant is far easier to debug at 1am.
       - TZ=${TIMEZONE:-Asia/Colombo}
+    # Linux host with a USB thermal printer: pass the device in.
+    # devices:
+    #   - /dev/usb/lp0:/dev/usb/lp0
     depends_on:
       db:
         condition: service_healthy
@@ -56,7 +63,8 @@ services:
       - internal
 
   portainer:
-    image: portainer/portainer-ce:latest
+    # Pinned: this container holds the Docker socket. Update deliberately.
+    image: portainer/portainer-ce:2.27.9
     restart: unless-stopped
     # AC-7: must be reachable from Tailscale peers. Tailscale traffic arrives on the
     # tailscale0 interface, NOT loopback — a 127.0.0.1 bind locks out remote vendor access.
@@ -72,7 +80,7 @@ services:
       - internal
 
   uptime-kuma:
-    image: louislam/uptime-kuma:1
+    image: louislam/uptime-kuma:1.23.16
     restart: unless-stopped
     # AC-7: same rationale as portainer above — must be reachable over Tailscale.
     # ⚠️ DEPLOYMENT PREREQUISITE — see docker/FIREWALL.md.
@@ -84,7 +92,8 @@ services:
       - internal
 
   watchtower:
-    image: containrrr/watchtower
+    # Pinned for the same reason as Portainer: it holds the Docker socket.
+    image: containrrr/watchtower:1.7.1
     restart: unless-stopped
     # --scope confines this instance to containers labelled with the same scope.
     # Combined with WATCHTOWER_LABEL_ENABLE below, nothing is updated unless it
