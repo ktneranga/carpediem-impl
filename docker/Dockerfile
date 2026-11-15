@@ -58,7 +58,10 @@ COPY src/ ./src/
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY docker/ ./docker/
 
-RUN chmod +x docker/scripts/migrate.sh docker/scripts/healthcheck.sh
+# Strip Windows line endings too: a script checked out on Windows with CRLF
+# fails in sh ("set: illegal option -"). .gitattributes prevents it; this makes
+# the image safe even from a checkout made before that rule.
+RUN sed -i 's/\r$//' docker/scripts/*.sh && chmod +x docker/scripts/migrate.sh docker/scripts/healthcheck.sh
 
 EXPOSE 3000
 

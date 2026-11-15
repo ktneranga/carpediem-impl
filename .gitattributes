@@ -1,0 +1,5 @@
+# Files that run inside the Linux container keep Unix line endings on every
+# checkout, Windows included: a CRLF shell script fails with "illegal option".
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker/** text eol=lf
