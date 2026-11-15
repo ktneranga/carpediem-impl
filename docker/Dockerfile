@@ -1,5 +1,8 @@
+# syntax=docker/dockerfile:1
 FROM node:22-alpine AS base
-RUN npm install -g pnpm
+# Pinned to the version the lockfile is made with: an unpinned pnpm changed
+# behaviour under us (pnpm 11 stops on unapproved build scripts).
+RUN npm install -g pnpm@11.8.0
 
 # ── deps: install ALL dependencies (dev+prod) ────────────────────────────────
 # drizzle-kit (devDep) runs migrations at container start via migrate.sh
@@ -7,8 +10,14 @@ RUN npm install -g pnpm
 # tsx is now in dependencies (production server runtime)
 FROM base AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+# pnpm-workspace.yaml carries `allowBuilds` (esbuild, sharp, unrs-resolver):
+# without it pnpm refuses their install scripts and the build fails.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Slow links (a restaurant's or a home connection): wait longer per package and
+# retry, and keep pnpm's store in a BuildKit cache so a retry or the next build
+# reuses what was already downloaded.
+ENV npm_config_fetch_timeout=300000     npm_config_fetch_retries=5     npm_config_fetch_retry_maxtimeout=120000
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store     pnpm install --frozen-lockfile --network-concurrency=8
 
 # ── builder: compile Next.js application ─────────────────────────────────────
 FROM base AS builder
