@@ -2,7 +2,8 @@
 
 import { createElement, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Pencil, Plus, Trash2, X } from 'lucide-react'
+import { FileSpreadsheet, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { MenuImportSheet } from '@/components/manage/menu-import-sheet'
 import { SortableList } from '@/components/manage/sortable-list'
 import {
   ApiError,
@@ -79,6 +80,7 @@ export function MenuEditor() {
   const [confirm, setConfirm] = useState<{ text: string; run: () => Promise<void> } | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [importing, setImporting] = useState(false)
   /** Empty categories added from the Drinks (or Food) side — see `sideOf`. */
   const [addedTo, setAddedTo] = useState<Record<string, Side>>({})
 
@@ -132,7 +134,12 @@ export function MenuEditor() {
     <div className="flex flex-col gap-sp-4">
       <header className="flex flex-wrap items-center justify-between gap-sp-3">
         <h1 className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">Menu</h1>
-        <p className="text-fs-14 text-slate-600 night:text-night-second">Switched off: hidden from the POS, kept here.</p>
+        <div className="flex flex-wrap items-center gap-sp-3">
+          <p className="text-fs-14 text-slate-600 night:text-night-second">Switched off: hidden from the POS, kept here.</p>
+          <button type="button" className={secondary} onClick={() => setImporting(true)}>
+            <FileSpreadsheet className="size-4" aria-hidden="true" /> Bulk upload
+          </button>
+        </div>
       </header>
 
       {message ? (
@@ -288,6 +295,13 @@ export function MenuEditor() {
           confirm={(text, action) => setConfirm({ text, run: action })}
           onClose={() => setEditing(null)}
           onCreated={(id) => setEditing({ mode: 'edit', itemId: id })}
+        />
+      ) : null}
+
+      {importing ? (
+        <MenuImportSheet
+          onClose={() => setImporting(false)}
+          onImported={() => void queryClient.invalidateQueries({ queryKey: ['manage-menu'] })}
         />
       ) : null}
 
