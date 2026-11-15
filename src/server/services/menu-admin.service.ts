@@ -145,6 +145,9 @@ export async function updateCategory(tx: Tx, a: { tenantId: string; staffId: str
 }
 
 export async function removeCategory(tx: Tx, a: { tenantId: string; staffId: string; id: string; version: number }) {
+  // Locked first: a dish switched on in this category at the same moment waits
+  // (`activeCategory` locks it too), so it is counted below or refused there.
+  await tx.select({ id: menuCategories.id }).from(menuCategories).where(eq(menuCategories.id, a.id)).for('update')
   const [{ count }] = await tx
     .select({ count: sql<number>`count(*)::int` })
     .from(menuItems)
@@ -153,12 +156,31 @@ export async function removeCategory(tx: Tx, a: { tenantId: string; staffId: str
   return versionedUpdate(tx, 'category', { ...a, expectedVersion: a.version, set: { isActive: false } })
 }
 
+/**
+ * Switch a category off (the same rule as `removeCategory`: its dishes go off
+ * first) or back on (Teran, 2026-11-15). Back on, it goes to the end of the
+ * list: its old place may have been reordered since.
+ */
+export async function setCategoryActive(
+  tx: Tx,
+  a: { tenantId: string; staffId: string; id: string; version: number; active: boolean },
+) {
+  if (!a.active) return removeCategory(tx, a)
+  return versionedUpdate(tx, 'category', {
+    ...a,
+    expectedVersion: a.version,
+    set: { isActive: true, displayOrder: await nextOrder(tx, 'category', null, a.tenantId) },
+  })
+}
+
 async function activeCategory(tx: Tx, id: string, tenantId: string) {
   const [category] = await tx
     .select({ id: menuCategories.id })
     .from(menuCategories)
     .where(and(eq(menuCategories.id, id), eq(menuCategories.tenantId, tenantId), eq(menuCategories.isActive, true)))
     .limit(1)
+    // Held to commit: the category cannot be switched off under this write.
+    .for('update')
   if (!category) throw new MenuRuleError('Choose a category on the menu')
 }
 
@@ -486,17 +508,17 @@ export type ManageItem = {
   isAvailable: boolean
   groups: ManageGroup[]
 }
-export type ManageCategory = { id: string; version: number; name: string; items: ManageItem[] }
+export type ManageCategory = { id: string; version: number; name: string; isActive: boolean; items: ManageItem[] }
 
-/** The whole menu as the editor needs it: versions, removed dishes on request. */
+/** The whole menu as the editor needs it: versions; switched-off categories and dishes on request. */
 export async function loadMenuForManage(
   executor: Tx | typeof db,
   { tenantId, includeRemoved }: { tenantId: string; includeRemoved: boolean },
 ): Promise<ManageCategory[]> {
   const categories = await executor
-    .select({ id: menuCategories.id, version: menuCategories.version, name: menuCategories.name })
+    .select({ id: menuCategories.id, version: menuCategories.version, name: menuCategories.name, isActive: menuCategories.isActive })
     .from(menuCategories)
-    .where(and(eq(menuCategories.tenantId, tenantId), eq(menuCategories.isActive, true)))
+    .where(and(eq(menuCategories.tenantId, tenantId), includeRemoved ? undefined : eq(menuCategories.isActive, true)))
     .orderBy(asc(menuCategories.displayOrder), asc(menuCategories.name))
   const items = await executor
     .select({

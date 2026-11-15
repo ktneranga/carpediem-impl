@@ -2,16 +2,17 @@
 
 import { createElement, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Pencil, Plus, Trash2, Undo2, Users, X } from 'lucide-react'
+import { Pencil, Plus, Users, X } from 'lucide-react'
 import { SortableList } from '@/components/manage/sortable-list'
 import {
   ApiError,
   call as callApi,
-  ConfirmDialog,
   icon,
   input,
+  OffChip,
   primary,
   secondary,
+  Switch,
 } from '@/components/manage/manage-ui'
 import type { ManageFloor, ManageTable, ManageZone } from '@/server/services/floor-admin.service'
 import { zoneIcon } from '@/lib/design'
@@ -32,22 +33,24 @@ type Run = (method: string, url: string, body?: unknown) => Promise<unknown>
 
 export function FloorEditor() {
   const queryClient = useQueryClient()
-  const [showRemoved, setShowRemoved] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editing, setEditing] = useState<{ mode: 'new' } | { mode: 'edit'; tableId: string } | null>(null)
-  const [confirm, setConfirm] = useState<{ text: string; note: string; run: () => Promise<void> } | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // Switched-off zones and tables are always listed, greyed (Teran,
+  // 2026-11-15): the switch is how they come back.
   const { data, isLoading } = useQuery({
-    queryKey: ['manage-floor', showRemoved] as const,
-    queryFn: async () =>
-      ((await call('GET', `/api/manage/floor${showRemoved ? '?removed=1' : ''}`)) as { data: ManageFloor }).data,
+    queryKey: ['manage-floor'],
+    queryFn: async () => ((await call('GET', '/api/manage/floor?removed=1')) as { data: ManageFloor }).data,
   })
   const zones = data?.zones ?? []
-  const removed = data?.removed ?? []
+  const onZones = zones.filter((zone) => zone.isActive)
+  const offZones = zones.filter((zone) => !zone.isActive)
 
-  const selected = zones.find((zone) => zone.id === selectedId) ?? zones[0] ?? null
+  const selected = zones.find((zone) => zone.id === selectedId) ?? onZones[0] ?? zones[0] ?? null
+  const onTables = selected?.tables.filter((table) => table.isActive) ?? []
+  const offTables = selected?.tables.filter((table) => !table.isActive) ?? []
   const editingTable =
     editing?.mode === 'edit' ? zones.flatMap((zone) => zone.tables).find((t) => t.id === editing.tableId) ?? null : null
 
@@ -73,23 +76,46 @@ export function FloorEditor() {
   const reorder = (kind: 'zone' | 'table', parentId: string | null, ids: string[]) =>
     run('POST', '/api/manage/floor/reorder', { kind, parentId, ids })
 
-  /** A removed table goes back to its own zone, or — if that zone is gone too — to the one on screen. */
-  function restore(table: ManageTable) {
-    const ownZoneActive = zones.some((zone) => zone.id === table.zoneId)
-    return run('POST', `/api/manage/floor/tables/${table.id}/restore`, {
-      version: table.version,
-      ...(ownZoneActive || !selected ? {} : { zoneId: selected.id }),
-    })
-  }
+  /** Off hides it from the POS floor; on brings it back. */
+  const switchZone = (zone: ManageZone) => (on: boolean) =>
+    on
+      ? run('POST', `/api/manage/floor/zones/${zone.id}/restore`, { version: zone.version })
+      : run('DELETE', `/api/manage/floor/zones/${zone.id}?version=${zone.version}`)
+  const switchTable = (table: ManageTable) => (on: boolean) =>
+    on
+      ? run('POST', `/api/manage/floor/tables/${table.id}/restore`, { version: table.version })
+      : run('DELETE', `/api/manage/floor/tables/${table.id}?version=${table.version}`)
+
+  const zoneRow = (zone: ManageZone, handle: ReactNode) => (
+    <ZoneRow
+      key={zone.version}
+      zone={zone}
+      handle={handle}
+      selected={selected?.id === zone.id}
+      busy={busy}
+      onSelect={() => setSelectedId(zone.id)}
+      onRename={(name) => run('PATCH', `/api/manage/floor/zones/${zone.id}`, { version: zone.version, name })}
+      onSwitch={switchZone(zone)}
+    />
+  )
+  const tableRow = (table: ManageTable, handle: ReactNode) => (
+    <TableRow
+      key={table.version}
+      table={table}
+      handle={handle}
+      busy={busy}
+      onEdit={() => setEditing({ mode: 'edit', tableId: table.id })}
+      onSwitch={switchTable(table)}
+      zoneOff={selected ? !selected.isActive : false}
+    />
+  )
+
 
   return (
     <div className="flex flex-col gap-sp-4">
       <header className="flex flex-wrap items-center justify-between gap-sp-3">
         <h1 className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">Floor</h1>
-        <label className="flex min-h-11 items-center gap-sp-2 text-fs-14 font-semibold text-slate-700 night:text-night-second">
-          <input type="checkbox" className="size-5" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />
-          Show removed tables
-        </label>
+        <p className="text-fs-14 text-slate-600 night:text-night-second">Switched off: hidden from the POS, kept here.</p>
       </header>
 
       {message ? (
@@ -105,35 +131,19 @@ export function FloorEditor() {
 
       <div className="flex flex-col gap-sp-4 lg:flex-row lg:items-start">
         {/* ── Zones ──────────────────────────────────────────────────────── */}
-        <section aria-label="Zones" className="flex flex-col gap-sp-2 rounded-panel bg-white p-sp-3 lg:w-72 lg:shrink-0 night:bg-night-card">
+        <section aria-label="Zones" className="flex flex-col gap-sp-2 rounded-panel bg-white p-sp-3 lg:w-80 lg:shrink-0 night:bg-night-card">
           <h2 className="px-sp-2 text-fs-14 font-bold tracking-micro text-slate-500 uppercase night:text-night-muted">Zones</h2>
           <SortableList
-            items={zones}
+            items={onZones}
             disabled={busy}
             label={(zone) => zone.name}
             className="flex flex-col gap-sp-1"
             onReorder={(ids) => reorder('zone', null, ids)}
-            renderItem={(zone, handle) => (
-              <ZoneRow
-                key={zone.version}
-                zone={zone}
-                handle={handle}
-                selected={selected?.id === zone.id}
-                busy={busy}
-                onSelect={() => setSelectedId(zone.id)}
-                onRename={(name) => run('PATCH', `/api/manage/floor/zones/${zone.id}`, { version: zone.version, name })}
-                onRemove={() =>
-                  setConfirm({
-                    text: `Remove the zone "${zone.name}"?`,
-                    note: 'Its pill leaves the floor. Past orders keep their tables.',
-                    run: async () => {
-                      await run('DELETE', `/api/manage/floor/zones/${zone.id}?version=${zone.version}`)
-                    },
-                  })
-                }
-              />
-            )}
+            renderItem={(zone, handle) => zoneRow(zone, handle)}
           />
+          {offZones.map((zone) => (
+            <div key={zone.id + zone.version}>{zoneRow(zone, <span className="size-11 shrink-0" />)}</div>
+          ))}
           <AddZone busy={busy} onAdd={(name) => run('POST', '/api/manage/floor/zones', { name })} />
         </section>
 
@@ -144,79 +154,54 @@ export function FloorEditor() {
               {selected ? <ZoneIcon name={selected.name} className="size-5 text-slate-500 night:text-night-muted" /> : null}
               {selected?.name ?? 'No zones yet'}
             </h2>
-            {selected ? (
+            {selected?.isActive ? (
               <button type="button" className={primary} onClick={() => setEditing({ mode: 'new' })}>
                 <Plus className="size-4" aria-hidden="true" /> Add table
               </button>
             ) : null}
           </div>
-          {selected && selected.tables.length === 0 ? (
+          {selected && !selected.isActive ? (
+            <p className="px-sp-2 text-fs-14 text-slate-600 night:text-night-second">
+              This zone is off: none of its tables show on the POS. Switch it on in the list to add tables or turn them on.
+            </p>
+          ) : null}
+          {selected?.isActive && selected.tables.length > 0 && onTables.length === 0 ? (
+            <p className="px-sp-2 text-fs-14 text-slate-600 night:text-night-second">
+              All its tables are off, so this zone does not show on the POS.
+            </p>
+          ) : null}
+          {selected?.isActive && selected.tables.length === 0 ? (
             <p className="px-sp-2 py-sp-4 text-fs-14 text-slate-600 night:text-night-second">
               No tables in this zone. A zone shows on the floor once it has a table.
             </p>
           ) : null}
           {selected ? (
             <SortableList
-              items={selected.tables}
+              items={onTables}
               disabled={busy}
               label={(table) => table.label}
               className="flex flex-col divide-y divide-slate-100 night:divide-night-hairline"
               onReorder={(ids) => reorder('table', selected.id, ids)}
-              renderItem={(table, handle) => (
-                <TableRow
-                  key={table.version}
-                  table={table}
-                  handle={handle}
-                  busy={busy}
-                  onEdit={() => setEditing({ mode: 'edit', tableId: table.id })}
-                  onRemove={() =>
-                    setConfirm({
-                      text: `Remove ${table.label} from the floor?`,
-                      note: 'Past orders, bills and receipts keep it. You can restore a removed table.',
-                      run: async () => {
-                        await run('DELETE', `/api/manage/floor/tables/${table.id}?version=${table.version}`)
-                      },
-                    })
-                  }
-                />
-              )}
+              renderItem={(table, handle) => tableRow(table, handle)}
             />
+          ) : null}
+          {offTables.length > 0 ? (
+            <ul className="flex flex-col divide-y divide-slate-100 border-t border-slate-200 night:divide-night-hairline night:border-night-hairline">
+              {offTables.map((table) => (
+                <li key={table.id + table.version}>{tableRow(table, <span className="size-11 shrink-0" />)}</li>
+              ))}
+            </ul>
           ) : null}
         </section>
       </div>
 
-      {showRemoved ? (
-        <section aria-label="Removed tables" className="flex flex-col gap-sp-2 rounded-panel bg-white p-sp-3 night:bg-night-card">
-          <h2 className="px-sp-2 text-fs-14 font-bold tracking-micro text-slate-500 uppercase night:text-night-muted">Removed tables</h2>
-          {removed.length === 0 ? <p className="px-sp-2 text-fs-14 text-slate-600 night:text-night-second">No removed tables.</p> : null}
-          <ul className="flex flex-col divide-y divide-slate-100 night:divide-night-hairline">
-            {removed.map((table) => {
-              const ownZoneActive = zones.some((zone) => zone.id === table.zoneId)
-              return (
-                <li key={table.id + table.version} className="flex flex-wrap items-center gap-sp-2 py-sp-2 pl-sp-2">
-                  <span className="min-w-0 flex-1 text-fs-16 font-bold text-slate-400 line-through night:text-night-muted">{table.label}</span>
-                  <span className="text-fs-12 text-slate-500 night:text-night-muted">{table.zoneName}</span>
-                  <button
-                    type="button"
-                    className={secondary}
-                    disabled={busy || (!ownZoneActive && !selected)}
-                    onClick={() => restore(table)}
-                  >
-                    <Undo2 className="size-4" aria-hidden="true" />
-                    {ownZoneActive || !selected ? 'Restore' : `Restore to ${selected.name}`}
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-      ) : null}
 
       {editing && selected ? (
         <TableSheet
           key={editing.mode === 'edit' ? `${editingTable?.id}${editingTable?.version}` : 'new'}
           table={editing.mode === 'edit' ? editingTable : null}
-          zones={zones}
+          // Only zones that are on can take a table; its own stays listed.
+          zones={zones.filter((zone) => zone.isActive || zone.id === selected.id)}
           defaultZoneId={selected.id}
           busy={busy}
           run={run}
@@ -224,18 +209,6 @@ export function FloorEditor() {
         />
       ) : null}
 
-      {confirm ? (
-        <ConfirmDialog
-          text={confirm.text}
-          note={confirm.note}
-          busy={busy}
-          onCancel={() => setConfirm(null)}
-          onConfirm={async () => {
-            await confirm.run()
-            setConfirm(null)
-          }}
-        />
-      ) : null}
     </div>
   )
 }
@@ -249,7 +222,7 @@ function ZoneRow({
   busy,
   onSelect,
   onRename,
-  onRemove,
+  onSwitch,
 }: {
   zone: ManageZone
   handle: ReactNode
@@ -257,7 +230,7 @@ function ZoneRow({
   busy: boolean
   onSelect: () => void
   onRename: (name: string) => Promise<unknown>
-  onRemove: () => void
+  onSwitch: (on: boolean) => Promise<unknown>
 }) {
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(zone.name)
@@ -290,19 +263,25 @@ function ZoneRow({
             )}
           >
             <ZoneIcon name={zone.name} className="size-4 shrink-0 text-slate-500 night:text-night-muted" />
-            <span className="truncate">{zone.name}</span>
-            <span className="text-fs-12 text-slate-500 night:text-night-muted">{zone.tables.length}</span>
+            <span className={cn('truncate', zone.isActive ? '' : 'text-slate-400 night:text-night-muted')}>{zone.name}</span>
+            {zone.isActive ? (
+              <span className="text-fs-12 text-slate-500 night:text-night-muted">{zone.tables.filter((t) => t.isActive).length}</span>
+            ) : (
+              <OffChip />
+            )}
           </button>
           {selected ? (
-            <span className="flex">
-              <button type="button" aria-label={`Rename ${zone.name}`} className={icon} onClick={() => setRenaming(true)}>
-                <Pencil className="size-4" aria-hidden="true" />
-              </button>
-              <button type="button" aria-label={`Remove ${zone.name}`} className={icon} disabled={busy} onClick={onRemove}>
-                <Trash2 className="size-4" aria-hidden="true" />
-              </button>
-            </span>
+            <button type="button" aria-label={`Rename ${zone.name}`} className={icon} onClick={() => setRenaming(true)}>
+              <Pencil className="size-4" aria-hidden="true" />
+            </button>
           ) : null}
+          <Switch
+            on={zone.isActive}
+            label={zone.name}
+            disabled={busy}
+            why={zone.isActive && zone.tables.some((t) => t.isActive) ? 'Turn its tables off first' : undefined}
+            onChange={(on) => void onSwitch(on)}
+          />
         </div>
       )}
     </div>
@@ -334,20 +313,26 @@ function TableRow({
   handle,
   busy,
   onEdit,
-  onRemove,
+  onSwitch,
+  zoneOff = false,
 }: {
   table: ManageTable
   handle: ReactNode
   busy: boolean
   onEdit: () => void
-  onRemove: () => void
+  onSwitch: (on: boolean) => Promise<unknown>
+  /** Its zone is off: it cannot go on until the zone does. */
+  zoneOff?: boolean
 }) {
   const occupied = table.inUse || table.status === 'occupied'
   return (
     <div className="flex flex-wrap items-center gap-sp-2 py-sp-2 pr-sp-2">
       {handle}
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-sp-2">
-        <span className="text-fs-16 font-bold text-slate-900 night:text-night-text">{table.label}</span>
+        <span className={cn('text-fs-16 font-bold', table.isActive ? 'text-slate-900 night:text-night-text' : 'text-slate-400 night:text-night-muted')}>
+          {table.label}
+        </span>
+        {table.isActive ? null : <OffChip />}
         {table.capacity ? (
           <span className="inline-flex items-center gap-sp-1 text-fs-12 text-slate-600 night:text-night-second">
             <Users className="size-3.5" aria-hidden="true" /> {table.capacity} seats
@@ -363,9 +348,20 @@ function TableRow({
       <button type="button" aria-label={`Edit ${table.label}`} className={icon} onClick={onEdit}>
         <Pencil className="size-4" aria-hidden="true" />
       </button>
-      <button type="button" aria-label={`Remove ${table.label}`} className={icon} disabled={busy} onClick={onRemove}>
-        <Trash2 className="size-4" aria-hidden="true" />
-      </button>
+      {/* An occupied table can't go off: its order would vanish from the floor. */}
+      <Switch
+        on={table.isActive}
+        label={table.label}
+        disabled={busy}
+        why={
+          table.isActive && occupied
+            ? 'In use: an order is open on it'
+            : !table.isActive && zoneOff
+              ? 'Turn its zone on first'
+              : undefined
+        }
+        onChange={(on) => void onSwitch(on)}
+      />
     </div>
   )
 }

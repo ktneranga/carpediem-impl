@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { input, primary } from '@/components/manage/manage-ui'
+import { PasswordInput } from '@/components/password-input'
 import { cn } from '@/lib/utils'
 
 /** Zones a restaurant here is likely in; Asia/Colombo first (Carpe Diem). */
@@ -130,17 +131,17 @@ export function SetupForm() {
       {row(
         'Owner PIN',
         'pin',
-        <input className={input} type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={values.pin} onChange={set('pin')} />,
+        <PasswordInput what="PIN" className={input} inputMode="numeric" autoComplete="off" maxLength={4} value={values.pin} onChange={set('pin')} />,
         '4 digits. This is how the owner signs in on the PIN pad.',
       )}
-      {row('Owner PIN again', 'pinAgain', <input className={input} type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={values.pinAgain} onChange={set('pinAgain')} />)}
+      {row('Owner PIN again', 'pinAgain', <PasswordInput what="PIN" className={input} inputMode="numeric" autoComplete="off" maxLength={4} value={values.pinAgain} onChange={set('pinAgain')} />)}
       {row(
         'Manage password',
         'managePassword',
-        <input className={input} type="password" autoComplete="new-password" maxLength={72} value={values.managePassword} onChange={set('managePassword')} />,
+        <PasswordInput className={input} autoComplete="new-password" maxLength={72} value={values.managePassword} onChange={set('managePassword')} />,
         '8 characters or more. Opens Manage (menu, staff, money).',
       )}
-      {row('Manage password again', 'managePasswordAgain', <input className={input} type="password" autoComplete="new-password" maxLength={72} value={values.managePasswordAgain} onChange={set('managePasswordAgain')} />)}
+      {row('Manage password again', 'managePasswordAgain', <PasswordInput className={input} autoComplete="new-password" maxLength={72} value={values.managePasswordAgain} onChange={set('managePasswordAgain')} />)}
       {error && error.field === null ? (
         <p role="alert" className="text-fs-14 font-semibold text-red-700 night:text-red-400">
           {error.message}

@@ -31,6 +31,8 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 export type FloorKind = 'zone' | 'table'
 
 export class ZoneNotEmptyError extends Error {}
+/** A table switched on while its zone is off: it would show nowhere. */
+export class ZoneOffError extends Error {}
 export class TableInUseError extends Error {
   constructor(readonly label: string) {
     super(`Close or move the order on ${label} first`)
@@ -92,7 +94,19 @@ async function activeZone(tx: Tx, id: string, tenantId: string) {
     .from(zones)
     .where(and(eq(zones.id, id), eq(zones.tenantId, tenantId), eq(zones.isActive, true)))
     .limit(1)
+    .for('update')
   if (!zone) throw new MenuRuleError('Choose a zone on the floor')
+}
+
+/** Switching a table on needs its zone on: a table in an off zone shows nowhere. */
+async function zoneIsOn(tx: Tx, id: string, tenantId: string) {
+  const [zone] = await tx
+    .select({ id: zones.id })
+    .from(zones)
+    .where(and(eq(zones.id, id), eq(zones.tenantId, tenantId), eq(zones.isActive, true)))
+    .limit(1)
+    .for('update')
+  if (!zone) throw new ZoneOffError('Turn its zone on first')
 }
 
 // ── The versioned write ──────────────────────────────────────────────────────
@@ -173,12 +187,31 @@ export async function updateZone(tx: Tx, a: { tenantId: string; staffId: string;
 
 /** Refused while the zone still has active tables. */
 export async function removeZone(tx: Tx, a: { tenantId: string; staffId: string; id: string; version: number }) {
+  // Locked first, for the reason `removeCategory` gives: a table switched on
+  // in this zone at the same moment is counted below or refused.
+  await tx.select({ id: zones.id }).from(zones).where(eq(zones.id, a.id)).for('update')
   const [{ count }] = await tx
     .select({ count: sql<number>`count(*)::int` })
     .from(tables)
     .where(and(eq(tables.zoneId, a.id), eq(tables.tenantId, a.tenantId), eq(tables.isActive, true)))
   if (count > 0) throw new ZoneNotEmptyError()
   return versionedUpdate(tx, 'zone', { ...a, expectedVersion: a.version, set: { isActive: false } })
+}
+
+/**
+ * Switch a zone off (the same rule as `removeZone`: its tables go off first) or
+ * back on (Teran, 2026-11-15), at the end of the floor.
+ */
+export async function setZoneActive(
+  tx: Tx,
+  a: { tenantId: string; staffId: string; id: string; version: number; active: boolean },
+) {
+  if (!a.active) return removeZone(tx, a)
+  return versionedUpdate(tx, 'zone', {
+    ...a,
+    expectedVersion: a.version,
+    set: { isActive: true, displayOrder: await nextOrder(tx, 'zone', null, a.tenantId) },
+  })
 }
 
 // ── Tables ───────────────────────────────────────────────────────────────────
@@ -261,7 +294,8 @@ export async function setTableActive(
   await checkLabelFree(tx, a.tenantId, table.label, a.id)
   const set: Record<string, unknown> = { isActive: true }
   const zoneId = a.zoneId ?? table.zoneId
-  await activeZone(tx, zoneId, a.tenantId)
+  if (a.zoneId === undefined) await zoneIsOn(tx, zoneId, a.tenantId)
+  else await activeZone(tx, zoneId, a.tenantId)
   if (zoneId !== table.zoneId) set.zoneId = zoneId
   // Back at the end of its zone: its old place may have been reordered since.
   set.displayOrder = await nextOrder(tx, 'table', zoneId, a.tenantId)
@@ -328,12 +362,9 @@ export type ManageTable = {
   /** An open order (or merged group) is on it right now. */
   inUse: boolean
 }
-export type ManageZone = { id: string; version: number; name: string; tables: ManageTable[] }
-export type ManageFloor = {
-  zones: ManageZone[]
-  /** Only with `includeRemoved`: removed tables, each with its zone's name (that zone may be gone too). */
-  removed: (ManageTable & { zoneName: string })[]
-}
+export type ManageZone = { id: string; version: number; name: string; isActive: boolean; tables: ManageTable[] }
+/** With `includeRemoved`, switched-off zones and tables are listed too, each table in its own zone. */
+export type ManageFloor = { zones: ManageZone[] }
 
 /** The floor as the editor needs it: zones in floor order, tables in order, versions. */
 export async function loadFloorForManage(
@@ -363,20 +394,11 @@ export async function loadFloorForManage(
     // The same order as the floor grid (/api/tables).
     .orderBy(asc(tables.displayOrder), asc(tables.label))
 
-  const zoneName = new Map(zoneRows.map((zone) => [zone.id, zone.name]))
   const byZone = new Map<string, ManageTable[]>()
-  const removed: ManageFloor['removed'] = []
-  for (const table of tableRows) {
-    if (!table.isActive) {
-      removed.push({ ...table, zoneName: zoneName.get(table.zoneId) ?? '' })
-      continue
-    }
-    byZone.set(table.zoneId, [...(byZone.get(table.zoneId) ?? []), table])
-  }
+  for (const table of tableRows) byZone.set(table.zoneId, [...(byZone.get(table.zoneId) ?? []), table])
   return {
     zones: zoneRows
-      .filter((zone) => zone.isActive)
-      .map((zone) => ({ id: zone.id, version: zone.version, name: zone.name, tables: byZone.get(zone.id) ?? [] })),
-    removed: removed.sort((x, y) => x.label.localeCompare(y.label, undefined, { numeric: true })),
+      .filter((zone) => includeRemoved || zone.isActive)
+      .map((zone) => ({ ...zone, tables: byZone.get(zone.id) ?? [] })),
   }
 }

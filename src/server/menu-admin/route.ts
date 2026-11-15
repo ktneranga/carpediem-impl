@@ -11,6 +11,7 @@ import {
   TABLE_LABEL_INDEX,
   TableInUseError,
   ZoneNotEmptyError,
+  ZoneOffError,
 } from '@/server/services/floor-admin.service'
 import {
   CategoryNotEmptyError,
@@ -114,12 +115,13 @@ async function manageWrite<T>(
       return menuFail('STALE', 'Someone else changed this. It has been reloaded.', 409)
     }
     if (error instanceof CategoryNotEmptyError) {
-      return menuFail('CATEGORY_NOT_EMPTY', 'Move or remove the dishes in this category first.', 409)
+      return menuFail('CATEGORY_NOT_EMPTY', 'Turn off or move the dishes in this category first.', 409)
     }
     if (error instanceof ZoneNotEmptyError) {
-      return menuFail('ZONE_NOT_EMPTY', 'Move or remove the tables in this zone first.', 409)
+      return menuFail('ZONE_NOT_EMPTY', 'Turn off or move the tables in this zone first.', 409)
     }
     if (error instanceof TableInUseError) return menuFail('TABLE_IN_USE', error.message, 409)
+    if (error instanceof ZoneOffError) return menuFail('ZONE_OFF', error.message, 409)
     if (error instanceof LabelTakenError) return menuFail('LABEL_TAKEN', error.message, 409)
     // The partial unique index is the backstop behind the label check (a race).
     if (isUniqueViolation(error, TABLE_LABEL_INDEX)) {

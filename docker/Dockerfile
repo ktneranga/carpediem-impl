@@ -48,12 +48,14 @@ COPY --from=builder /app/public ./public
 # Custom server entry point (NOT compiled by next build)
 COPY server.ts ./
 
-# drizzle-kit config + migration SQL files (applied at container start)
-COPY drizzle.config.ts ./
-COPY src/server/db/ ./src/server/db/
+# server.ts runs under tsx and imports src/ directly (socket auth, rooms,
+# session cookie, ...), so all of src/ ships, plus tsconfig.json for the `@/`
+# path alias. Includes the migration SQL files drizzle-kit applies at start.
+COPY drizzle.config.ts tsconfig.json ./
+COPY src/ ./src/
 
 # pnpm scripts (db:migrate, start) and entrypoint scripts
-COPY package.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY docker/ ./docker/
 
 RUN chmod +x docker/scripts/migrate.sh docker/scripts/healthcheck.sh
@@ -63,5 +65,8 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD sh docker/scripts/healthcheck.sh
 
-# Run migrations then start the server
-CMD ["sh", "-c", "sh docker/scripts/migrate.sh && pnpm start"]
+# Run migrations then start the server. Binaries are called directly, not via
+# `pnpm start`: pnpm 11 checks dependencies before a script and tries to
+# reinstall them, which fails at runtime (ERR_PNPM_IGNORED_BUILDS).
+# NODE_ENV=production is set above; settings come from compose, not a .env.
+CMD ["sh", "-c", "sh docker/scripts/migrate.sh && exec ./node_modules/.bin/tsx server.ts"]

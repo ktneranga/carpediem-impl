@@ -193,7 +193,8 @@ async function run() {
   const mergeIn = await api(waiter, 'POST', `/api/tables/${aId}/merge`, { tableIds: [dId] })
   check('merging it in is refused (4xx)', mergeIn.status >= 400 && mergeIn.status < 500, `${mergeIn.status} ${JSON.stringify(mergeIn.body)}`)
   const listed = (await api(manage, 'GET', '/api/manage/floor?removed=1')).body?.data
-  check('"Show removed tables" lists it', listed?.removed?.some((t: any) => t.id === dId && t.zoneName === 'ZZ Deck'))
+  check('Manage lists the switched-off table in its own zone',
+    listed?.zones?.some((z: any) => z.name === 'ZZ Deck' && z.tables.some((t: any) => t.id === dId && t.isActive === false)))
 
   // Case 3 (restore) + 7.
   const taker = await addTable(zoneId, 'zz d2')
@@ -212,6 +213,25 @@ async function run() {
   made.zones.push(empty.body?.data?.id)
   const zoneGone = await api(manage, 'DELETE', `/api/manage/floor/zones/${empty.body?.data?.id}?version=1`)
   check('an empty zone can be removed (200)', zoneGone.status === 200)
+
+  // Switches (Teran, 2026-11-15): an off zone is still listed, comes back on,
+  // and a table cannot go on while its zone is off.
+  const emptyId = empty.body?.data?.id as string
+  const offList = (await api(manage, 'GET', '/api/manage/floor?removed=1')).body?.data
+  check('Manage lists the switched-off zone, marked off', offList?.zones?.some((z: any) => z.id === emptyId && z.isActive === false))
+  const parked = await addTable(emptyId, 'ZZ P1')
+  check('no table can be added to an off zone (422)', parked.status === 422, JSON.stringify(parked.body))
+  const zoneOn = await api(manage, 'POST', `/api/manage/floor/zones/${emptyId}/restore`, { version: await versionOf('zones', emptyId) })
+  check('the zone switches back on (200)', zoneOn.status === 200 && zoneOn.body?.data?.isActive === true, JSON.stringify(zoneOn.body))
+  const p1 = await addTable(emptyId, 'ZZ P1')
+  const p1Id = p1.body?.data?.id as string
+  made.tables.push(p1Id)
+  await api(manage, 'DELETE', `/api/manage/floor/tables/${p1Id}?version=${await versionOf('tables', p1Id)}`)
+  await api(manage, 'DELETE', `/api/manage/floor/zones/${emptyId}?version=${await versionOf('zones', emptyId)}`)
+  const p1On = await api(manage, 'POST', `/api/manage/floor/tables/${p1Id}/restore`, { version: await versionOf('tables', p1Id) })
+  check('a table cannot go on while its zone is off (409 ZONE_OFF "Turn its zone on first")',
+    p1On.status === 409 && p1On.body?.error?.code === 'ZONE_OFF' && String(p1On.body?.error?.message).includes('zone on'),
+    JSON.stringify(p1On.body))
 
   // Case 10: the log.
   const log = await sql(`SELECT version, payload FROM config_changes WHERE row_id = $1 ORDER BY created_at`, [dId])

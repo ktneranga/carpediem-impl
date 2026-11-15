@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Download, LogOut } from 'lucide-react'
 import { input, primary, secondary } from '@/components/manage/manage-ui'
+import { PasswordInput } from '@/components/password-input'
 import { cn } from '@/lib/utils'
 
 /**
@@ -57,8 +58,7 @@ export function VendorPanel({ signedIn }: { signedIn: boolean }) {
       <form onSubmit={(event) => void signIn(event)} className="flex flex-col gap-sp-3">
         <label className="flex flex-col gap-sp-1">
           <span className="text-fs-14 font-semibold text-slate-600 night:text-night-second">Vendor password</span>
-          <input
-            type="password"
+          <PasswordInput
             autoFocus
             autoComplete="current-password"
             className={input}

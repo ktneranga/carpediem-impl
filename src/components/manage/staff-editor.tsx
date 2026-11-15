@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, Eye, EyeOff, Plus, Trash2, X } from 'lucide-react'
+import { ChevronDown, Plus, Trash2, X } from 'lucide-react'
+import { PasswordInput } from '@/components/password-input'
 import { ApiError, call as callApi, ConfirmDialog, icon, input, primary, secondary } from '@/components/manage/manage-ui'
 import { accessOf, isStaffJob, jobLabel, STAFF_JOBS, type StaffJob } from '@/lib/staff-jobs'
 import type { ManageStaff, StaffRole } from '@/server/services/staff-admin.service'
@@ -154,7 +155,6 @@ function StaffSheet({
   const [name, setName] = useState(person?.name ?? '')
   const [job, setJob] = useState<StaffJob>(person && isStaffJob(person.jobTitle) ? person.jobTitle : 'waiter')
   const [pin, setPin] = useState('')
-  const [showPin, setShowPin] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<'deactivate' | 'delete' | null>(null)
   // Story 10.6: extra permissions, for waiter-access staff only.
@@ -276,27 +276,16 @@ function StaffSheet({
             <span className="text-fs-14 font-semibold text-slate-700 night:text-night-second">
               {sheet.mode === 'edit' ? 'Set a new PIN (leave empty to keep)' : 'PIN (4 digits)'}
             </span>
-            <span className="flex gap-sp-1">
-              <input
-                autoFocus={reactivating}
-                type={showPin ? 'text' : 'password'}
-                inputMode="numeric"
-                autoComplete="off"
-                maxLength={4}
-                className={cn(input, 'min-w-0 flex-1 tracking-[0.4em]')}
-                value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-              />
-              <button
-                type="button"
-                aria-label={showPin ? 'Hide PIN' : 'Show PIN'}
-                aria-pressed={showPin}
-                className={icon}
-                onClick={() => setShowPin((shown) => !shown)}
-              >
-                {showPin ? <EyeOff className="size-5" aria-hidden="true" /> : <Eye className="size-5" aria-hidden="true" />}
-              </button>
-            </span>
+            <PasswordInput
+              what="PIN"
+              autoFocus={reactivating}
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={4}
+              className={cn(input, 'tracking-[0.4em]')}
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+            />
           </label>
 
           {sheet.mode === 'edit' && !isMe ? (
