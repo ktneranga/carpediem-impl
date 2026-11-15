@@ -206,16 +206,39 @@ async function run() {
   rows = await floorRows(waiter)
   check('restore puts it back on the floor', restored.status === 200 && rows.some((r) => r.id === dId))
 
-  // Case 8: zones.
+  // Case 8: zones. Off WITH its tables on (Teran, 2026-11-15) — unless one
+  // of them has an open order.
+  const busyTable = await addTable(zone2Id, 'ZZ Busy')
+  const busyId = busyTable.body?.data?.id as string
+  made.tables.push(busyId)
+  const busySeat = await api(waiter, 'POST', `/api/tables/${busyId}/sessions`, {})
+  if (busySeat.body?.data?.sessionId) made.sessions.push(busySeat.body.data.sessionId)
   const zoneBusy = await api(manage, 'DELETE', `/api/manage/floor/zones/${zone2Id}?version=${await versionOf('zones', zone2Id)}`)
-  check('a zone with tables cannot be removed (409 ZONE_NOT_EMPTY)', zoneBusy.status === 409 && zoneBusy.body?.error?.code === 'ZONE_NOT_EMPTY')
+  check('a zone with an open order cannot be switched off (409 ZONE_NOT_EMPTY)',
+    zoneBusy.status === 409 && zoneBusy.body?.error?.code === 'ZONE_NOT_EMPTY', `${busySeat.status} ${JSON.stringify(zoneBusy.body)}`)
+  const [{ is_active: zone2On }] = await sql(`SELECT is_active FROM zones WHERE id = $1`, [zone2Id])
+  check('…and is left on (the refusal rolled back)', zone2On === true)
+
+  const hide = await api(manage, 'POST', '/api/manage/floor/zones', { name: 'ZZ Hide' })
+  const hideId = hide.body?.data?.id as string
+  made.zones.push(hideId)
+  const hideTable = await addTable(hideId, 'ZZ H1')
+  const hideTableId = hideTable.body?.data?.id as string
+  made.tables.push(hideTableId)
+  const hideOff = await api(manage, 'DELETE', `/api/manage/floor/zones/${hideId}?version=${await versionOf('zones', hideId)}`)
+  rows = await floorRows(waiter)
+  check('a zone with free tables switches off (200): its tables leave the floor',
+    hideOff.status === 200 && !rows.some((r) => r.id === hideTableId), JSON.stringify(hideOff.body).slice(0, 160))
+  const hideOn = await api(manage, 'POST', `/api/manage/floor/zones/${hideId}/restore`, { version: await versionOf('zones', hideId) })
+  rows = await floorRows(waiter)
+  check('switched back on, its tables are back as they were', hideOn.status === 200 && rows.some((r) => r.id === hideTableId))
   const empty = await api(manage, 'POST', '/api/manage/floor/zones', { name: 'ZZ Empty' })
   made.zones.push(empty.body?.data?.id)
   const zoneGone = await api(manage, 'DELETE', `/api/manage/floor/zones/${empty.body?.data?.id}?version=1`)
   check('an empty zone can be removed (200)', zoneGone.status === 200)
 
   // Switches (Teran, 2026-11-15): an off zone is still listed, comes back on,
-  // and a table cannot go on while its zone is off.
+  // and a table can go on while its zone is off — it stays hidden.
   const emptyId = empty.body?.data?.id as string
   const offList = (await api(manage, 'GET', '/api/manage/floor?removed=1')).body?.data
   check('Manage lists the switched-off zone, marked off', offList?.zones?.some((z: any) => z.id === emptyId && z.isActive === false))
@@ -229,9 +252,9 @@ async function run() {
   await api(manage, 'DELETE', `/api/manage/floor/tables/${p1Id}?version=${await versionOf('tables', p1Id)}`)
   await api(manage, 'DELETE', `/api/manage/floor/zones/${emptyId}?version=${await versionOf('zones', emptyId)}`)
   const p1On = await api(manage, 'POST', `/api/manage/floor/tables/${p1Id}/restore`, { version: await versionOf('tables', p1Id) })
-  check('a table cannot go on while its zone is off (409 ZONE_OFF "Turn its zone on first")',
-    p1On.status === 409 && p1On.body?.error?.code === 'ZONE_OFF' && String(p1On.body?.error?.message).includes('zone on'),
-    JSON.stringify(p1On.body))
+  rows = await floorRows(waiter)
+  check('a table can go on while its zone is off, and stays off the floor',
+    p1On.status === 200 && !rows.some((r) => r.id === p1Id), JSON.stringify(p1On.body).slice(0, 160))
 
   // Case 10: the log.
   const log = await sql(`SELECT version, payload FROM config_changes WHERE row_id = $1 ORDER BY created_at`, [dId])

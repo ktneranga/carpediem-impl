@@ -31,7 +31,7 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 export type FloorKind = 'zone' | 'table'
 
 export class ZoneNotEmptyError extends Error {}
-/** A table switched on while its zone is off: it would show nowhere. */
+/** Kept for the route's error map; nothing throws it since zones hide their tables (2026-11-15). */
 export class ZoneOffError extends Error {}
 export class TableInUseError extends Error {
   constructor(readonly label: string) {
@@ -96,17 +96,6 @@ async function activeZone(tx: Tx, id: string, tenantId: string) {
     .limit(1)
     .for('update')
   if (!zone) throw new MenuRuleError('Choose a zone on the floor')
-}
-
-/** Switching a table on needs its zone on: a table in an off zone shows nowhere. */
-async function zoneIsOn(tx: Tx, id: string, tenantId: string) {
-  const [zone] = await tx
-    .select({ id: zones.id })
-    .from(zones)
-    .where(and(eq(zones.id, id), eq(zones.tenantId, tenantId), eq(zones.isActive, true)))
-    .limit(1)
-    .for('update')
-  if (!zone) throw new ZoneOffError('Turn its zone on first')
 }
 
 // ── The versioned write ──────────────────────────────────────────────────────
@@ -185,23 +174,24 @@ export async function updateZone(tx: Tx, a: { tenantId: string; staffId: string;
   return versionedUpdate(tx, 'zone', { ...a, expectedVersion: a.version, set: { name: cleanZoneName(a.name) } })
 }
 
-/** Refused while the zone still has active tables. */
+/**
+ * Switch a zone off (Teran, 2026-11-15): its pill and every table in it leave
+ * the floor at once; the tables keep their own switches. Refused while any of
+ * its tables has an open order — the floor would lose that order.
+ */
 export async function removeZone(tx: Tx, a: { tenantId: string; staffId: string; id: string; version: number }) {
-  // Locked first, for the reason `removeCategory` gives: a table switched on
-  // in this zone at the same moment is counted below or refused.
-  await tx.select({ id: zones.id }).from(zones).where(eq(zones.id, a.id)).for('update')
-  const [{ count }] = await tx
-    .select({ count: sql<number>`count(*)::int` })
-    .from(tables)
-    .where(and(eq(tables.zoneId, a.id), eq(tables.tenantId, a.tenantId), eq(tables.isActive, true)))
-  if (count > 0) throw new ZoneNotEmptyError()
-  return versionedUpdate(tx, 'zone', { ...a, expectedVersion: a.version, set: { isActive: false } })
+  const removed = await versionedUpdate(tx, 'zone', { ...a, expectedVersion: a.version, set: { isActive: false } })
+  const [open] = await tx
+    .select({ tableId: orderSessionTables.tableId })
+    .from(orderSessionTables)
+    .innerJoin(tables, eq(tables.id, orderSessionTables.tableId))
+    .where(and(eq(tables.zoneId, a.id), isNull(orderSessionTables.releasedAt)))
+    .limit(1)
+  if (open) throw new ZoneNotEmptyError()
+  return removed
 }
 
-/**
- * Switch a zone off (the same rule as `removeZone`: its tables go off first) or
- * back on (Teran, 2026-11-15), at the end of the floor.
- */
+/** Switch a zone off (`removeZone`) or back on (Teran, 2026-11-15), at the end of the floor. */
 export async function setZoneActive(
   tx: Tx,
   a: { tenantId: string; staffId: string; id: string; version: number; active: boolean },
@@ -293,9 +283,10 @@ export async function setTableActive(
   const table = await readTable(tx, a.id, a.tenantId)
   await checkLabelFree(tx, a.tenantId, table.label, a.id)
   const set: Record<string, unknown> = { isActive: true }
+  // Its own zone may be off: the table is then on, but hidden until the zone
+  // is (Teran, 2026-11-15). A zone named in `zoneId` must be on.
   const zoneId = a.zoneId ?? table.zoneId
-  if (a.zoneId === undefined) await zoneIsOn(tx, zoneId, a.tenantId)
-  else await activeZone(tx, zoneId, a.tenantId)
+  if (a.zoneId !== undefined) await activeZone(tx, zoneId, a.tenantId)
   if (zoneId !== table.zoneId) set.zoneId = zoneId
   // Back at the end of its zone: its old place may have been reordered since.
   set.displayOrder = await nextOrder(tx, 'table', zoneId, a.tenantId)

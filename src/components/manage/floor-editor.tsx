@@ -162,7 +162,7 @@ export function FloorEditor() {
           </div>
           {selected && !selected.isActive ? (
             <p className="px-sp-2 text-fs-14 text-slate-600 night:text-night-second">
-              This zone is off: none of its tables show on the POS. Switch it on in the list to add tables or turn them on.
+              This zone is off: its pill and tables are hidden from the POS. Their switches are kept; switch the zone on to bring them back.
             </p>
           ) : null}
           {selected?.isActive && selected.tables.length > 0 && onTables.length === 0 ? (
@@ -279,7 +279,7 @@ function ZoneRow({
             on={zone.isActive}
             label={zone.name}
             disabled={busy}
-            why={zone.isActive && zone.tables.some((t) => t.isActive) ? 'Turn its tables off first' : undefined}
+            why={zone.isActive && zone.tables.some((t) => t.inUse || t.status === 'occupied') ? 'A table here has an open order' : undefined}
             onChange={(on) => void onSwitch(on)}
           />
         </div>
@@ -321,7 +321,7 @@ function TableRow({
   busy: boolean
   onEdit: () => void
   onSwitch: (on: boolean) => Promise<unknown>
-  /** Its zone is off: it cannot go on until the zone does. */
+  /** Its zone is off: it stays hidden from the POS whatever its own switch says. */
   zoneOff?: boolean
 }) {
   const occupied = table.inUse || table.status === 'occupied'
@@ -332,7 +332,7 @@ function TableRow({
         <span className={cn('text-fs-16 font-bold', table.isActive ? 'text-slate-900 night:text-night-text' : 'text-slate-400 night:text-night-muted')}>
           {table.label}
         </span>
-        {table.isActive ? null : <OffChip />}
+        {table.isActive ? (zoneOff ? <span className="rounded-full bg-amber-50 px-sp-2 text-fs-12 font-bold text-amber-800 night:bg-amber-500/10 night:text-amber-300">Hidden: zone off</span> : null) : <OffChip />}
         {table.capacity ? (
           <span className="inline-flex items-center gap-sp-1 text-fs-12 text-slate-600 night:text-night-second">
             <Users className="size-3.5" aria-hidden="true" /> {table.capacity} seats
@@ -353,13 +353,7 @@ function TableRow({
         on={table.isActive}
         label={table.label}
         disabled={busy}
-        why={
-          table.isActive && occupied
-            ? 'In use: an order is open on it'
-            : !table.isActive && zoneOff
-              ? 'Turn its zone on first'
-              : undefined
-        }
+        why={table.isActive && occupied ? 'In use: an order is open on it' : undefined}
         onChange={(on) => void onSwitch(on)}
       />
     </div>

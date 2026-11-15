@@ -118,7 +118,7 @@ async function manageWrite<T>(
       return menuFail('CATEGORY_NOT_EMPTY', 'Turn off or move the dishes in this category first.', 409)
     }
     if (error instanceof ZoneNotEmptyError) {
-      return menuFail('ZONE_NOT_EMPTY', 'Turn off or move the tables in this zone first.', 409)
+      return menuFail('ZONE_NOT_EMPTY', 'A table in this zone has an open order. Close it first.', 409)
     }
     if (error instanceof TableInUseError) return menuFail('TABLE_IN_USE', error.message, 409)
     if (error instanceof ZoneOffError) return menuFail('ZONE_OFF', error.message, 409)

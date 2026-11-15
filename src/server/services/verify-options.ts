@@ -178,9 +178,11 @@ async function main() {
 async function run() {
   const waiter = await login('1234')
 
+  // Switched ON: since 2026-11-15 a dish in a switched-off category cannot be
+  // ordered (order.service). It sits last (999) and is deleted at the end.
   const [category] = await sql(
     `INSERT INTO menu_categories (tenant_id, name, display_order, is_active)
-     VALUES ($1, $2, 999, false) RETURNING id`,
+     VALUES ($1, $2, 999, true) RETURNING id`,
     [await tenantId(), `verify-options ${crypto.randomUUID().slice(0, 8)}`],
   )
   mine.categories.push(category.id)

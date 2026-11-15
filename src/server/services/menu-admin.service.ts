@@ -144,22 +144,20 @@ export async function updateCategory(tx: Tx, a: { tenantId: string; staffId: str
   return versionedUpdate(tx, 'category', { ...a, expectedVersion: a.version, set: { name: cleanName(a.name) } })
 }
 
+/**
+ * Switch a category off (Teran, 2026-11-15): it leaves the POS with every dish
+ * in it at once — the POS menu lists only switched-on categories, and an order
+ * for one of its dishes is refused (`order.service`). The dishes keep their own
+ * switches and are back as they were when the category is switched on.
+ */
 export async function removeCategory(tx: Tx, a: { tenantId: string; staffId: string; id: string; version: number }) {
-  // Locked first: a dish switched on in this category at the same moment waits
-  // (`activeCategory` locks it too), so it is counted below or refused there.
-  await tx.select({ id: menuCategories.id }).from(menuCategories).where(eq(menuCategories.id, a.id)).for('update')
-  const [{ count }] = await tx
-    .select({ count: sql<number>`count(*)::int` })
-    .from(menuItems)
-    .where(and(eq(menuItems.categoryId, a.id), eq(menuItems.tenantId, a.tenantId), eq(menuItems.isActive, true)))
-  if (count > 0) throw new CategoryNotEmptyError()
   return versionedUpdate(tx, 'category', { ...a, expectedVersion: a.version, set: { isActive: false } })
 }
 
 /**
- * Switch a category off (the same rule as `removeCategory`: its dishes go off
- * first) or back on (Teran, 2026-11-15). Back on, it goes to the end of the
- * list: its old place may have been reordered since.
+ * Switch a category off (`removeCategory`) or back on (Teran, 2026-11-15).
+ * Back on, it goes to the end of the list: its old place may have been
+ * reordered since.
  */
 export async function setCategoryActive(
   tx: Tx,
@@ -229,12 +227,11 @@ export async function updateItem(
   return versionedUpdate(tx, 'item', { ...a, expectedVersion: a.version, set })
 }
 
+/**
+ * A dish's own switch. Allowed while its category is off (Teran, 2026-11-15):
+ * it then stays hidden until the category is switched on.
+ */
 export async function setItemActive(tx: Tx, a: { tenantId: string; staffId: string; id: string; version: number; active: boolean }) {
-  if (a.active) {
-    // Restoring into a removed category would put it nowhere a waiter can see.
-    const item = await readRow(tx, 'item', a.id, a.tenantId)
-    await activeCategory(tx, item.categoryId as string, a.tenantId)
-  }
   return versionedUpdate(tx, 'item', { ...a, expectedVersion: a.version, set: { isActive: a.active } })
 }
 

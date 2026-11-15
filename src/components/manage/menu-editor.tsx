@@ -235,7 +235,7 @@ export function MenuEditor() {
           </div>
           {selected && !selected.isActive ? (
             <p className="px-sp-2 text-fs-14 text-slate-600 night:text-night-second">
-              This category is off: none of it shows on the POS. Switch it on in the list to add dishes or turn them on.
+              This category is off: none of its dishes show on the POS. Their switches are kept; switch the category on to bring them back.
             </p>
           ) : null}
           {selected && selected.items.length === 0 ? (
@@ -255,6 +255,7 @@ export function MenuEditor() {
                   busy={busy}
                   onEdit={() => setEditing({ mode: 'edit', itemId: item.id })}
                   onSwitch={switchDish(item)}
+                  categoryOff={!selected.isActive}
                 />
               )}
             />
@@ -387,7 +388,6 @@ function CategoryRow({
             on={category.isActive}
             label={category.name}
             disabled={busy}
-            why={category.isActive && category.items.some((i) => i.isActive) ? 'Turn its dishes off first' : undefined}
             onChange={(on) => void onSwitch(on)}
           />
         </div>
@@ -409,7 +409,7 @@ function DishRow({
   busy: boolean
   onEdit: () => void
   onSwitch: (on: boolean) => Promise<unknown>
-  /** Its category is off: it cannot go on until the category does. */
+  /** Its category is off: it stays hidden from the POS whatever its own switch says. */
   categoryOff?: boolean
 }) {
   return (
@@ -418,7 +418,7 @@ function DishRow({
       <div className="flex min-w-0 flex-1 flex-col">
         <span className={cn('flex items-center gap-sp-2 text-fs-16 font-bold', item.isActive ? 'text-slate-900 night:text-night-text' : 'text-slate-400 night:text-night-muted')}>
           {item.name}
-          {item.isActive ? null : <OffChip />}
+          {item.isActive ? (categoryOff ? <span className="rounded-full bg-amber-50 px-sp-2 text-fs-12 font-bold text-amber-800 night:bg-amber-500/10 night:text-amber-300">Hidden: category off</span> : null) : <OffChip />}
         </span>
         <span className="flex flex-wrap items-center gap-sp-2 text-fs-12 text-slate-600 night:text-night-second">
           <StationChip destination={item.productionDestination} />
@@ -433,7 +433,6 @@ function DishRow({
         on={item.isActive}
         label={item.name}
         disabled={busy}
-        why={!item.isActive && categoryOff ? 'Turn its category on first' : undefined}
         onChange={(on) => void onSwitch(on)}
       />
     </div>
