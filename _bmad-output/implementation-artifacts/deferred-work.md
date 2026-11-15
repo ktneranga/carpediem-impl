@@ -319,3 +319,10 @@
 
 - Zone and category names have no uniqueness check (tables do: `checkLabelFree`). Switching an old "Bar" back on next to a new "Bar" shows two identical pills/categories. Pre-existing for create; restore makes it easier to hit.
 - Settings sample bill stamps the time in the browser's timezone, not the restaurant's `timeZone`. Cosmetic: the printed bill is correct.
+
+## From spec-menu-bulk-upload-excel (2026-11-15 review)
+
+- A 1 MB .xlsx that inflates to huge XML is still fully unzipped by exceljs before the 1,000-row limit applies. Owner-only route; low risk. A streaming reader with an early stop would close it.
+- The download's file name uses the UTC date (yesterday's date between midnight and 05:30 in Colombo).
+- The verify-* scripts ship inside the image (src/server/services) and their cleanups disable the immutable triggers on a localhost DB. Pre-existing pattern; they should move out of src/ or refuse to run when NODE_ENV=production.
+- Two switched-on dishes whose names differ only in case/spacing download as rows the upload then refuses as duplicates.

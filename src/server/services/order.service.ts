@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { and, asc, eq, inArray, isNull, max, sql } from 'drizzle-orm'
 import { db } from '@/server/db'
 import {
+  menuCategories,
   menuItems,
   orderEvents,
   orderRounds,
@@ -304,12 +305,16 @@ export async function submitRound(
             name: menuItems.name,
             pricePaisa: menuItems.pricePaisa,
             isAvailable: menuItems.isAvailable,
-            isActive: menuItems.isActive,
+            // A switched-off CATEGORY takes its dishes off the menu too
+            // (Teran, 2026-11-15): a tablet still showing the old menu must
+            // not be able to send one.
+            isActive: sql<boolean>`${menuItems.isActive} and ${menuCategories.isActive}`,
             productionDestination: menuItems.productionDestination,
           })
           .from(menuItems)
+          .innerJoin(menuCategories, eq(menuCategories.id, menuItems.categoryId))
           .where(inArray(menuItems.id, itemIds))
-          .for('share')
+          .for('share', { of: menuItems })
   const itemsById = new Map(itemRows.map((item) => [item.id, item]))
   // Their priced options (Story 4.8), `FOR SHARE` in the same transaction for
   // the same reason: an owner re-pricing or retiring an option waits for this
