@@ -311,6 +311,7 @@ const BADGES = {
   abandoned: { label: 'Closed unpaid', kind: 'warn' },
   correction: { label: 'Correction', kind: 'warn' },
   cancelled: { label: 'Bill cancelled', kind: 'warn' },
+  order_cancelled: { label: 'Order cancelled', kind: 'warn' },
 } as const
 
 function AuditRows({ rows }: { rows: Insights['audit'] }) {
@@ -322,7 +323,7 @@ function AuditRows({ rows }: { rows: Insights['audit'] }) {
                 <p className={cn('text-fs-14 font-bold', tone.ink)}>{row.title}</p>
                 <p className={cn('text-fs-12', tone.second)}>
                   {row.detail} · {time(row.at)}
-                  {row.amountPaisa ? <> · {row.kind === 'cancelled' ? '' : 'owed '}{lkrFromPaisa(row.amountPaisa)}</> : null}
+                  {row.amountPaisa ? <> · {row.kind === 'cancelled' ? '' : row.kind === 'order_cancelled' ? 'voided ' : 'owed '}{lkrFromPaisa(row.amountPaisa)}</> : null}
                 </p>
               </div>
               <Badge kind={BADGES[row.kind].kind}>{BADGES[row.kind].label}</Badge>

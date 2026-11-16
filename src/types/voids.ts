@@ -11,6 +11,9 @@ export type VoidReason = (typeof VOID_REASONS)[number]
 export const BILL_CANCEL_REASONS = ['Wrong item on it', 'Guest wants it split differently', 'Other'] as const
 export type BillCancelReason = (typeof BILL_CANCEL_REASONS)[number]
 
+/** Why a whole order is cancelled (Teran, 2026-11-16). "Other" needs a note. */
+export const ORDER_CANCEL_REASONS = ['Guest left before the food', 'Wrong table', 'Guest changed mind', 'Other'] as const
+
 export const MAX_VOID_NOTE = 120
 
 /** What the audit trail stores in `notes` / `cancel_reason`: the reason, and the note when given. */

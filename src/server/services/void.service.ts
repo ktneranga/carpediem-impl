@@ -6,6 +6,7 @@ import { isCheckViolation } from '@/server/db/errors'
 import {
   bills,
   menuItems,
+  paymentRecords,
   orderEvents,
   orderRounds,
   orderSessions,
@@ -21,7 +22,8 @@ import { DUMMY_PIN_HASH } from '@/server/auth/dummy-pin-hash'
 import { canApproveVoids, type StaffRole } from '@/server/auth/permissions'
 import { billedUnits, voidedUnits } from '@/server/orders/units'
 import { buildVoidTicketPayload } from '@/server/print/ticket'
-import { lockOpenSession } from '@/server/services/table-session.service'
+import { closeSession, lockOpenSession } from '@/server/services/table-session.service'
+import { randomUUID } from 'node:crypto'
 import { zoneUsesSeats } from '@/lib/zone-seats'
 import { optionLabel } from '@/lib/options'
 import { reasonText, type VoidResult } from '@/types/voids'
@@ -405,4 +407,71 @@ export async function cancelBill(
     .where(eq(bills.id, billId))
 
   return { billId, sessionId: bill.sessionId }
+}
+
+/** Money was taken on this order: refund or settle it, never cancel it. */
+export class OrderHasPaymentsError extends Error {}
+
+/**
+ * Cancels a whole order (Teran, 2026-11-16): the guest left before the food,
+ * it was entered on the wrong table. One transaction:
+ *
+ * 1. Refuse if any payment exists — that order is settled or refunded, not
+ *    cancelled.
+ * 2. Cancel every unpaid bill, so its units are free to void.
+ * 3. Void every unit left, each with its VOID ticket, so the kitchen and bar
+ *    stop making it.
+ * 4. Close the order as `cancelled — <reason>`.
+ *
+ * The route asks `canCloseOrders`; the canceller is also the approver.
+ */
+export async function cancelOrder(
+  tx: Tx,
+  { sessionId, staffId, reason, note }: { sessionId: string; staffId: string; reason: string; note: string | null },
+): Promise<{ closedAt: Date; releasedTableIds: string[]; voided: number; ticketsQueued: boolean }> {
+  await lockOpenSession(tx, sessionId)
+
+  const [payment] = await tx
+    .select({ id: paymentRecords.id })
+    .from(paymentRecords)
+    .where(eq(paymentRecords.sessionId, sessionId))
+    .limit(1)
+  if (payment) throw new OrderHasPaymentsError()
+
+  const why = reasonText(reason, note)
+  const openBills = await tx
+    .select({ id: bills.id })
+    .from(bills)
+    .where(and(eq(bills.sessionId, sessionId), isNull(bills.cancelledAt)))
+  for (const bill of openBills) {
+    await cancelBill(tx, { billId: bill.id, reason: 'Other', note: `Order cancelled: ${why}`, staffId, approverId: staffId })
+  }
+
+  const lines = await tx
+    .select({ id: orderEvents.id, quantity: orderEvents.quantity, billed: billedUnits, voided: voidedUnits })
+    .from(orderEvents)
+    .where(and(eq(orderEvents.sessionId, sessionId), eq(orderEvents.eventType, 'ITEM_ADDED')))
+    .orderBy(asc(orderEvents.createdAt))
+
+  let voided = 0
+  let ticketsQueued = false
+  for (const line of lines) {
+    const left = line.quantity - Number(line.billed) - Number(line.voided)
+    if (left <= 0) continue
+    const result = await voidItem(tx, {
+      sessionId,
+      orderEventId: line.id,
+      quantity: left,
+      reason,
+      note,
+      requestId: randomUUID(),
+      staffId,
+      approverId: staffId,
+    })
+    voided += result.quantity
+    ticketsQueued ||= result.ticketQueued
+  }
+
+  const closed = await closeSession(tx, { sessionId, staffId, reason: 'cancelled', note: `cancelled — ${why}` })
+  return { ...closed, voided, ticketsQueued }
 }

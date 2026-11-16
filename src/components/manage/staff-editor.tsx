@@ -398,12 +398,13 @@ function choiceClass(chosen: boolean) {
 /** The switches in the staff sheet (Story 10.6), grouped as the owner thinks of them. */
 const PERMISSION_GROUPS: { title: string; items: { permission: Permission; label: string; hint: string }[] }[] = [
   {
-    title: 'On the floor',
+    title: 'Order permissions',
     items: [
       { permission: 'custom_charge', label: 'Custom charge', hint: 'Add a typed charge, e.g. corkage' },
       { permission: 'approve_voids', label: 'Approve voids', hint: 'Void and cancel bills without the owner, and approve others’ voids' },
       { permission: 'open_cash_drawer', label: 'Open cash drawer', hint: 'Open the drawer for change, with no sale' },
       { permission: 'give_discount', label: 'Discount & service', hint: 'Change an order’s discount or waive its service charge' },
+      { permission: 'close_orders', label: 'Close & cancel orders', hint: 'Close an unpaid table (walkout) or cancel an order' },
     ],
   },
   {

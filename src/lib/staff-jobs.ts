@@ -12,6 +12,7 @@
 export const STAFF_JOBS = [
   { job: 'waiter', label: 'Waiter', access: 'waiter' },
   { job: 'bartender', label: 'Bartender', access: 'waiter' },
+  { job: 'barista', label: 'Barista', access: 'waiter' },
   { job: 'cashier', label: 'Cashier', access: 'waiter' },
   { job: 'helper', label: 'Helper', access: 'waiter' },
   { job: 'chef', label: 'Chef', access: 'kitchen' },

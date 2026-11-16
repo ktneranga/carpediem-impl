@@ -196,7 +196,7 @@ export const staff = pgTable('staff', {
   index('idx_staff_tenant_id').on(t.tenantId),
   check(
     'staff_permissions_known',
-    sql`${t.permissions} <@ ARRAY['custom_charge','approve_voids','open_cash_drawer','give_discount','manage_dashboard','manage_menu','manage_floor','manage_settings']::text[]`,
+    sql`${t.permissions} <@ ARRAY['custom_charge','approve_voids','open_cash_drawer','give_discount','close_orders','manage_dashboard','manage_menu','manage_floor','manage_settings']::text[]`,
   ),
 ])
 

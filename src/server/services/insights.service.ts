@@ -87,7 +87,7 @@ export type Insights = {
   noSales: { openedAt: string; staffName: string; reason: 'change' | 'float' | 'other' | 'pay_in' | 'paid_out' | 'cash_drop'; note: string | null; amountPaisa: number | null }[] | null
   topItems: { name: string; quantity: number; paisa: number }[]
   audit: {
-    kind: 'unclosed' | 'walkout' | 'abandoned' | 'correction' | 'cancelled'
+    kind: 'unclosed' | 'walkout' | 'abandoned' | 'correction' | 'cancelled' | 'order_cancelled'
     title: string
     detail: string
     at: string
@@ -239,15 +239,19 @@ export async function loadInsights(executor: Executor, tenantId: string, asked: 
           from order_sessions s
          where s.id in ${sessions} and s.closed_at is null
          order by s.opened_at`),
-      rows<{ daily_number: number; kind: string; tab_label: string | null; tables: string[] | null; primary_label: string | null; reason: string; closed_at: Date; owed: number; by: string }>(executor, sql`
+      rows<{ daily_number: number; kind: string; tab_label: string | null; tables: string[] | null; primary_label: string | null; reason: string; closed_at: Date; owed: number; voided: number; by: string }>(executor, sql`
         select s.daily_number, s.kind, s.tab_label, e.notes as reason, e.created_at as closed_at, st.name as by,
                (select array_agg(t.label order by t.label) from order_session_tables ot join tables t on t.id = ot.table_id
                  where ot.session_id = s.id) as tables,
                (select t.label from tables t where t.id = s.table_id) as primary_label,
                ((select coalesce(sum(b.total_paisa), 0) from bills b where b.session_id = s.id and b.cancelled_at is null)
-                - (select coalesce(sum(p.amount_paisa), 0) from payment_records p where p.session_id = s.id))::bigint as owed
+                - (select coalesce(sum(p.amount_paisa), 0) from payment_records p where p.session_id = s.id))::bigint as owed,
+               -- A cancelled order (Teran, 2026-11-16): what was voided by it.
+               (select coalesce(sum(v.quantity * v.unit_price_paisa), 0) from order_events v
+                 where v.session_id = s.id and v.event_type = 'ITEM_VOIDED')::bigint as voided
           from order_sessions s
-          join order_events e on e.session_id = s.id and e.event_type = 'SESSION_CLOSED' and e.notes in ('walkout', 'abandoned')
+          join order_events e on e.session_id = s.id and e.event_type = 'SESSION_CLOSED'
+               and (e.notes in ('walkout', 'abandoned') or e.notes like 'cancelled%')
           join staff st on st.id = e.staff_id
          where s.id in ${sessions}
            and exists (select 1 from order_events i where i.session_id = s.id and i.event_type = 'ITEM_ADDED')`),
@@ -352,7 +356,14 @@ export async function loadInsights(executor: Executor, tenantId: string, asked: 
       detail: row.printed_at ? 'Bill printed, not settled' : 'Still open',
       at: clock24(row.printed_at ?? row.opened_at),
     })),
-    ...closedUnpaid.map((row) => ({
+    ...closedUnpaid.filter((row) => row.reason.startsWith('cancelled')).map((row) => ({
+      kind: 'order_cancelled' as const,
+      title: name(row),
+      detail: `Order cancelled (${row.reason.replace(/^cancelled — /, '')}) · ${row.by}`,
+      at: clock24(row.closed_at),
+      amountPaisa: n(row.voided),
+    })),
+    ...closedUnpaid.filter((row) => !row.reason.startsWith('cancelled')).map((row) => ({
       kind: (row.reason === 'walkout' ? 'walkout' : 'abandoned') as 'walkout' | 'abandoned',
       title: name(row),
       detail: `${row.reason === 'walkout' ? 'Walkout' : 'Closed unpaid'} · ${row.by}`,

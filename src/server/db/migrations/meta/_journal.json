@@ -337,6 +337,13 @@
       "when": 1794807560592,
       "tag": "0047_drawer_other_amount",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1794814055886,
+      "tag": "0048_close_orders_permission",
+      "breakpoints": true
     }
   ]
 }
