@@ -82,6 +82,8 @@ export type OrderActionStripProps = {
   closeLabel?: string
   /** Cancel the whole order (Teran, 2026-11-16). Absent: not offered. */
   onCancelOrder?: () => void
+  /** Move the order to another free table, any zone (Teran, 2026-11-16). */
+  onMoveTable?: () => void
 }
 
 export function OrderActionStrip({
@@ -97,6 +99,7 @@ export function OrderActionStrip({
   onCloseTable,
   closeLabel = 'Close table',
   onCancelOrder,
+  onMoveTable,
 }: OrderActionStripProps) {
   const [moreOpen, setMoreOpen] = useState(false)
 
@@ -111,6 +114,7 @@ export function OrderActionStrip({
   // Ordered least to most destructive, with the one that ends the sitting
   // last, separated by a rule and red.
   const moreItems = [
+    ...(onMoveTable ? [{ label: 'Move to another table', onClick: onMoveTable }] : []),
     ...(onClear ? [{ label: 'Clear unsent items', onClick: onClear }] : []),
     ...(onCancelOrder ? [{ label: 'Cancel order', onClick: onCancelOrder, danger: true }] : []),
     ...(onCloseTable ? [{ label: closeLabel, onClick: onCloseTable, danger: true }] : []),
