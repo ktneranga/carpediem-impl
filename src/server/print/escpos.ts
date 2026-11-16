@@ -604,7 +604,7 @@ export function buildReceipt(receipt: ReceiptPayload): Buffer {
   row('Subtotal', receipt.subtotalPaisa)
   // The discount, and a waived service charge said out loud (Teran, 2026-11-16).
   const discountPaisa = typeof receipt.discountPaisa === 'number' ? receipt.discountPaisa : 0
-  if (discountPaisa > 0) row(`Discount ${percentFromBp(receipt.discountBp ?? 0)}%`, -discountPaisa)
+  if (discountPaisa > 0) row((receipt.discountBp ?? 0) > 0 ? `Discount ${percentFromBp(receipt.discountBp!)}%` : 'Discount', -discountPaisa)
   if (receipt.serviceChargeWaived === true) {
     for (const line of amountLines('Service charge', 'waived')) emit(line)
   } else if (receipt.serviceChargeBp > 0) {

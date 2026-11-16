@@ -1,5 +1,5 @@
 import 'server-only'
-import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { db } from '@/server/db'
 import {
   orderSessionTables,
@@ -13,11 +13,13 @@ import {
 } from '@/server/db/schema'
 import {
   getBill,
+  loadSessionBills,
   MissingTenantConfigError,
   NothingToBillError,
   priceBillable,
 } from '@/server/services/bill.service'
 import { lockOpenSession } from '@/server/services/table-session.service'
+import { loadSessionPayments } from '@/server/services/payment.service'
 import { buildReceiptPayload, receiptTextLines } from '@/server/print/ticket'
 import type { ReceiptLine, ReceiptPayload } from '@/types/tickets'
 
@@ -361,4 +363,162 @@ export async function printDraft(
   })
 
   return enqueue(tx, { tenantId: priced.tenantId, sessionId, billId: null, payload })
+}
+
+/**
+ * ONE receipt for orders paid together (Teran, 2026-11-16): every paid bill's
+ * lines, the summed money, and the tenders. Headed by the first order, naming
+ * every table. Each bill keeps its own record; only the paper is shared.
+ */
+export async function printCombinedReceipt(
+  tx: Tx,
+  { billIds, staffId = null }: { billIds: string[]; staffId?: string | null },
+): Promise<{ jobId: string }> {
+  const loaded = (await Promise.all(billIds.map((id) => getBill(tx, id)))).filter(
+    (bill): bill is NonNullable<typeof bill> => bill !== null && bill.cancelledAt === null,
+  )
+  if (loaded.length === 0) throw new ReceiptBillNotFoundError()
+
+  const sessionIds = [...new Set(loaded.map((bill) => bill.sessionId))]
+  const headings = await Promise.all(sessionIds.map((id) => readHeading(tx, id, staffId)))
+  const heading = headings[0]!
+  const tableLabels = [...new Set(headings.flatMap((h) => h.tableLabels))]
+
+  const tenderRows = await tx
+    .select({
+      method: paymentRecords.method,
+      amountPaisa: paymentRecords.amountPaisa,
+      cashReceivedPaisa: paymentRecords.cashReceivedPaisa,
+    })
+    .from(paymentRecords)
+    .where(inArray(paymentRecords.billId, loaded.map((bill) => bill.billId)))
+    .orderBy(asc(paymentRecords.createdAt), asc(paymentRecords.id))
+  // One line per method: the guest paid once. The note handed over is the
+  // cash paid plus the change recorded beside the last cash share.
+  const tenders: ReceiptPayload['tenders'] = []
+  for (const method of ['cash', 'card', 'transfer'] as const) {
+    const rows = tenderRows.filter((row) => row.method === method)
+    if (rows.length === 0) continue
+    const amountPaisa = rows.reduce((total, row) => total + row.amountPaisa, 0)
+    const changePaisa = rows.reduce((total, row) => total + (row.cashReceivedPaisa !== null ? row.cashReceivedPaisa - row.amountPaisa : 0), 0)
+    tenders.push({ method, amountPaisa, cashReceivedPaisa: method === 'cash' ? amountPaisa + changePaisa : null })
+  }
+
+  const sum = (pick: (bill: (typeof loaded)[number]) => number) => loaded.reduce((total, bill) => total + pick(bill), 0)
+  // A rate prints only when every bill used the same one.
+  const same = (pick: (bill: (typeof loaded)[number]) => number) => (loaded.every((bill) => pick(bill) === pick(loaded[0]!)) ? pick(loaded[0]!) : 0)
+
+  const payload = buildReceiptPayload({
+    ...heading,
+    tableLabels,
+    title: 'RECEIPT',
+    copy: false,
+    billLabel: 'Paid together',
+    lines: loaded.flatMap((bill) =>
+      bill.lines.map(
+        (line): ReceiptLine => ({
+          quantity: line.quantity,
+          name: line.name,
+          amountPaisa: line.amountPaisa,
+          optionText: line.optionText,
+          modifierText: line.modifierText,
+        }),
+      ),
+    ),
+    comps: loaded.flatMap((bill) => bill.comps.map((comp) => ({ reason: comp.reason, amountPaisa: comp.amountPaisa }))),
+    subtotalPaisa: sum((bill) => bill.subtotalPaisa),
+    discountBp: same((bill) => bill.discountBp),
+    discountPaisa: sum((bill) => bill.discountPaisa),
+    serviceChargeWaived: loaded.every((bill) => bill.serviceChargeWaived),
+    serviceChargePaisa: sum((bill) => bill.serviceChargePaisa),
+    serviceChargeBp: loaded.find((bill) => bill.serviceChargePaisa > 0)?.serviceChargeBp ?? 0,
+    taxPaisa: sum((bill) => bill.taxPaisa),
+    taxBp: same((bill) => bill.taxBp) || (loaded.find((bill) => bill.taxPaisa > 0)?.taxBp ?? 0),
+    totalPaisa: sum((bill) => bill.totalPaisa),
+    tenders,
+  })
+  return enqueue(tx, { tenantId: heading.tenantId, sessionId: loaded[0]!.sessionId, billId: null, payload })
+}
+
+/**
+ * ONE bill for orders about to be paid together, before Settle (Teran,
+ * 2026-11-16): every order's unpaid bills and unbilled items, priced as Settle
+ * will price them, summed. Nothing is written but the print job. A total
+ * different from the one on the cashier's screen is refused.
+ */
+export async function printTogetherBill(
+  tx: Tx,
+  { sessionIds, staffId = null, expectedTotalPaisa }: { sessionIds: string[]; staffId?: string | null; expectedTotalPaisa: number },
+): Promise<{ jobId: string }> {
+  const lines: ReceiptLine[] = []
+  const comps: ReceiptPayload['comps'] = []
+  const parts: { subtotal: number; discount: number; discountBp: number; service: number; serviceBp: number; waived: boolean; tax: number; taxBp: number; total: number }[] = []
+  const paidBillIds: string[] = []
+  const headings = []
+
+  for (const sessionId of [...new Set(sessionIds)]) {
+    await lockOpenSession(tx, sessionId)
+    headings.push(await readHeading(tx, sessionId, staffId))
+    const payments = await loadSessionPayments(tx, sessionId)
+    for (const bill of await loadSessionBills(tx, sessionId)) {
+      const paid = payments.get(bill.billId)?.paidPaisa ?? 0
+      if (bill.totalPaisa - paid <= 0) continue
+      if (paid > 0) paidBillIds.push(bill.billId)
+      for (const line of bill.lines) {
+        lines.push({ quantity: line.quantity, name: line.name, amountPaisa: line.amountPaisa, optionText: line.optionText, modifierText: line.modifierText })
+      }
+      comps.push(...bill.comps.map((comp) => ({ reason: comp.reason, amountPaisa: comp.amountPaisa })))
+      parts.push({ subtotal: bill.subtotalPaisa, discount: bill.discountPaisa, discountBp: bill.discountBp, service: bill.serviceChargePaisa, serviceBp: bill.serviceChargeBp, waived: bill.serviceChargeWaived, tax: bill.taxPaisa, taxBp: bill.taxBp, total: bill.totalPaisa })
+    }
+    const priced = await priceBillable(tx, { sessionId }).catch(() => null)
+    if (priced && priced.events.length > 0) {
+      priced.events.forEach((event, index) => {
+        lines.push({
+          quantity: priced.lineQuantities[index]!,
+          name: event.customName ?? event.itemName ?? 'Unknown item',
+          amountPaisa: priced.lineAmounts[index]!,
+          optionText: event.optionText,
+          modifierText: event.modifierText,
+        })
+      })
+      comps.push(...priced.comps.map((comp, index) => ({ reason: comp.reason, amountPaisa: priced.compAmounts[index]! })))
+      const t = priced.totals
+      parts.push({ subtotal: t.subtotalPaisa, discount: t.discountPaisa, discountBp: t.discountBp, service: t.serviceChargePaisa, serviceBp: t.serviceChargeBp, waived: t.serviceChargeWaived, tax: t.taxPaisa, taxBp: t.taxBp, total: t.totalPaisa })
+    }
+  }
+  if (lines.length === 0) throw new NothingToBillError()
+
+  // What has been paid on a part-paid bill comes off, as on any BILL.
+  const tenderRows = paidBillIds.length
+    ? await tx
+        .select({ method: paymentRecords.method, amountPaisa: paymentRecords.amountPaisa, cashReceivedPaisa: paymentRecords.cashReceivedPaisa })
+        .from(paymentRecords)
+        .where(inArray(paymentRecords.billId, paidBillIds))
+    : []
+  const owed = parts.reduce((sum, part) => sum + part.total, 0) - tenderRows.reduce((sum, row) => sum + row.amountPaisa, 0)
+  if (owed !== expectedTotalPaisa) throw new BillTotalChangedError(owed)
+
+  const sum = (pick: (part: (typeof parts)[number]) => number) => parts.reduce((total, part) => total + pick(part), 0)
+  const same = (pick: (part: (typeof parts)[number]) => number) => (parts.every((part) => pick(part) === pick(parts[0]!)) ? pick(parts[0]!) : 0)
+  const heading = headings[0]!
+  const payload = buildReceiptPayload({
+    ...heading,
+    tableLabels: [...new Set(headings.flatMap((h) => h.tableLabels))],
+    title: 'BILL',
+    copy: false,
+    billLabel: 'Paying together',
+    lines,
+    comps,
+    subtotalPaisa: sum((part) => part.subtotal),
+    discountBp: same((part) => part.discountBp),
+    discountPaisa: sum((part) => part.discount),
+    serviceChargeWaived: parts.every((part) => part.waived),
+    serviceChargePaisa: sum((part) => part.service),
+    serviceChargeBp: parts.find((part) => part.service > 0)?.serviceBp ?? 0,
+    taxPaisa: sum((part) => part.tax),
+    taxBp: same((part) => part.taxBp) || (parts.find((part) => part.tax > 0)?.taxBp ?? 0),
+    totalPaisa: sum((part) => part.total),
+    tenders: tenderRows,
+  })
+  return enqueue(tx, { tenantId: heading.tenantId, sessionId: sessionIds[0]!, billId: null, payload })
 }
