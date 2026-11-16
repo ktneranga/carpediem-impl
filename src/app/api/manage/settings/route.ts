@@ -21,6 +21,9 @@ const bodySchema = z.object({
   receiptLogo: z.object({ widthDots: z.number(), heightDots: z.number(), data: z.string().max(80_000) }).nullable(),
   serviceChargeBp: z.number(),
   taxRatePercent: z.number(),
+  defaultDiscountBp: z.number(),
+  kitchenTicketCopies: z.number(),
+  barTicketCopies: z.number(),
   businessDayStartHour: z.number(),
   updatedAt: z.string().max(40),
 })
@@ -34,6 +37,9 @@ const FIELD_LABELS: Record<string, string> = {
   receiptLogo: 'The logo',
   serviceChargeBp: 'The service charge',
   taxRatePercent: 'The tax',
+  defaultDiscountBp: 'The default discount',
+  kitchenTicketCopies: 'Kitchen ticket copies',
+  barTicketCopies: 'Bar ticket copies',
   businessDayStartHour: 'The business-day hour',
 }
 

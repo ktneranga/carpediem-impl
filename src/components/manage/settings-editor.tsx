@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ImageUp, ReceiptText, Trash2, type LucideIcon } from 'lucide-react'
+import { ImageUp, KeyRound, ReceiptText, Trash2, type LucideIcon } from 'lucide-react'
 import { ApiError, call as callApi, input, primary, secondary } from '@/components/manage/manage-ui'
 import { LOGO_WIDTHS, logoSize, rasterToRgba, toLogoRaster, type LogoRaster } from '@/lib/logo-raster'
 import type { Settings } from '@/server/services/settings.service'
 import { SampleBill } from '@/components/manage/settings/sample-bill'
+import { ChangePasswordCard } from '@/components/manage/settings/change-password-card'
 import { cn } from '@/lib/utils'
 
 /**
@@ -26,7 +27,12 @@ const hint = 'text-fs-12 text-slate-500 night:text-night-muted'
  * The left column: the kinds of settings (Teran, 2026-11-15). One for now,
  * Bill; later ones (printers, security, ...) become pages of their own.
  */
-const PAGES: { id: string; title: string; icon: LucideIcon }[] = [{ id: 'bill', title: 'Bill', icon: ReceiptText }]
+type PageId = 'bill' | 'password'
+const PAGES: { id: PageId; title: string; icon: LucideIcon; ownerOnly?: true }[] = [
+  { id: 'bill', title: 'Bill', icon: ReceiptText },
+  // Its own view (Teran, 2026-11-16): the password has nothing to do with the bill.
+  { id: 'password', title: 'Owner password', icon: KeyRound, ownerOnly: true },
+]
 
 /** A typed percent as basis points, or null while it is not a valid one (the preview leaves it out). */
 function bpOf(text: string, pattern: RegExp): number | null {
@@ -35,6 +41,7 @@ function bpOf(text: string, pattern: RegExp): number | null {
 }
 const SERVICE_PATTERN = /^\d{1,2}(\.\d{1,2})?$/
 const TAX_PATTERN = /^\d{1,2}$/
+const DISCOUNT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/
 
 type Form = {
   restaurantName: string
@@ -45,6 +52,9 @@ type Form = {
   receiptLogo: LogoRaster | null
   servicePercent: string
   taxPercent: string
+  discountPercent: string
+  kitchenTicketCopies: number
+  barTicketCopies: number
   businessDayStartHour: number
 }
 
@@ -57,10 +67,55 @@ const formOf = (s: Settings): Form => ({
   receiptLogo: s.receiptLogo,
   servicePercent: String(s.serviceChargeBp / 100),
   taxPercent: String(s.taxRatePercent),
+  discountPercent: String(s.defaultDiscountBp / 100),
+  kitchenTicketCopies: s.kitchenTicketCopies,
+  barTicketCopies: s.barTicketCopies,
   businessDayStartHour: s.businessDayStartHour,
 })
 
-export function SettingsEditor() {
+export function SettingsEditor({ isOwner = false }: { isOwner?: boolean }) {
+  const [page, setPage] = useState<PageId>('bill')
+  const pages = PAGES.filter((entry) => !entry.ownerOnly || isOwner)
+  return (
+    // The left column picks the view (Teran, 2026-11-15/16); on a narrow
+    // screen it is a row of tabs above it.
+    <div className="grid items-start gap-sp-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
+      <nav aria-label="Settings" className="flex gap-sp-1 overflow-x-auto rounded-panel bg-white p-sp-2 lg:sticky lg:top-sp-4 lg:flex-col night:bg-night-card">
+        {pages.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            aria-current={page === entry.id ? 'page' : undefined}
+            onClick={() => setPage(entry.id)}
+            className={cn(
+              'flex min-h-11 shrink-0 items-center gap-sp-2 rounded-control px-sp-3 text-left text-fs-14 font-semibold',
+              page === entry.id
+                ? 'bg-brand-050 text-brand-800 night:bg-night-raised night:text-brand-300'
+                : 'text-slate-700 hover:bg-slate-100 night:text-night-second night:hover:bg-night-raised',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+            )}
+          >
+            <entry.icon className="size-4 shrink-0" aria-hidden="true" />
+            {entry.title}
+          </button>
+        ))}
+      </nav>
+      <div className="min-w-0">
+        {page === 'password' && isOwner ? (
+          <div className="flex flex-col gap-sp-4">
+            <h1 className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">Owner password</h1>
+            <ChangePasswordCard />
+          </div>
+        ) : (
+          <BillSettings />
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** The Bill view: everything the settings Save button saves. */
+function BillSettings() {
   const queryClient = useQueryClient()
   const { data, isLoading, error } = useQuery({
     queryKey: KEY,
@@ -137,6 +192,10 @@ function SettingsForm({
       setNote({ ok: false, text: 'Tax: a whole percent like 0 or 5' })
       return
     }
+    if (!DISCOUNT_PATTERN.test(form.discountPercent.trim()) || Number(form.discountPercent) > 100) {
+      setNote({ ok: false, text: 'Default discount: a percent like 0 or 10' })
+      return
+    }
     const service = Number(form.servicePercent)
     const tax = Number(form.taxPercent)
     setSaving(true)
@@ -151,6 +210,9 @@ function SettingsForm({
         receiptLogo: form.receiptLogo,
         serviceChargeBp: Math.round(service * 100),
         taxRatePercent: tax,
+        defaultDiscountBp: Math.round(Number(form.discountPercent) * 100),
+        kitchenTicketCopies: form.kitchenTicketCopies,
+        barTicketCopies: form.barTicketCopies,
         businessDayStartHour: form.businessDayStartHour,
         updatedAt: data.updatedAt,
       })) as { data: Settings }
@@ -180,21 +242,9 @@ function SettingsForm({
         </div>
       </header>
 
-      {/* Three columns on a wide screen: sections, the form, the sample bill.
-          Narrower, the form and then the sample stack. */}
-      <div className="grid items-start gap-sp-4 xl:grid-cols-[11rem_minmax(0,1fr)_auto]">
-        <nav aria-label="Settings" className="sticky top-sp-4 hidden flex-col gap-sp-1 rounded-panel bg-white p-sp-2 xl:flex night:bg-night-card">
-          {PAGES.map((page) => (
-            <span
-              key={page.id}
-              aria-current="page"
-              className="flex min-h-11 items-center gap-sp-2 rounded-control bg-brand-050 px-sp-3 text-fs-14 font-semibold text-brand-800 night:bg-night-raised night:text-brand-300"
-            >
-              <page.icon className="size-4 shrink-0" aria-hidden="true" />
-              {page.title}
-            </span>
-          ))}
-        </nav>
+      {/* The form and the sample bill side by side on a wide screen; stacked
+          when narrower. The section list is the editor's left column. */}
+      <div className="grid items-start gap-sp-4 xl:grid-cols-[minmax(0,1fr)_auto]">
 
         <div className="flex min-w-0 flex-col gap-sp-4">
           <Card id="settings-bill" title="Bill">
@@ -230,6 +280,28 @@ function SettingsForm({
               <Field label="Tax (%)" hint="A whole percent. New bills only.">
                 <input className={input} inputMode="numeric" value={form.taxPercent} onChange={(e) => set('taxPercent', e.target.value.replace(/\D/g, ''))} />
               </Field>
+              <Field label="Default discount (%)" hint="Every order starts with it; 0 for none. Changed per order on the bill screen.">
+                <input className={input} inputMode="decimal" value={form.discountPercent} onChange={(e) => set('discountPercent', e.target.value.replace(/[^\d.]/g, ''))} />
+              </Field>
+            </div>
+          </Card>
+
+          <Card id="settings-tickets" title="Kitchen & bar tickets">
+            <div className="grid gap-sp-3 sm:grid-cols-2">
+              <Field label="Kitchen ticket copies (KOT)" hint="The second copy prints “COPY 2/2”, e.g. for the runner.">
+                <select className={input} value={form.kitchenTicketCopies} onChange={(e) => set('kitchenTicketCopies', Number(e.target.value))}>
+                  {[1, 2, 3].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Bar ticket copies (BOT)" hint="New orders only.">
+                <select className={input} value={form.barTicketCopies} onChange={(e) => set('barTicketCopies', Number(e.target.value))}>
+                  {[1, 2, 3].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </Field>
             </div>
           </Card>
 
@@ -244,6 +316,7 @@ function SettingsForm({
               </select>
             </Field>
           </Card>
+
         </div>
 
         <aside aria-label="Sample bill" className="flex flex-col gap-sp-2 xl:sticky xl:top-sp-4">

@@ -16,7 +16,14 @@ import { cn } from '@/lib/utils'
 
 const money = (paisa: number) => `${paisa < 0 ? '-' : ''}${lkrFromPaisa(Math.abs(paisa))}`
 const time = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-const REASONS = { change: 'Change', float: 'Float', other: 'Other' } as const
+const REASONS = {
+  change: 'Change',
+  float: 'Float',
+  other: 'Other',
+  pay_in: 'Pay in',
+  paid_out: 'Paid out',
+  cash_drop: 'Cash drop',
+} as const
 
 export function SalesBreakdown({ data }: { data: Insights }) {
   const s = data.sales
@@ -28,7 +35,9 @@ export function SalesBreakdown({ data }: { data: Insights }) {
         <Row label="Items" value={money(s.itemsPaisa)} />
         {s.compsPaisa !== 0 ? <Row label="Comps" value={money(-Math.abs(s.compsPaisa))} /> : null}
         <Row label="Subtotal" value={money(s.subtotalPaisa)} />
+        {s.discountPaisa !== 0 ? <Row label="Discounts" value={money(-s.discountPaisa)} /> : null}
         <Row label="Service charge" value={money(s.serviceChargePaisa)} />
+        {s.serviceWaivedPaisa !== 0 ? <Row label="Service charge waived" value={money(s.serviceWaivedPaisa)} /> : null}
         <Row label="Tax" value={money(s.taxPaisa)} />
         <Row label="Total billed" value={money(s.billedPaisa)} strong />
         <Row label="Paid" value={money(s.paid.totalPaisa)} />
@@ -40,7 +49,7 @@ export function SalesBreakdown({ data }: { data: Insights }) {
 
 export function NoSales({ openings }: { openings: NonNullable<Insights['noSales']> }) {
   return (
-    <Panel title="No-sale drawer openings" icon={LockOpen} subtitle="the drawer opened without a payment" minHeight="min-h-40">
+    <Panel title="Cash drawer" icon={LockOpen} subtitle="float, cash in and out, openings without a payment" minHeight="min-h-40">
       {openings.length === 0 ? (
         <p className={cn('flex flex-1 items-center text-fs-14', tone.second)}>The drawer was only opened for cash payments.</p>
       ) : (
@@ -51,7 +60,14 @@ export function NoSales({ openings }: { openings: NonNullable<Insights['noSales'
               <span className={cn('text-fs-14', tone.ink)}>{opening.staffName}</span>
               <span className={cn('min-w-0 flex-1 text-fs-14', tone.second)}>
                 {opening.reason === 'other' ? opening.note : REASONS[opening.reason]}
+                {opening.reason !== 'other' && opening.note ? ` · ${opening.note}` : ''}
               </span>
+              {opening.amountPaisa != null ? (
+                <span className={cn('text-fs-14 font-bold tabular-nums', opening.amountPaisa < 0 ? tone.bad : tone.ink)}>
+                  {opening.amountPaisa > 0 ? '+' : ''}
+                  {money(opening.amountPaisa)}
+                </span>
+              ) : null}
             </li>
           ))}
         </ul>

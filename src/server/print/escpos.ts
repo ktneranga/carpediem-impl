@@ -395,6 +395,10 @@ export function buildTicket(ticket: TicketPayload): Buffer {
   const type = `${isVoid ? 'VOID ' : ''}${ticketTypeOf(ticket.destination)}`
   emit(number ? `${type} ${dailyOrderLabel(number)}` : type)
   command(SIZE_NORMAL)
+  // A second or third copy says so under the header (Teran, 2026-11-16), so
+  // nobody cooks it as a new order. The first copy prints as an original.
+  const copy = ticket.copy
+  if (copy && Number.isInteger(copy.n) && Number.isInteger(copy.of) && copy.n > 1) emit(`COPY ${copy.n}/${copy.of}`)
 
   // FR18: EVERY table on the session, or COUNTER where it has none. This line
   // used to be sliced at the paper width, so a five-table merge printed
@@ -412,6 +416,9 @@ export function buildTicket(ticket: TicketPayload): Buffer {
   // the dish was on.
   const when = `${calendarDate(ticket.submittedAt, ticket.timeZone)}  ${clockTime(ticket.submittedAt, ticket.timeZone)}`
   emit(isVoid ? `VOID  ${when}  (Round ${ticket.roundNumber})` : `Round ${ticket.roundNumber}    ${when}`)
+  // Who looks after the table (Teran, 2026-11-16): the runner knows whom to tell.
+  const server = typeof ticket.serverName === 'string' ? foldToAscii(ticket.serverName).trim() : ''
+  if (server !== '') emit(`Waiter: ${server}`)
   // The round's other stations, by name only (Teran, 2026-11-02): one line
   // tells the kitchen the pizza and the drinks are coming for the same table,
   // without spending paper on their items.
@@ -576,6 +583,8 @@ export function buildReceipt(receipt: ReceiptPayload): Buffer {
   emit(`${calendarDate(receipt.printedAt, receipt.timeZone)}  ${clockTime(receipt.printedAt, receipt.timeZone)}`)
   const cashier = typeof receipt.cashierName === 'string' ? foldToAscii(receipt.cashierName).trim() : ''
   if (cashier !== '') emit(`Cashier: ${cashier}`)
+  const server = typeof receipt.serverName === 'string' ? foldToAscii(receipt.serverName).trim() : ''
+  if (server !== '' && server !== cashier) emit(`Served by: ${server}`)
   divider()
 
   // ── What was had ──────────────────────────────────────────────────────────
@@ -593,7 +602,14 @@ export function buildReceipt(receipt: ReceiptPayload): Buffer {
 
   // ── The money ─────────────────────────────────────────────────────────────
   row('Subtotal', receipt.subtotalPaisa)
-  if (receipt.serviceChargeBp > 0) row(`Service ${percentFromBp(receipt.serviceChargeBp)}%`, receipt.serviceChargePaisa)
+  // The discount, and a waived service charge said out loud (Teran, 2026-11-16).
+  const discountPaisa = typeof receipt.discountPaisa === 'number' ? receipt.discountPaisa : 0
+  if (discountPaisa > 0) row(`Discount ${percentFromBp(receipt.discountBp ?? 0)}%`, -discountPaisa)
+  if (receipt.serviceChargeWaived === true) {
+    for (const line of amountLines('Service charge', 'waived')) emit(line)
+  } else if (receipt.serviceChargeBp > 0) {
+    row(`Service ${percentFromBp(receipt.serviceChargeBp)}%`, receipt.serviceChargePaisa)
+  }
   if (receipt.taxBp > 0) row(`Tax ${percentFromBp(receipt.taxBp)}%`, receipt.taxPaisa)
   command(SIZE_TALL)
   command(BOLD_ON)
@@ -652,7 +668,7 @@ export function buildReceipt(receipt: ReceiptPayload): Buffer {
   return Buffer.from(parts)
 }
 
-const NO_SALE_REASONS: Record<string, string> = { change: 'Change', float: 'Float', other: 'Other' }
+const NO_SALE_REASONS: Record<string, string> = { change: 'Change', float: 'Float', other: 'Other', pay_in: 'Pay in', paid_out: 'Paid out', cash_drop: 'Cash drop' }
 
 /**
  * The end-of-day slip (Story 9.5), the owner's paper. Defensive like
@@ -697,7 +713,9 @@ export function buildTakings(payload: TakingsPayload): Buffer {
   row('Items', t.itemsPaisa)
   if (num(t.compsPaisa) !== 0) row('Comps', t.compsPaisa)
   row('Subtotal', t.subtotalPaisa)
+  if (num(t.discountPaisa) !== 0) row('Discounts', -num(t.discountPaisa))
   row('Service charge', t.serviceChargePaisa)
+  if (num(t.serviceWaivedPaisa) !== 0) row('Service waived', t.serviceWaivedPaisa)
   row('Tax', t.taxPaisa)
   command(BOLD_ON)
   row('Total billed', t.billedPaisa)
@@ -713,6 +731,20 @@ export function buildTakings(payload: TakingsPayload): Buffer {
   command(BOLD_OFF)
   command(SIZE_NORMAL)
 
+  // The drawer (Teran, 2026-11-16): what should be in it, then the count.
+  const moved = t.drawer
+  if (moved && typeof moved.expectedPaisa === 'number') {
+    divider()
+    row('Cash taken', paid.cashPaisa)
+    if (num(moved.floatPaisa) !== 0) row('Float', moved.floatPaisa)
+    if (num(moved.payInPaisa) !== 0) row('Pay in', moved.payInPaisa)
+    if (num(moved.paidOutPaisa) !== 0) row('Paid out', moved.paidOutPaisa)
+    if (num(moved.cashDropPaisa) !== 0) row('Cash drop', moved.cashDropPaisa)
+    if (num(moved.otherPaisa) !== 0) row('Other in/out', moved.otherPaisa)
+    command(BOLD_ON)
+    row('Should be in drawer', moved.expectedPaisa)
+    command(BOLD_OFF)
+  }
   const drawer = t.cashCount
   if (drawer && typeof drawer.countedPaisa === 'number') {
     row('Cash counted', drawer.countedPaisa)
@@ -737,11 +769,12 @@ export function buildTakings(payload: TakingsPayload): Buffer {
 
   const noSales = Array.isArray(t.noSales) ? t.noSales : []
   divider()
-  emit(`No-sale drawer openings: ${noSales.length}`)
+  emit(`Drawer openings without a sale: ${noSales.length}`)
   for (const opening of noSales) {
     const time = typeof opening?.openedAt === 'string' ? clockTime(opening.openedAt, payload.timeZone) : ''
     const why = opening?.reason === 'other' ? foldToAscii(opening.note) || 'Other' : NO_SALE_REASONS[opening?.reason] ?? ''
-    for (const line of wrapLine(`${time}  ${foldToAscii(opening?.staffName)}  ${why}`, 2)) emit(line)
+    const amount = typeof opening?.amountPaisa === 'number' ? `  ${receiptMoney(opening.amountPaisa)}` : ''
+    for (const line of wrapLine(`${time}  ${foldToAscii(opening?.staffName)}  ${why}${amount}`, 2)) emit(line)
   }
 
   command(feedLines(4))

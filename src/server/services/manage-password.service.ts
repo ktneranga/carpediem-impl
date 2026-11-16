@@ -132,3 +132,37 @@ export async function checkManagePassword(
     return { kind: 'wrong' as const, attemptsLeft: MANAGE_MAX_ATTEMPTS - attempts }
   })
 }
+
+export type ChangePasswordResult =
+  | { kind: 'changed' }
+  | { kind: 'invalid-length' }
+  | Exclude<CheckPasswordResult, { kind: 'ok' }>
+
+/**
+ * The owner changes the Manage password from inside Manage (Teran,
+ * 2026-11-16). The CURRENT password is checked first, through the same
+ * lockout as the unlock screen, so an unattended open Manage cannot be used
+ * to take it over. Every other device's Manage session ends; this one stays.
+ */
+export async function changeManagePassword(
+  tenantId: string,
+  { current, next, keepStaffSessionId }: { current: string; next: string; keepStaffSessionId: string },
+): Promise<ChangePasswordResult> {
+  if (!isValidManagePasswordLength(next)) return { kind: 'invalid-length' }
+  const checked = await checkManagePassword(tenantId, current)
+  if (checked.kind !== 'ok') return checked
+
+  const hash = await bcrypt.hash(next, BCRYPT_COST)
+  await db.transaction(async (tx) => {
+    await tx
+      .update(tenants)
+      .set({ managePasswordHash: hash, manageFailedAttempts: 0, manageLockedUntil: null })
+      .where(eq(tenants.id, tenantId))
+    await tx.execute(sql`
+      delete from manage_sessions m
+       using staff_sessions s
+       where s.id = m.staff_session_id
+         and s.tenant_id = ${tenantId} and m.staff_session_id <> ${keepStaffSessionId}`)
+  })
+  return { kind: 'changed' }
+}

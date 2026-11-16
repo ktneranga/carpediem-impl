@@ -2,6 +2,7 @@ import { headers } from 'next/headers'
 import { eq } from 'drizzle-orm'
 import { db } from '@/server/db'
 import { staff, tenantConfig } from '@/server/db/schema'
+import { floatRecordedToday } from '@/server/services/cash-drawer.service'
 import { TableGrid } from '@/components/pos/table-grid'
 
 /**
@@ -24,7 +25,7 @@ export default async function Home() {
   // which controls exist. One database read makes the authority obvious.
   const [staffRow] = staffId
     ? await db
-        .select({ name: staff.name, role: staff.role, permissions: staff.permissions })
+        .select({ name: staff.name, role: staff.role, permissions: staff.permissions, tenantId: staff.tenantId })
         .from(staff)
         .where(eq(staff.id, staffId))
         .limit(1)
@@ -41,6 +42,12 @@ export default async function Home() {
       staffName={staffRow?.name ?? 'Unknown'}
       role={staffRow?.role ?? null}
       permissions={staffRow?.permissions ?? []}
+      // Owner and waiters are asked for the opening float until it is recorded.
+      needsFloat={
+        staffRow && (staffRow.role === 'owner' || staffRow.role === 'waiter')
+          ? !(await floatRecordedToday(db, staffRow.tenantId))
+          : false
+      }
     />
   )
 }

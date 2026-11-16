@@ -31,6 +31,11 @@ export type Settings = {
   serviceChargeBp: number
   /** Whole percent (the column is an integer). */
   taxRatePercent: number
+  /** The discount every order starts with, basis points (Teran, 2026-11-16). */
+  defaultDiscountBp: number
+  /** Copies of each KOT / KOT-P and each BOT, 1 to 3. */
+  kitchenTicketCopies: number
+  barTicketCopies: number
   businessDayStartHour: number
   /** ISO; the version. */
   updatedAt: string
@@ -59,6 +64,9 @@ export async function loadSettings(executor: Executor, tenantId: string): Promis
       receiptLogo: tenantConfig.receiptLogo,
       serviceChargeBp: tenantConfig.serviceChargeBp,
       taxRatePercent: tenantConfig.taxRatePercent,
+      defaultDiscountBp: tenantConfig.defaultDiscountBp,
+      kitchenTicketCopies: tenantConfig.kitchenTicketCopies,
+      barTicketCopies: tenantConfig.barTicketCopies,
       businessDayStartHour: tenants.businessDayStartHour,
       updatedAt: tenantConfig.updatedAt,
     })
@@ -78,6 +86,9 @@ export async function loadSettings(executor: Executor, tenantId: string): Promis
     receiptLogo: safeLogo(row.receiptLogo),
     serviceChargeBp: row.serviceChargeBp,
     taxRatePercent: row.taxRatePercent,
+    defaultDiscountBp: row.defaultDiscountBp,
+    kitchenTicketCopies: row.kitchenTicketCopies,
+    barTicketCopies: row.barTicketCopies,
     businessDayStartHour: row.businessDayStartHour,
     updatedAt: row.updatedAt.toISOString(),
   }
@@ -141,6 +152,14 @@ export function checkSettings(input: SettingsInput): SettingsInput {
   if (!Number.isInteger(input.taxRatePercent) || input.taxRatePercent < 0 || input.taxRatePercent > 30) {
     throw new SettingsFieldError('taxRatePercent', 'Tax is a whole percent, 0 to 30')
   }
+  if (!Number.isInteger(input.defaultDiscountBp) || input.defaultDiscountBp < 0 || input.defaultDiscountBp > 10_000) {
+    throw new SettingsFieldError('defaultDiscountBp', 'Discount is 0% to 100%, up to two decimals')
+  }
+  for (const field of ['kitchenTicketCopies', 'barTicketCopies'] as const) {
+    if (!Number.isInteger(input[field]) || input[field] < 1 || input[field] > 3) {
+      throw new SettingsFieldError(field, 'Copies: 1, 2 or 3')
+    }
+  }
   if (!Number.isInteger(input.businessDayStartHour) || input.businessDayStartHour < 0 || input.businessDayStartHour > 23) {
     throw new SettingsFieldError('businessDayStartHour', 'Choose an hour from 0 to 23')
   }
@@ -153,6 +172,9 @@ export function checkSettings(input: SettingsInput): SettingsInput {
     receiptLogo: checkLogo(input.receiptLogo),
     serviceChargeBp: input.serviceChargeBp,
     taxRatePercent: input.taxRatePercent,
+    defaultDiscountBp: input.defaultDiscountBp,
+    kitchenTicketCopies: input.kitchenTicketCopies,
+    barTicketCopies: input.barTicketCopies,
     businessDayStartHour: input.businessDayStartHour,
   }
 }
@@ -188,6 +210,9 @@ export async function saveSettings(
       receiptLogo: input.receiptLogo,
       serviceChargeBp: input.serviceChargeBp,
       taxRatePercent: input.taxRatePercent,
+      defaultDiscountBp: input.defaultDiscountBp,
+      kitchenTicketCopies: input.kitchenTicketCopies,
+      barTicketCopies: input.barTicketCopies,
       updatedAt: sql`clock_timestamp()`,
     })
     .where(eq(tenantConfig.id, current.id))

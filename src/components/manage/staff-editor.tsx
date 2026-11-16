@@ -402,7 +402,8 @@ const PERMISSION_GROUPS: { title: string; items: { permission: Permission; label
     items: [
       { permission: 'custom_charge', label: 'Custom charge', hint: 'Add a typed charge, e.g. corkage' },
       { permission: 'approve_voids', label: 'Approve voids', hint: 'Void and cancel bills without the owner, and approve others’ voids' },
-      { permission: 'open_cash_drawer', label: 'Open cash drawer', hint: 'Open the drawer with no sale' },
+      { permission: 'open_cash_drawer', label: 'Open cash drawer', hint: 'Open the drawer for change, with no sale' },
+      { permission: 'give_discount', label: 'Discount & service', hint: 'Change an order’s discount or waive its service charge' },
     ],
   },
   {

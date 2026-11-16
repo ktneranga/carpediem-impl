@@ -79,6 +79,8 @@ export function buildTicketPayloads(input: {
   /** The order number (Teran, 2026-11-02), assigned when the order opened. */
   dailyNumber: number
   businessDate: string
+  /** Who looks after the table (Teran, 2026-11-16). */
+  serverName?: string | null
 }): TicketPayload[] {
   return [...input.byDestination.entries()].map(([destination, lines]) => ({
     destination,
@@ -97,8 +99,22 @@ export function buildTicketPayloads(input: {
     alsoFor: [...input.byDestination.keys()].filter((other) => other !== destination),
     dailyNumber: input.dailyNumber,
     businessDate: input.businessDate,
+    serverName: input.serverName ? sanitizeTicketText(input.serverName) : null,
     lines: lines.map(sanitizeLine),
   }))
+}
+
+/**
+ * Each ticket as many times as the station asks for (Teran, 2026-11-16):
+ * `copies` 1 to 3, the second and third marked "COPY 2/3". A single copy is
+ * the ticket unchanged.
+ */
+export function withCopies(tickets: TicketPayload[], copiesFor: (ticket: TicketPayload) => number): TicketPayload[] {
+  return tickets.flatMap((ticket) => {
+    const of = Math.min(3, Math.max(1, Math.trunc(copiesFor(ticket)) || 1))
+    if (of === 1) return [ticket]
+    return Array.from({ length: of }, (_, index) => ({ ...ticket, copy: { n: index + 1, of } }))
+  })
 }
 
 /**
@@ -171,6 +187,7 @@ export function buildReceiptPayload(
     ...input,
     restaurantName: clean(input.restaurantName),
     cashierName: input.cashierName ? sanitizeTicketText(input.cashierName) : null,
+    serverName: input.serverName ? sanitizeTicketText(input.serverName) : null,
     // A link is printable ASCII with no spaces, and short enough for a QR the
     // 80mm paper can hold; anything else prints no code rather than a wrong one.
     qr:

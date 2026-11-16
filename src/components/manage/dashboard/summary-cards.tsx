@@ -145,7 +145,7 @@ function CashCountSheet({ onClose, onSaved }: { onClose: () => void; onSaved: ()
           </button>
         </div>
         <label className="flex flex-col gap-sp-1">
-          <span className={cn('text-fs-14 font-semibold', tone.second)}>Cash in the drawer, without the float (LKR)</span>
+          <span className={cn('text-fs-14 font-semibold', tone.second)}>All cash in the drawer, float included (LKR)</span>
           <input
             autoFocus
             inputMode="numeric"

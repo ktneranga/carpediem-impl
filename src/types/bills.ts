@@ -23,6 +23,20 @@ export type BillTotals = {
   serviceChargeBp: number
   /** The tax rate applied, in basis points. */
   taxBp: number
+  /**
+   * The order discount (Teran, 2026-11-16): `discountBp` of the subtotal,
+   * taken off before service and tax. 0 when there is none.
+   * subtotal − discount + service + tax = total.
+   */
+  discountBp: number
+  discountPaisa: number
+  /**
+   * Service charge waived for a special customer. `serviceChargeBp` is then
+   * the rate it would have used, `serviceChargePaisa` is 0, and
+   * `serviceWaivedPaisa` is what was given up.
+   */
+  serviceChargeWaived: boolean
+  serviceWaivedPaisa: number
 }
 
 /** One billed item, priced as it was quoted when it was sent. */

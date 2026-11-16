@@ -1,7 +1,7 @@
 'use client'
 
 import { ArrowLeft } from 'lucide-react'
-import { createElement } from 'react'
+import { createElement, type ReactNode } from 'react'
 import { StaffMenu } from '@/components/pos/staff-menu'
 import { zoneIcon } from '@/lib/design'
 import { cn } from '@/lib/utils'
@@ -43,6 +43,7 @@ export function OrderHeader({
   onStaffTap,
   onManage,
   onSoldOut,
+  waiter,
 }: {
   /** "B1", "B1 + B3" for a merged group, or "Counter" for a counter sale. */
   tableLabel: string
@@ -64,6 +65,8 @@ export function OrderHeader({
   onManage?: () => void
   /** Owner and waiters (Story 8.3): Sold out in the staff menu. */
   onSoldOut?: () => void
+  /** Who looks after the table (Teran, 2026-11-16): in the header, so the order column keeps its room. */
+  waiter?: ReactNode
 }) {
   return (
     <header className="flex shrink-0 items-start justify-between gap-sp-3 border-b border-slate-200 bg-white px-sp-4 py-sp-3 night:border-night-hairline night:bg-night-card">
@@ -122,7 +125,10 @@ export function OrderHeader({
       {/* Was a plain "Nina 12:46" in a 56px pill while the floor drew the
           filled circle — the same control, two appearances, on two screens a
           waiter moves between constantly. One component now. */}
-      <StaffMenu staffName={staffName} clock={clock} onManage={onManage} onSoldOut={onSoldOut} onSwitchUser={onStaffTap} />
+      <div className="flex shrink-0 items-center gap-sp-3">
+        {waiter ? <div className="w-56">{waiter}</div> : null}
+        <StaffMenu staffName={staffName} clock={clock} onManage={onManage} onSoldOut={onSoldOut} onSwitchUser={onStaffTap} />
+      </div>
     </header>
   )
 }

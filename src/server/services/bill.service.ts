@@ -152,21 +152,36 @@ export function computeBillTotals({
   serviceChargeBp,
   taxBp,
   hasTableService,
+  discountBp = 0,
+  serviceChargeWaived = false,
 }: {
   subtotalPaisa: number
   serviceChargeBp: number
   taxBp: number
   hasTableService: boolean
+  /** The order discount, basis points (Teran, 2026-11-16). Off the subtotal, before service and tax. */
+  discountBp?: number
+  /** No service charge for this order — a special customer. */
+  serviceChargeWaived?: boolean
 }): BillTotals {
   const appliedServiceBp = hasTableService ? serviceChargeBp : 0
-  const serviceChargePaisa = Math.round((subtotalPaisa * appliedServiceBp) / 10_000)
-  const taxPaisa = Math.round(((subtotalPaisa + serviceChargePaisa) * taxBp) / 10_000)
+  // Discount first: service and tax are charged on what the guest pays for.
+  const discountPaisa = Math.round((subtotalPaisa * discountBp) / 10_000)
+  const netPaisa = subtotalPaisa - discountPaisa
+  const wouldBeServicePaisa = Math.round((netPaisa * appliedServiceBp) / 10_000)
+  const serviceChargePaisa = serviceChargeWaived ? 0 : wouldBeServicePaisa
+  const taxPaisa = Math.round(((netPaisa + serviceChargePaisa) * taxBp) / 10_000)
 
   return {
     subtotalPaisa,
+    discountBp,
+    discountPaisa,
+    // Only a waiver that gave something up counts as one.
+    serviceChargeWaived: serviceChargeWaived && appliedServiceBp > 0,
+    serviceWaivedPaisa: serviceChargeWaived ? wouldBeServicePaisa : 0,
     serviceChargePaisa,
     taxPaisa,
-    totalPaisa: subtotalPaisa + serviceChargePaisa + taxPaisa,
+    totalPaisa: netPaisa + serviceChargePaisa + taxPaisa,
     // The rates APPLIED, not the rates configured. A counter sale stores 0, so
     // the bill explains why it has no service line without anyone having to
     // know what the tenant's rate was that evening.
@@ -215,6 +230,7 @@ async function readRates(tx: Tx, tenantId: string) {
     .select({
       serviceChargeBp: tenantConfig.serviceChargeBp,
       taxRatePercent: tenantConfig.taxRatePercent,
+      defaultDiscountBp: tenantConfig.defaultDiscountBp,
     })
     .from(tenantConfig)
     .where(eq(tenantConfig.tenantId, tenantId))
@@ -227,6 +243,7 @@ async function readRates(tx: Tx, tenantId: string) {
   return {
     serviceChargeBp: config.serviceChargeBp,
     taxBp: config.taxRatePercent * 100,
+    defaultDiscountBp: config.defaultDiscountBp,
   }
 }
 
@@ -545,7 +562,12 @@ export async function priceBillable(
   },
 ) {
   const [session] = await tx
-    .select({ tenantId: orderSessions.tenantId })
+    .select({
+      tenantId: orderSessions.tenantId,
+      // This order's own discount and waiver (Teran, 2026-11-16).
+      discountBp: orderSessions.discountBp,
+      serviceChargeWaived: orderSessions.serviceChargeWaived,
+    })
     .from(orderSessions)
     .where(eq(orderSessions.id, sessionId))
     .limit(1)
@@ -577,7 +599,7 @@ export async function priceBillable(
       .map((event) => event.eventId),
   )
   const comps = allComps.filter((comp) => finishing.has(comp.orderEventId))
-  const { serviceChargeBp, taxBp } = await readRates(tx, session!.tenantId)
+  const { serviceChargeBp, taxBp, defaultDiscountBp } = await readRates(tx, session!.tenantId)
 
   // One party, one rate. `null` means this is the session's first bill, so the
   // live table attachment decides and this bill sets the precedent.
@@ -612,6 +634,9 @@ export async function priceBillable(
     serviceChargeBp: pinned ?? serviceChargeBp,
     taxBp,
     hasTableService: pinned === null ? hasTableService : pinned > 0,
+    // Null on the order means the restaurant's default.
+    discountBp: session!.discountBp ?? defaultDiscountBp,
+    serviceChargeWaived: session!.serviceChargeWaived,
   })
 
   return {
@@ -839,6 +864,10 @@ export async function getBill(
       totalPaisa: bills.totalPaisa,
       serviceChargeBp: bills.serviceChargeBp,
       taxBp: bills.taxBp,
+      discountBp: bills.discountBp,
+      discountPaisa: bills.discountPaisa,
+      serviceChargeWaived: bills.serviceChargeWaived,
+      serviceWaivedPaisa: bills.serviceWaivedPaisa,
       seatSlotId: bills.seatSlotId,
       personLabel: bills.personLabel,
       createdAt: bills.createdAt,
@@ -920,6 +949,10 @@ export async function getBill(
     totalPaisa: bill.totalPaisa,
     serviceChargeBp: bill.serviceChargeBp,
     taxBp: bill.taxBp,
+    discountBp: bill.discountBp,
+    discountPaisa: bill.discountPaisa,
+    serviceChargeWaived: bill.serviceChargeWaived,
+    serviceWaivedPaisa: bill.serviceWaivedPaisa,
     lines,
     comps,
   }

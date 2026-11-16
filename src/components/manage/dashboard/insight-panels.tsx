@@ -177,8 +177,11 @@ export function StatTiles({ data, cashAction }: { data: Insights; cashAction?: R
             {gap === null
               ? singleDay ? 'Not counted yet' : `No counts in this period`
               : gap === 0
-                ? 'Counted matches cash taken'
-                : <span className={cn('font-semibold', tone.bad)}>Counted {gap < 0 ? 'under' : 'over'} cash taken</span>}
+                ? 'Counted matches what should be there'
+                : <span className={cn('font-semibold', tone.bad)}>Counted {gap < 0 ? 'under' : 'over'} what should be there</span>}
+          </span>
+          <span>
+            Should be {money(cash.expectedPaisa)}: cash taken + float + cash in − cash out
           </span>
           {cash.count ? <span>Counted {time(cash.count.countedAt)} by {cash.count.countedBy}</span> : null}
           {!singleDay && cash.daysCounted > 0 ? <span>{cash.daysCounted} of {cash.days} days counted</span> : null}

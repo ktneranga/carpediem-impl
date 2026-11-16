@@ -5,6 +5,7 @@ import {
   orderSessions,
   orderSessionTables,
   seatSlots,
+  staff,
   tables,
   tableStatusEvents,
 } from '@/server/db/schema'
@@ -658,6 +659,63 @@ export async function setBillMode(
 ): Promise<void> {
   await lockOpenSession(tx, sessionId)
   await tx.update(orderSessions).set({ billMode: mode }).where(eq(orderSessions.id, sessionId))
+}
+
+/** The staff member is not active, or belongs to another restaurant. */
+export class NotAServerError extends Error {}
+
+/**
+ * Who looks after this order (Teran, 2026-11-16). Any active owner or waiter
+ * of the same restaurant; kitchen staff do not serve tables.
+ */
+export async function setServedBy(
+  tx: Tx,
+  { sessionId, staffId }: { sessionId: string; staffId: string },
+): Promise<{ staffId: string; name: string }> {
+  await lockOpenSession(tx, sessionId)
+  const [member] = await tx
+    .select({ id: staff.id, name: staff.name })
+    .from(staff)
+    .innerJoin(orderSessions, eq(orderSessions.tenantId, staff.tenantId))
+    .where(
+      and(
+        eq(orderSessions.id, sessionId),
+        eq(staff.id, staffId),
+        eq(staff.isActive, true),
+        inArray(staff.role, ['owner', 'waiter']),
+      ),
+    )
+    .limit(1)
+  if (!member) throw new NotAServerError()
+  await tx.update(orderSessions).set({ servedByStaffId: member.id }).where(eq(orderSessions.id, sessionId))
+  return { staffId: member.id, name: member.name }
+}
+
+/**
+ * This order's discount and service-charge waiver (Teran, 2026-11-16).
+ * `discountBp` null goes back to the restaurant's default. Applies to every
+ * bill written after it; bills already recorded keep what they were priced at.
+ * The route asks `canGiveDiscount` first.
+ */
+export async function setOrderPricing(
+  tx: Tx,
+  {
+    sessionId,
+    staffId,
+    discountBp,
+    serviceChargeWaived,
+  }: { sessionId: string; staffId: string; discountBp?: number | null; serviceChargeWaived?: boolean },
+): Promise<void> {
+  await lockOpenSession(tx, sessionId)
+  // Only what was sent: the discount and the waiver are changed separately.
+  await tx
+    .update(orderSessions)
+    .set({
+      ...(discountBp !== undefined ? { discountBp } : {}),
+      ...(serviceChargeWaived !== undefined ? { serviceChargeWaived } : {}),
+      pricingChangedByStaffId: staffId,
+    })
+    .where(eq(orderSessions.id, sessionId))
 }
 
 export async function closeSession(

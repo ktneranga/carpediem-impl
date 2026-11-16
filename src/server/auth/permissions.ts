@@ -202,6 +202,7 @@ export const PERMISSIONS = [
   'custom_charge',
   'approve_voids',
   'open_cash_drawer',
+  'give_discount',
   'manage_dashboard',
   'manage_menu',
   'manage_floor',
@@ -293,4 +294,13 @@ export function canOpenCashDrawer(role: StaffRole | null | undefined, permission
  */
 export function canMarkSoldOut(role: StaffRole | null | undefined): boolean {
   return role === 'owner' || role === 'waiter'
+}
+
+/**
+ * Whether this person may change an order's discount or waive its service
+ * charge on the bill screen (Teran, 2026-11-16). Owners, and anyone granted
+ * `give_discount`. The bill page and the pricing route both ask it.
+ */
+export function canGiveDiscount(role: StaffRole | null | undefined, permissions: readonly string[] | null | undefined = []): boolean {
+  return hasPermission(role, permissions, 'give_discount')
 }

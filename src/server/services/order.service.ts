@@ -11,13 +11,15 @@ import {
   orderSessionTables,
   printJobs,
   seatSlots,
+  staff,
   tables,
+  tenantConfig,
   tenants,
   zones,
 } from '@/server/db/schema'
 import { lockOpenSession } from '@/server/services/table-session.service'
 import { billedSeats, findConsolidatedBill } from '@/server/services/bill.service'
-import { buildTicketPayloads } from '@/server/print/ticket'
+import { buildTicketPayloads, withCopies } from '@/server/print/ticket'
 import { zoneUsesSeats } from '@/lib/design'
 import {
   chosenOptions,
@@ -459,9 +461,16 @@ export async function submitRound(
       // The order number, printed on every ticket (Teran, 2026-11-02).
       dailyNumber: orderSessions.dailyNumber,
       businessDate: orderSessions.businessDate,
+      // Ticket copies per station (Teran, 2026-11-16).
+      kitchenCopies: tenantConfig.kitchenTicketCopies,
+      barCopies: tenantConfig.barTicketCopies,
+      // Who looks after the table: the one picked, else who opened it.
+      serverName: staff.name,
     })
     .from(orderSessions)
     .innerJoin(tenants, eq(tenants.id, orderSessions.tenantId))
+    .leftJoin(tenantConfig, eq(tenantConfig.tenantId, orderSessions.tenantId))
+    .leftJoin(staff, eq(staff.id, sql`coalesce(${orderSessions.servedByStaffId}, ${orderSessions.openedByStaffId})`))
     .where(eq(orderSessions.id, sessionId))
     .limit(1)
 
@@ -492,16 +501,20 @@ export async function submitRound(
   // a lost response cannot enqueue a second ticket (Story 4.5, AC-8).
   //
   // No bytes, no socket, no printer. The worker delivers; this only records.
-  const tickets = buildTicketPayloads({
-    byDestination,
-    roundNumber,
-    tableLabels,
-    usesSeats,
-    submittedAt: committedRound!.submittedAt,
-    timeZone: session!.timeZone,
-    dailyNumber: session!.dailyNumber,
-    businessDate: session!.businessDate,
-  })
+  const tickets = withCopies(
+    buildTicketPayloads({
+      byDestination,
+      roundNumber,
+      tableLabels,
+      usesSeats,
+      submittedAt: committedRound!.submittedAt,
+      timeZone: session!.timeZone,
+      dailyNumber: session!.dailyNumber,
+      businessDate: session!.businessDate,
+      serverName: session!.serverName,
+    }),
+    (ticket) => (ticket.destination === 'bar' ? session!.barCopies : session!.kitchenCopies) ?? 1,
+  )
   // A round of only custom charges has no ticket (Story 4.9) — and Drizzle
   // throws on `values([])`, which would 500 a round that is otherwise fine.
   if (tickets.length > 0) {

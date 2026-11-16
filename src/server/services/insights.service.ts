@@ -64,7 +64,7 @@ export type Insights = {
   /** Items, comps, subtotal, service, tax, billed — as on the printed slip. */
   sales: Sales
   /** Single-day views only: no-sale drawer openings, oldest first. */
-  noSales: { openedAt: string; staffName: string; reason: 'change' | 'float' | 'other'; note: string | null }[] | null
+  noSales: { openedAt: string; staffName: string; reason: 'change' | 'float' | 'other' | 'pay_in' | 'paid_out' | 'cash_drop'; note: string | null; amountPaisa: number | null }[] | null
   topItems: { name: string; quantity: number; paisa: number }[]
   audit: {
     kind: 'unclosed' | 'walkout' | 'abandoned' | 'correction' | 'cancelled'
@@ -164,10 +164,19 @@ export async function loadInsights(executor: Executor, tenantId: string, asked: 
               from bills b join order_sessions s on s.id = b.session_id
              where b.session_id in ${sessions} and b.cancelled_at is null
              group by 1`),
+      // Expected in the drawer: cash payments, plus the float and cash in, less
+      // cash out (Teran, 2026-11-16) — each on its business day.
       rows<{ day: string; n: number }>(executor, sql`
-        select s.business_date::text as day, coalesce(sum(p.amount_paisa), 0)::bigint as n
-          from payment_records p join order_sessions s on s.id = p.session_id
-         where p.session_id in ${sessions} and p.method = 'cash'
+        select day, coalesce(sum(n), 0)::bigint as n from (
+          select s.business_date::text as day, p.amount_paisa as n
+            from payment_records p join order_sessions s on s.id = p.session_id
+           where p.session_id in ${sessions} and p.method = 'cash'
+          union all
+          select business_date_at(o.tenant_id, o.created_at)::text as day, o.amount_paisa as n
+            from cash_drawer_openings o
+           where o.tenant_id = ${tenantId} and o.amount_paisa is not null
+             and business_date_at(o.tenant_id, o.created_at) between ${from}::date and ${to}::date
+        ) moved
          group by 1`),
       rows<{ day: string; counted: number; at: Date; by: string }>(executor, sql`
         select distinct on (c.business_date) c.business_date::text as day, c.counted_paisa as counted,
@@ -351,7 +360,7 @@ export async function loadInsights(executor: Executor, tenantId: string, asked: 
       settledPaisa: pay.totalPaisa,
     },
     sales,
-    noSales: noSales?.map(({ openedAt, staffName, reason, note }) => ({ openedAt, staffName, reason, note })) ?? null,
+    noSales: noSales?.map(({ openedAt, staffName, reason, note, amountPaisa }) => ({ openedAt, staffName, reason, note, amountPaisa })) ?? null,
     topItems: topItems.map((row) => ({ name: row.name, quantity: n(row.quantity), paisa: n(row.paisa) })),
     audit,
   }

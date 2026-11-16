@@ -5,6 +5,7 @@ import { AlertTriangle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FloorHeader } from '@/components/pos/floor-header'
+import { OpeningFloatPrompt } from '@/components/pos/cash-drawer-button'
 import { useClock } from '@/hooks/use-clock'
 import { TableCard } from '@/components/pos/table-card'
 import { ZoneChipBar, type Zone } from '@/components/pos/zone-chip-bar'
@@ -425,6 +426,7 @@ export function TableGrid({
   staffName,
   role,
   permissions = [],
+  needsFloat = false,
 }: {
   /**
    * REMOVED from the UI on 2026-10-19 and kept as a prop on purpose.
@@ -445,9 +447,24 @@ export function TableGrid({
   role: StaffRole | null
   /** Granted permissions (Story 10.6): the drawer icon and the Manage entry. */
   permissions?: string[]
+  /** No opening float recorded today (Teran, 2026-11-16): ask for it. */
+  needsFloat?: boolean
 }) {
   const queryClient = useQueryClient()
   const router = useRouter()
+  // "Not now" is remembered for the rest of today in this tab.
+  const [askFloat, setAskFloat] = useState(false)
+  useEffect(() => {
+    if (!needsFloat) return
+    let later = false
+    try {
+      later = window.sessionStorage.getItem(`float-later:${new Date().toDateString()}`) === '1'
+    } catch {
+      // No storage: ask.
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only state read after hydration
+    if (!later) setAskFloat(true)
+  }, [needsFloat])
   const [activeZoneId, setActiveZoneId] = useState<string | null>(null)
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
   // Carries a nonce so two identical messages are distinct state values — see
@@ -1241,9 +1258,31 @@ export function TableGrid({
         onManage={canOpenManage(role, permissions) ? () => window.location.assign('/manage') : undefined}
         // Owner and waiters (Story 8.3). A client navigation: no password.
         onSoldOut={canMarkSoldOut(role) ? () => router.push('/manage/sold-out') : undefined}
-        canOpenDrawer={canOpenCashDrawer(role, permissions)}
-        onDrawerOpened={() => showNotice('Drawer opening — recorded')}
+        canOpenDrawer={role === 'owner' || role === 'waiter'}
+        isOwner={role === 'owner'}
+        canOpenForChange={canOpenCashDrawer(role, permissions)}
+        onDrawerOpened={() => {
+          showNotice('Drawer opening — recorded')
+          router.refresh()
+        }}
       />
+      {askFloat ? (
+        <OpeningFloatPrompt
+          onDone={() => {
+            setAskFloat(false)
+            showNotice('Opening float recorded')
+            router.refresh()
+          }}
+          onLater={() => {
+            setAskFloat(false)
+            try {
+              window.sessionStorage.setItem(`float-later:${new Date().toDateString()}`, '1')
+            } catch {
+              // Then it asks again on the next load.
+            }
+          }}
+        />
+      ) : null}
 
       {/* ── The zone bar (2026-10-19 design) ──────────────────────────────
           A full-bleed WHITE band of its own, between the header and the grid,

@@ -68,6 +68,17 @@ export type TicketPayload = {
    * of the round. Optional: every job queued before it is an ordinary ticket.
    */
   void?: true
+  /**
+   * Who looks after the table ("Waiter: Kasun"), Teran 2026-11-16. Optional:
+   * old jobs have none.
+   */
+  serverName?: string | null
+  /**
+   * One of several copies of the same ticket (Teran, 2026-11-16: one for the
+   * cook, one for the runner). `n` of `of`; absent on a single copy. Prints
+   * "COPY 2/2" so the second is never cooked as a new order.
+   */
+  copy?: { n: number; of: number }
   lines: TicketLine[]
 }
 
@@ -125,6 +136,8 @@ export type ReceiptPayload = {
   logo?: { widthDots: number; heightDots: number; data: string } | null
   /** Who printed it, or who took the payment it follows ("Cashier: Nina"). */
   cashierName?: string | null
+  /** Who looked after the table ("Served by: Kasun"), Teran 2026-11-16. Optional: old jobs have none. */
+  serverName?: string | null
   /** Every table on the order, or `['Bar tab']` / `['COUNTER']`. */
   tableLabels: string[]
   /** "Seat 1", "Person 2" or "Split bill" when the bill covers part of the table. */
@@ -139,6 +152,11 @@ export type ReceiptPayload = {
   /** Negative paisa each. Nothing writes comps before Story 7.3. */
   comps: { reason: string; amountPaisa: number }[]
   subtotalPaisa: number
+  /** The order discount (Teran, 2026-11-16). Optional: old jobs have none. */
+  discountBp?: number
+  discountPaisa?: number
+  /** Prints "Service charge: waived" instead of the service line. */
+  serviceChargeWaived?: boolean
   serviceChargePaisa: number
   serviceChargeBp: number
   taxPaisa: number
@@ -181,16 +199,25 @@ export type Takings = {
   /** Negative (or 0). Nothing writes comps before Story 7.3. */
   compsPaisa: number
   subtotalPaisa: number
+  /** Optional: slips queued before discounts existed have none. */
+  discountPaisa?: number
   serviceChargePaisa: number
+  serviceWaivedPaisa?: number
   taxPaisa: number
   billedPaisa: number
   paid: { cashPaisa: number; cardPaisa: number; transferPaisa: number; totalPaisa: number }
+  /**
+   * Cash put in and taken out of the drawer (Teran, 2026-11-16), signed:
+   * paid-out and cash-drop are negative. `expectedPaisa` = cash paid + all of
+   * them — what the count is compared with. Optional on old slips.
+   */
+  drawer?: { floatPaisa: number; payInPaisa: number; paidOutPaisa: number; cashDropPaisa: number; otherPaisa?: number; expectedPaisa: number }
   /** Orders closed as walkout or abandoned, and what their bills still owed. */
   closedUnpaid: { count: number; owedPaisa: number }
-  /** The owner's latest drawer count for the day (Story 9.3), and counted − cash paid. Optional: old slips have none. */
+  /** The owner's latest count of the WHOLE drawer (Story 9.3), and counted − expected. Optional: old slips have none. */
   cashCount?: { countedPaisa: number; gapPaisa: number } | null
   openOrders: { dailyNumber: number; tables: string[]; openedAt: string; openedBy: string }[]
-  noSales: { openedAt: string; staffName: string; reason: 'change' | 'float' | 'other'; note: string | null }[]
+  noSales: { openedAt: string; staffName: string; reason: 'change' | 'float' | 'other' | 'pay_in' | 'paid_out' | 'cash_drop'; note: string | null; amountPaisa?: number | null }[]
 }
 
 /**

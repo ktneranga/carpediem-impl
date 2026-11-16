@@ -8,6 +8,8 @@ import { MenuBrowser } from '@/components/pos/menu-browser'
 import { CustomChargeSheet } from '@/components/pos/custom-charge-sheet'
 import { OrderHeader } from '@/components/pos/order-header'
 import { OrderSummary } from '@/components/pos/order-summary'
+import { WaiterPicker, type ServerOption } from '@/components/pos/waiter-picker'
+import { DiscountDialog } from '@/components/pos/discount-dialog'
 import {
   OrderActionStrip,
   type OrderActionStripState,
@@ -120,6 +122,15 @@ export type OrderScreenProps = {
    * column; the order screen previews the same charge the bill will apply.
    */
   serviceChargeBp: number
+  /** This order's own discount, basis points; null follows the restaurant's default. */
+  discountBp?: number | null
+  defaultDiscountBp?: number
+  serviceChargeWaived?: boolean
+  /** May change the discount and the service charge: owners and `give_discount`. */
+  canGiveDiscount?: boolean
+  /** Who may look after the table, and who does (Teran, 2026-11-16). */
+  servers?: ServerOption[]
+  serverId?: string | null
   /**
    * Whether this order tracks PEOPLE (Teran, 2026-10-16; restored 2026-10-21).
    *
@@ -363,6 +374,12 @@ export function OrderScreen({
   zoneName,
   taxRatePercent,
   serviceChargeBp,
+  discountBp: initialDiscountBp = null,
+  defaultDiscountBp = 0,
+  serviceChargeWaived: initialWaived = false,
+  canGiveDiscount = false,
+  servers = [],
+  serverId = null,
   initialBillMode,
   initialBills,
   initialHasUnbilled,
@@ -396,6 +413,30 @@ export function OrderScreen({
    * never agreed to.
    */
   const [billMode, setBillMode] = useState<'one' | 'separate'>(initialBillMode)
+  // Discount and service charge (Teran, 2026-11-16): two separate controls in
+  // the order column's totals. Kept here so the totals change on tap.
+  const [ownDiscountBp, setOwnDiscountBp] = useState<number | null>(initialDiscountBp)
+  const [serviceChargeWaived, setServiceChargeWaived] = useState(initialWaived)
+  const [editingDiscount, setEditingDiscount] = useState(false)
+  const [serviceBusy, setServiceBusy] = useState(false)
+  const discountBp = ownDiscountBp ?? defaultDiscountBp
+  async function toggleService() {
+    const next = !serviceChargeWaived
+    setServiceChargeWaived(next)
+    setServiceBusy(true)
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}/pricing`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ serviceChargeWaived: next }),
+      })
+      if (!response.ok) throw new Error()
+    } catch {
+      setServiceChargeWaived(!next)
+    } finally {
+      setServiceBusy(false)
+    }
+  }
 
   /**
    * Seats are shown when the order is TRACKING PEOPLE — not when the zone says
@@ -1454,6 +1495,12 @@ export function OrderScreen({
         onStaffTap={signOut}
         onManage={canManage ? () => window.location.assign('/manage') : undefined}
         onSoldOut={canMarkSoldOut ? () => router.push('/manage/sold-out') : undefined}
+        // Who looks after this table (Teran, 2026-11-16) — in the header, not the order column.
+        waiter={
+          servers.length > 0 ? (
+            <WaiterPicker sessionId={sessionId} servers={servers} initialServerId={serverId} />
+          ) : undefined
+        }
       />
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
@@ -1832,6 +1879,11 @@ export function OrderScreen({
             notSentPaisa={subtotalPaisa}
             serviceChargeBp={serviceChargeBp}
             taxRatePercent={taxRatePercent}
+            discountBp={discountBp}
+            serviceChargeWaived={serviceChargeWaived}
+            onEditDiscount={canGiveDiscount ? () => setEditingDiscount(true) : undefined}
+            onToggleService={canGiveDiscount ? () => void toggleService() : undefined}
+            serviceBusy={serviceBusy}
             // A custom charge straight onto the bill, never to a kitchen
             // (Story 4.9) — owner only until Story 10.6.
             // Not once the order is billed: the server would refuse it, after
@@ -1840,6 +1892,20 @@ export function OrderScreen({
           />
         </aside>
       </div>
+
+      {editingDiscount ? (
+        <DiscountDialog
+          sessionId={sessionId}
+          discountBp={discountBp}
+          defaultDiscountBp={defaultDiscountBp}
+          isOwnDiscount={ownDiscountBp !== null}
+          onCancel={() => setEditingDiscount(false)}
+          onSaved={(value) => {
+            setOwnDiscountBp(value)
+            setEditingDiscount(false)
+          }}
+        />
+      ) : null}
 
       {sheet && sheetSeat && (!sheet.lineId || sheetLine) ? (
         <ModifierSheet
