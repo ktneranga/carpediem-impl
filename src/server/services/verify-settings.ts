@@ -69,12 +69,16 @@ async function run() {
     receiptLogo: logo,
     serviceChargeBp: 250,
     taxRatePercent: 5,
+    defaultDiscountBp: 1000,
+    kitchenTicketCopies: 2,
+    barTicketCopies: 1,
     businessDayStartHour: 5,
   }
   const saved = await db.transaction((tx) => saveSettings(tx, actor, good, loaded.updatedAt))
   check('save: cleaned and stored', saved.restaurantName === 'ZZ New Name' && saved.receiptHeader === 'No 12, Galle Road\nHikkaduwa\nTel 011 234 5678' &&
     saved.serviceChargeBp === 250 && saved.taxRatePercent === 5 && saved.businessDayStartHour === 5 && saved.receiptLogo?.widthDots === 16)
   check('save: a new version', saved.updatedAt !== loaded.updatedAt)
+  check('save: default discount and ticket copies', saved.defaultDiscountBp === 1000 && saved.kitchenTicketCopies === 2 && saved.barTicketCopies === 1)
 
   const payload = (await one(q`SELECT payload, table_name, staff_id FROM config_changes WHERE tenant_id = ${tenantId} ORDER BY created_at DESC LIMIT 1`))
   check('the change is recorded, without the logo bytes', payload?.table_name === 'tenant_config' && payload.staff_id === ownerId &&

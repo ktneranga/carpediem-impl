@@ -1,12 +1,13 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { dailyOrderLabel } from '@/lib/order-number'
 import { dishCount } from '@/server/orders/item-count'
 import { z } from 'zod'
 import {
   canAddCustomCharge,
   canApproveVoids,
+  canGiveDiscount,
   canMarkSoldOut,
   canOpenManage,
   parsePermissionsHeader,
@@ -82,6 +83,11 @@ export default async function OrderPage({
       tabLabel: orderSessions.tabLabel,
       kind: orderSessions.kind,
       dailyNumber: orderSessions.dailyNumber,
+      tenantId: orderSessions.tenantId,
+      openedByStaffId: orderSessions.openedByStaffId,
+      servedByStaffId: orderSessions.servedByStaffId,
+      discountBp: orderSessions.discountBp,
+      serviceChargeWaived: orderSessions.serviceChargeWaived,
       primaryTableId: orderSessions.tableId,
       tableId: tables.id,
       tableLabel: tables.label,
@@ -139,9 +145,18 @@ export default async function OrderPage({
       // same charge so the figure a waiter reads out matches the one
       // that gets printed.
       serviceChargeBp: tenantConfig.serviceChargeBp,
+      defaultDiscountBp: tenantConfig.defaultDiscountBp,
     })
     .from(tenantConfig)
+    .where(eq(tenantConfig.tenantId, session.tenantId))
     .limit(1)
+
+  // Who can look after a table (Teran, 2026-11-16): active owners and waiters.
+  const servers = await db
+    .select({ id: staff.id, name: staff.name })
+    .from(staff)
+    .where(and(eq(staff.tenantId, session.tenantId), eq(staff.isActive, true), inArray(staff.role, ['owner', 'waiter'])))
+    .orderBy(asc(staff.name))
 
   // Drives which close reasons the screen offers, and the walkout message's
   // count. DISHES — the sum of ITEM_ADDED quantities (`dishCount`) — not rows;
@@ -216,6 +231,12 @@ export default async function OrderPage({
       submittedRounds={submittedRounds}
       taxRatePercent={config?.taxRatePercent ?? 0}
       serviceChargeBp={config?.serviceChargeBp ?? 0}
+      discountBp={session.discountBp}
+      defaultDiscountBp={config?.defaultDiscountBp ?? 0}
+      serviceChargeWaived={session.serviceChargeWaived}
+      canGiveDiscount={canGiveDiscount(staffRole, staffPermissions)}
+      servers={servers}
+      serverId={session.servedByStaffId ?? session.openedByStaffId}
       initialBillMode={session.billMode}
       initialBills={initialBills}
       initialHasUnbilled={initialHasUnbilled}

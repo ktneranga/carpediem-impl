@@ -12,6 +12,7 @@ import {
   orderSessionTables,
   seatSlots,
   tables,
+  tenantConfig,
 } from '@/server/db/schema'
 import {
   CompsExceedOrderError,
@@ -54,6 +55,9 @@ export default async function BillPage({
       tabLabel: orderSessions.tabLabel,
       kind: orderSessions.kind,
       dailyNumber: orderSessions.dailyNumber,
+      discountBp: orderSessions.discountBp,
+      serviceChargeWaived: orderSessions.serviceChargeWaived,
+      tenantId: orderSessions.tenantId,
       tableLabel: tables.label,
     })
     .from(orderSessions)
@@ -132,6 +136,10 @@ export default async function BillPage({
     taxPaisa: bill.taxPaisa,
     taxBp: bill.taxBp,
     totalPaisa: bill.totalPaisa,
+    discountBp: bill.discountBp,
+    discountPaisa: bill.discountPaisa,
+    serviceChargeWaived: bill.serviceChargeWaived,
+    serviceWaivedPaisa: bill.serviceWaivedPaisa,
     paidPaisa: payments.get(bill.billId)?.paidPaisa ?? 0,
     lines: bill.lines.map((line) => ({
       orderEventId: line.orderEventId,
@@ -175,6 +183,15 @@ export default async function BillPage({
           })),
         }
 
+  const [rates] = await db
+    .select({ defaultDiscountBp: tenantConfig.defaultDiscountBp, serviceChargeBp: tenantConfig.serviceChargeBp })
+    .from(tenantConfig)
+    .where(eq(tenantConfig.tenantId, rows[0]!.tenantId))
+    .limit(1)
+  const headerList = await headers()
+  const role = headerList.get('x-staff-role') as StaffRole | null
+  const permissions = parsePermissionsHeader(headerList.get('x-staff-permissions'))
+
   return (
     <BillScreen
       key={sessionId}
@@ -189,10 +206,14 @@ export default async function BillPage({
       draftError={draftError}
       seats={seats}
       // Cancel bill (Story 7.5): an owner approves their own; others need an owner's PIN.
-      canApprove={canApproveVoids(
-        (await headers()).get('x-staff-role') as StaffRole | null,
-        parsePermissionsHeader((await headers()).get('x-staff-permissions')),
-      )}
+      canApprove={canApproveVoids(role, permissions)}
+      // Discount and service waiver (Teran, 2026-11-16).
+      pricing={{
+        discountBp: rows[0]!.discountBp,
+        defaultDiscountBp: rates?.defaultDiscountBp ?? 0,
+        serviceChargeWaived: rows[0]!.serviceChargeWaived,
+        serviceChargeBp: rates?.serviceChargeBp ?? 0,
+      }}
     />
   )
 }

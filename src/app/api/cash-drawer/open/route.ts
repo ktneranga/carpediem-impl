@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { db } from '@/server/db'
 import { staff } from '@/server/db/schema'
 import { canOpenCashDrawer, parsePermissionsHeader, type StaffRole } from '@/server/auth/permissions'
-import { openWithoutSale } from '@/server/services/cash-drawer.service'
+import { CASH_IN_REASONS, CASH_OUT_REASONS, openWithoutSale } from '@/server/services/cash-drawer.service'
 import { wakePrintQueue } from '@/server/print/wake'
 
 /**
@@ -14,7 +14,11 @@ import { wakePrintQueue } from '@/server/print/wake'
  */
 const bodySchema = z
   .object({
-    reason: z.enum(['change', 'float', 'other']),
+    reason: z.enum(['change', 'float', 'other', 'pay_in', 'paid_out', 'cash_drop']),
+    /** Positive paisa, for a cash in or out (Teran, 2026-11-16). */
+    amountPaisa: z.number().int().positive().max(100_000_000).nullable().optional(),
+    /** Other only: whether the amount went into the drawer or out of it. */
+    direction: z.enum(['in', 'out']).nullable().optional(),
     note: z
       .string()
       .trim()
@@ -23,10 +27,20 @@ const bodySchema = z
       .optional()
       .transform((note) => (note ? note : null)),
   })
-  .refine((body) => body.reason !== 'other' || body.note !== null, {
+  .refine((body) => !['other', 'paid_out', 'cash_drop'].includes(body.reason) || body.note !== null, {
     message: 'Say why the drawer is being opened',
     path: ['note'],
   })
+  .refine(
+    (body) =>
+      [...CASH_IN_REASONS, ...CASH_OUT_REASONS].includes(body.reason)
+        ? typeof body.amountPaisa === 'number'
+        : body.reason === 'other'
+          ? // Other: optional amount, and a direction exactly when there is one.
+            (body.amountPaisa == null) === (body.direction == null)
+          : body.amountPaisa == null,
+    { message: 'Enter the amount', path: ['amountPaisa'] },
+  )
 
 function fail(code: string, message: string, status: number) {
   return NextResponse.json({ success: false, error: { code, message } }, { status })
@@ -43,14 +57,8 @@ function fail(code: string, message: string, status: number) {
 export async function POST(request: Request) {
   const staffId = request.headers.get('x-staff-id')
   if (!staffId) return fail('UNAUTHENTICATED', 'Sign in required', 401)
-  if (
-    !canOpenCashDrawer(
-      request.headers.get('x-staff-role') as StaffRole | null,
-      parsePermissionsHeader(request.headers.get('x-staff-permissions')),
-    )
-  ) {
-    return fail('FORBIDDEN', 'You are not allowed to open the drawer without a sale', 403)
-  }
+  const role = request.headers.get('x-staff-role') as StaffRole | null
+  const permissions = parsePermissionsHeader(request.headers.get('x-staff-permissions'))
 
   let body: unknown
   try {
@@ -60,12 +68,27 @@ export async function POST(request: Request) {
   }
   const parsed = bodySchema.safeParse(body)
   if (!parsed.success) {
-    const noteMissing = parsed.error.issues.some((issue) => issue.path[0] === 'note')
+    const field = parsed.error.issues[0]?.path[0]
     return fail(
       'INVALID_BODY',
-      noteMissing ? 'Say why the drawer is being opened (up to 120 characters)' : 'Choose Change, Float or Other',
+      field === 'note'
+        ? 'Say why (up to 120 characters)'
+        : field === 'amountPaisa'
+          ? 'Enter the amount'
+          : 'Choose a reason',
       400,
     )
+  }
+
+  // Who may do what (Teran, 2026-11-16): anyone on the floor may ADD cash —
+  // the morning float, more change. Opening for change with no money moving
+  // needs `open_cash_drawer`. Taking cash OUT is the owner's.
+  const reason = parsed.data.reason
+  const takesCashOut = CASH_OUT_REASONS.includes(reason) || (reason === 'other' && parsed.data.direction === 'out')
+  if (takesCashOut) {
+    if (role !== 'owner') return fail('FORBIDDEN', 'Only the owner can take cash out of the drawer', 403)
+  } else if (!CASH_IN_REASONS.includes(reason) && !canOpenCashDrawer(role, permissions)) {
+    return fail('FORBIDDEN', 'You are not allowed to open the drawer without a sale', 403)
   }
 
   try {
@@ -73,7 +96,14 @@ export async function POST(request: Request) {
     if (!member) return fail('UNAUTHENTICATED', 'Sign in required', 401)
 
     const result = await db.transaction((tx) =>
-      openWithoutSale(tx, { tenantId: member.tenantId, staffId, reason: parsed.data.reason, note: parsed.data.note }),
+      openWithoutSale(tx, {
+        tenantId: member.tenantId,
+        staffId,
+        reason,
+        note: parsed.data.note,
+        amountPaisa: parsed.data.amountPaisa ?? null,
+        direction: parsed.data.direction ?? null,
+      }),
     )
     wakePrintQueue()
     return NextResponse.json({ success: true, data: result }, { status: 202 })

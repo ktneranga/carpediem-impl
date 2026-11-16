@@ -64,7 +64,11 @@ export type Sales = {
   compsPaisa: number
   compLines: number
   subtotalPaisa: number
+  /** Order discounts given (Teran, 2026-11-16), positive paisa. */
+  discountPaisa: number
   serviceChargePaisa: number
+  /** Service charge waived for special customers: what it would have been. */
+  serviceWaivedPaisa: number
   taxPaisa: number
   billedPaisa: number
   paid: { cashPaisa: number; cardPaisa: number; transferPaisa: number; totalPaisa: number }
@@ -81,9 +85,11 @@ export async function loadSales(
       select count(*)::int as n from order_sessions s
        where s.id in ${span}
          and exists (select 1 from order_events e where e.session_id = s.id and e.event_type = 'ITEM_ADDED')`),
-    rows<{ subtotal: number; service: number; tax: number; total: number }>(executor, sql`
+    rows<{ subtotal: number; discount: number; service: number; waived: number; tax: number; total: number }>(executor, sql`
       select coalesce(sum(subtotal_paisa), 0)::bigint as subtotal,
+             coalesce(sum(discount_paisa), 0)::bigint as discount,
              coalesce(sum(service_charge_paisa), 0)::bigint as service,
+             coalesce(sum(service_waived_paisa), 0)::bigint as waived,
              coalesce(sum(tax_paisa), 0)::bigint as tax,
              coalesce(sum(total_paisa), 0)::bigint as total
         from bills where session_id in ${span} and cancelled_at is null`),
@@ -109,7 +115,9 @@ export async function loadSales(
     compsPaisa: int(comps[0]?.n),
     compLines: int(comps[0]?.lines),
     subtotalPaisa: int(b.subtotal),
+    discountPaisa: int(b.discount),
     serviceChargePaisa: int(b.service),
+    serviceWaivedPaisa: int(b.waived),
     taxPaisa: int(b.tax),
     billedPaisa: int(b.total),
     paid: {
@@ -165,18 +173,37 @@ export async function loadTakings(
 
   const { compLines, ...money } = sales
   void compLines // the slip shows the amount, not the count
+  // What should be in the drawer (Teran, 2026-11-16): cash taken for bills,
+  // plus the float and any cash put in, less what was taken out.
+  const sum = (reason: string) =>
+    noSales.filter((opening) => opening.reason === reason).reduce((total, opening) => total + (opening.amountPaisa ?? 0), 0)
+  const drawer = {
+    floatPaisa: sum('float'),
+    payInPaisa: sum('pay_in'),
+    paidOutPaisa: sum('paid_out'),
+    cashDropPaisa: sum('cash_drop'),
+    otherPaisa: sum('other'),
+  }
+  const expectedCashPaisa =
+    sales.paid.cashPaisa +
+    drawer.floatPaisa +
+    drawer.payInPaisa +
+    drawer.paidOutPaisa +
+    drawer.cashDropPaisa +
+    drawer.otherPaisa
   return {
     businessDate,
     ...money,
     closedUnpaid: { count: int(closedUnpaid[0]?.n), owedPaisa: int(closedUnpaid[0]?.owed) },
-    cashCount: counted[0] ? { countedPaisa: int(counted[0].n), gapPaisa: int(counted[0].n) - sales.paid.cashPaisa } : null,
+    drawer: { ...drawer, expectedPaisa: expectedCashPaisa },
+    cashCount: counted[0] ? { countedPaisa: int(counted[0].n), gapPaisa: int(counted[0].n) - expectedCashPaisa } : null,
     openOrders: open.map((row) => ({
       dailyNumber: row.daily_number,
       tables: openOrderPlace(row),
       openedAt: new Date(row.opened_at).toISOString(),
       openedBy: row.opened_by,
     })),
-    noSales: noSales.map(({ openedAt, staffName, reason, note }) => ({ openedAt, staffName, reason, note })),
+    noSales: noSales.map(({ openedAt, staffName, reason, note, amountPaisa }) => ({ openedAt, staffName, reason, note, amountPaisa })),
   }
 }
 

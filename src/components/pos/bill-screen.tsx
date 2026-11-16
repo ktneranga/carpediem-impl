@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
+  BadgePercent,
   Banknote,
   CreditCard,
   Delete,
@@ -46,6 +47,22 @@ type Totals = {
   taxPaisa: number
   taxBp: number
   totalPaisa: number
+  /** The order discount (Teran, 2026-11-16), off the subtotal before service and tax. */
+  discountBp: number
+  discountPaisa: number
+  /** Service charge waived for a special customer; `serviceChargeBp` is what it would have been. */
+  serviceChargeWaived: boolean
+  serviceWaivedPaisa: number
+}
+
+/** This order's discount and waiver, as the bill page read them. */
+export type BillScreenPricing = {
+  /** The order's own discount, or null for the restaurant's default. */
+  discountBp: number | null
+  defaultDiscountBp: number
+  serviceChargeWaived: boolean
+  /** The restaurant's service rate, shown in the dialog even while waived. */
+  serviceChargeBp: number
 }
 
 /** A bill already recorded, with what has been paid against it. */
@@ -112,16 +129,24 @@ function itemCount(lines: BillScreenLine[]): number {
  * few paisa, which is the correct outcome, not a bug.
  */
 function priceShare(lines: BillScreenLine[], rates: Totals): Totals {
+  // The same arithmetic as `computeBillTotals` (bill.service.ts, server-only).
   const subtotalPaisa = lines.reduce((total, line) => total + line.amountPaisa, 0)
-  const serviceChargePaisa = Math.round((subtotalPaisa * rates.serviceChargeBp) / 10_000)
-  const taxPaisa = Math.round(((subtotalPaisa + serviceChargePaisa) * rates.taxBp) / 10_000)
+  const discountPaisa = Math.round((subtotalPaisa * rates.discountBp) / 10_000)
+  const netPaisa = subtotalPaisa - discountPaisa
+  const wouldBeServicePaisa = Math.round((netPaisa * rates.serviceChargeBp) / 10_000)
+  const serviceChargePaisa = rates.serviceChargeWaived ? 0 : wouldBeServicePaisa
+  const taxPaisa = Math.round(((netPaisa + serviceChargePaisa) * rates.taxBp) / 10_000)
   return {
     subtotalPaisa,
+    discountBp: rates.discountBp,
+    discountPaisa,
+    serviceChargeWaived: rates.serviceChargeWaived,
+    serviceWaivedPaisa: rates.serviceChargeWaived ? wouldBeServicePaisa : 0,
     serviceChargePaisa,
     serviceChargeBp: rates.serviceChargeBp,
     taxPaisa,
     taxBp: rates.taxBp,
-    totalPaisa: subtotalPaisa + serviceChargePaisa + taxPaisa,
+    totalPaisa: netPaisa + serviceChargePaisa + taxPaisa,
   }
 }
 
@@ -135,8 +160,12 @@ class RefusedError extends Error {
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
+  return postJsonMethod<T>('POST', url, body)
+}
+
+async function postJsonMethod<T>(method: string, url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
-    method: 'POST',
+    method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
@@ -339,6 +368,7 @@ export function BillScreen({
   draftError = null,
   seats,
   canApprove = false,
+  pricing = null,
 }: {
   sessionId: string
   tableLabel: string
@@ -352,6 +382,8 @@ export function BillScreen({
   seats: { id: string; name: string }[]
   /** The signed-in staff is an owner: Cancel bill needs no PIN (Story 7.5). */
   canApprove?: boolean
+  /** The order's discount and service waiver (Teran, 2026-11-16). */
+  pricing?: BillScreenPricing | null
 }) {
   const router = useRouter()
   /** The unpaid bill being cancelled (Story 7.5). */
@@ -929,6 +961,8 @@ export function BillScreen({
             )}
             {inSplit ? 'Separate bills' : 'One bill'}
           </span>
+          {/* Discount and service are set on the order screen (Teran, 2026-11-16); this only says what applies. */}
+          {pricing ? <PricingChip pricing={pricing} /> : null}
           {inSplit ? (
             <p className="hidden min-w-0 text-fs-12 text-slate-600 lg:block night:text-night-second">
               Drag items between people, or tap an item then “Move here”
@@ -1713,9 +1747,20 @@ function ColumnFooter({
 }) {
   return (
     <div className="flex shrink-0 flex-col gap-sp-2 border-t border-slate-200 bg-slate-50 p-sp-3 night:border-night-hairline night:bg-night-raised">
-      {totals.serviceChargeBp > 0 ? (
+      {totals.discountPaisa > 0 ? (
         <div className="flex justify-between text-fs-12 text-slate-600 night:text-night-second">
-          <span>{lkrFromPaisa(totals.subtotalPaisa)} + service</span>
+          <span>Discount {percentFromBp(totals.discountBp)}%</span>
+          <span className="tabular-nums">− {lkrFromPaisa(totals.discountPaisa)}</span>
+        </div>
+      ) : null}
+      {totals.serviceChargeWaived ? (
+        <div className="flex justify-between text-fs-12 text-slate-600 night:text-night-second">
+          <span>Service charge</span>
+          <span>Waived</span>
+        </div>
+      ) : totals.serviceChargeBp > 0 ? (
+        <div className="flex justify-between text-fs-12 text-slate-600 night:text-night-second">
+          <span>{lkrFromPaisa(totals.subtotalPaisa - totals.discountPaisa)} + service</span>
           <span className="tabular-nums">{lkrFromPaisa(totals.serviceChargePaisa)}</span>
         </div>
       ) : null}
@@ -1836,7 +1881,15 @@ function TotalsCard({
   return (
     <section className="flex shrink-0 flex-col gap-sp-2 rounded-panel bg-white p-sp-4 shadow-el-1 night:bg-night-card">
       <Row label="Subtotal" value={totals.subtotalPaisa} />
-      {totals.serviceChargeBp > 0 ? (
+      {totals.discountPaisa > 0 ? (
+        <Row label={`Discount ${percentFromBp(totals.discountBp)}%`} value={-totals.discountPaisa} />
+      ) : null}
+      {totals.serviceChargeWaived ? (
+        <div className="flex items-baseline justify-between gap-sp-3 text-fs-14">
+          <span className="text-slate-600 night:text-night-second">Service charge</span>
+          <span className="font-semibold text-slate-900 night:text-night-text">Waived</span>
+        </div>
+      ) : totals.serviceChargeBp > 0 ? (
         <Row label={`Service ${percentFromBp(totals.serviceChargeBp)}%`} value={totals.serviceChargePaisa} />
       ) : null}
       {totals.taxBp > 0 ? (
@@ -1878,7 +1931,9 @@ function Row({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-baseline justify-between gap-sp-3 text-fs-14">
       <span className="text-slate-600 night:text-night-second">{label}</span>
-      <span className="font-semibold tabular-nums text-slate-900 night:text-night-text">{lkrFromPaisa(value)}</span>
+      <span className="font-semibold tabular-nums text-slate-900 night:text-night-text">
+        {value < 0 ? `− ${lkrFromPaisa(-value)}` : lkrFromPaisa(value)}
+      </span>
     </div>
   )
 }
@@ -2294,5 +2349,24 @@ function PaymentDialog({
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * What this order's discount and service charge are, in the header (Teran,
+ * 2026-11-16). Set on the order screen; shown here only when one applies.
+ */
+function PricingChip({ pricing }: { pricing: BillScreenPricing }) {
+  const discountBp = pricing.discountBp ?? pricing.defaultDiscountBp
+  const parts = [
+    discountBp > 0 ? `${percentFromBp(discountBp)}% off` : null,
+    pricing.serviceChargeWaived && pricing.serviceChargeBp > 0 ? 'No service' : null,
+  ].filter(Boolean)
+  if (parts.length === 0) return null
+  return (
+    <span className="flex shrink-0 items-center gap-sp-1 rounded-pill bg-brand-050 px-sp-3 py-sp-1 text-fs-12 font-bold text-brand-700 night:bg-night-raised night:text-brand-300">
+      <BadgePercent aria-hidden="true" className="size-4" />
+      {parts.join(' · ')}
+    </span>
   )
 }

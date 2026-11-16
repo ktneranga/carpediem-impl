@@ -7,7 +7,29 @@ import type { DrawerKickPayload } from '@/types/tickets'
 /** Drizzle transaction handle. */
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
-export type NoSaleReason = 'change' | 'float' | 'other'
+export type NoSaleReason = 'change' | 'float' | 'other' | 'pay_in' | 'paid_out' | 'cash_drop'
+
+/**
+ * Cash in or out of the drawer (Teran, 2026-11-16). Float and pay-in add
+ * cash; paid-out (an expense) and cash-drop (to the safe) take it out and need
+ * a note; change and other move no money.
+ */
+export const CASH_IN_REASONS: readonly NoSaleReason[] = ['float', 'pay_in']
+export const CASH_OUT_REASONS: readonly NoSaleReason[] = ['paid_out', 'cash_drop']
+
+/** The signed amount stored for a reason: + in, − out, null when no money moves. */
+export function signedAmount(
+  reason: NoSaleReason,
+  amountPaisa: number | null,
+  direction: 'in' | 'out' | null = null,
+): number | null {
+  if (amountPaisa === null) return null
+  if (CASH_IN_REASONS.includes(reason)) return amountPaisa
+  if (CASH_OUT_REASONS.includes(reason)) return -amountPaisa
+  // Other (Teran, 2026-11-16): the waiter says which way the money went.
+  if (reason === 'other' && direction) return direction === 'out' ? -amountPaisa : amountPaisa
+  return null
+}
 
 /** The payment row does not exist, or is not cash. */
 export class NotACashPaymentError extends Error {}
@@ -72,7 +94,23 @@ export async function kickForCashPayment(
  */
 export async function openWithoutSale(
   tx: Tx,
-  { tenantId, staffId, reason, note }: { tenantId: string; staffId: string; reason: NoSaleReason; note: string | null },
+  {
+    tenantId,
+    staffId,
+    reason,
+    note,
+    amountPaisa = null,
+    direction = null,
+  }: {
+    tenantId: string
+    staffId: string
+    reason: NoSaleReason
+    note: string | null
+    /** Positive paisa for a cash in or out; the sign comes from the reason. */
+    amountPaisa?: number | null
+    /** For Other with an amount: which way the money went. */
+    direction?: 'in' | 'out' | null
+  },
 ): Promise<{ jobId: string }> {
   const jobId = await queueKick(tx, { tenantId, sessionId: null, opening: 'no_sale' })
   await tx.insert(cashDrawerOpenings).values({
@@ -80,6 +118,7 @@ export async function openWithoutSale(
     kind: 'no_sale',
     reason,
     note,
+    amountPaisa: signedAmount(reason, amountPaisa, direction),
     printJobId: jobId,
     staffId,
   })
@@ -91,6 +130,8 @@ export type NoSaleOpening = {
   staffName: string
   reason: NoSaleReason
   note: string | null
+  /** + cash in, − cash out, null when no money moved. */
+  amountPaisa: number | null
   /** ISO. */
   openedAt: string
 }
@@ -110,6 +151,7 @@ export async function listNoSaleOpenings(
       staffName: staff.name,
       reason: cashDrawerOpenings.reason,
       note: cashDrawerOpenings.note,
+      amountPaisa: cashDrawerOpenings.amountPaisa,
       openedAt: cashDrawerOpenings.createdAt,
     })
     .from(cashDrawerOpenings)
@@ -127,6 +169,18 @@ export async function listNoSaleOpenings(
     staffName: row.staffName,
     reason: row.reason!,
     note: row.note,
+    amountPaisa: row.amountPaisa,
     openedAt: row.openedAt.toISOString(),
   }))
+}
+
+/** Whether today's opening float is recorded — the floor asks for it until it is. */
+export async function floatRecordedToday(executor: Tx | typeof db, tenantId: string): Promise<boolean> {
+  const result = await executor.execute(sql`
+    select exists (
+      select 1 from cash_drawer_openings
+       where tenant_id = ${tenantId} and reason = 'float' and amount_paisa > 0
+         and business_date_at(tenant_id, created_at) = business_date_at(${tenantId}, now())
+    ) as recorded`)
+  return Boolean((result.rows[0] as { recorded?: boolean } | undefined)?.recorded)
 }

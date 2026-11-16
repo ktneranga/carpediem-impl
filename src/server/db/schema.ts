@@ -196,7 +196,7 @@ export const staff = pgTable('staff', {
   index('idx_staff_tenant_id').on(t.tenantId),
   check(
     'staff_permissions_known',
-    sql`${t.permissions} <@ ARRAY['custom_charge','approve_voids','open_cash_drawer','manage_dashboard','manage_menu','manage_floor','manage_settings']::text[]`,
+    sql`${t.permissions} <@ ARRAY['custom_charge','approve_voids','open_cash_drawer','give_discount','manage_dashboard','manage_menu','manage_floor','manage_settings']::text[]`,
   ),
 ])
 
@@ -567,8 +567,26 @@ export const orderSessions = pgTable('order_sessions', {
    */
   businessDate:     date('business_date', { mode: 'string' }).notNull().$defaultFn(() => sql`default`),
   dailyNumber:      integer('daily_number').notNull().$defaultFn(() => sql`default`),
+  /**
+   * Who looks after this table (Teran, 2026-11-16). Picked on the order screen
+   * from the staff list; null means whoever opened it. Printed on the tickets
+   * and the bill, and what "sales per waiter" will read.
+   */
+  servedByStaffId:  uuid('served_by_staff_id').references(() => staff.id),
+  /**
+   * A discount for THIS order, in basis points (Teran, 2026-11-16). Null uses
+   * the restaurant's default (`tenant_config.default_discount_bp`); 0 is "no
+   * discount" even when the default is higher. Read when a bill is priced, so
+   * it applies to every bill written after it was set.
+   */
+  discountBp:       integer('discount_bp'),
+  /** No service charge on this order's bills — a special customer (Teran, 2026-11-16). */
+  serviceChargeWaived: boolean('service_charge_waived').notNull().default(false),
+  /** Who last changed the discount or the waiver, for the owner to see. */
+  pricingChangedByStaffId: uuid('pricing_changed_by_staff_id').references(() => staff.id),
 }, (t) => [
   index('idx_order_sessions_tenant_id').on(t.tenantId),
+  check('order_sessions_discount_range', sql`${t.discountBp} IS NULL OR (${t.discountBp} >= 0 AND ${t.discountBp} <= 10000)`),
   uniqueIndex('idx_order_sessions_order_number').on(t.tenantId, t.businessDate, t.dailyNumber),
   index('idx_order_sessions_table_id').on(t.tableId),
   // `idx_order_sessions_one_open_per_table` USED to live here, on table_id where
@@ -863,6 +881,21 @@ export const bills = pgTable('bills', {
   /** The rates APPLIED, so the bill stays readable after they change. */
   serviceChargeBp: integer('service_charge_bp').notNull(),
   taxBp:           integer('tax_bp').notNull(),
+
+  /**
+   * The order discount (Teran, 2026-11-16): `discount_bp` of the subtotal,
+   * taken off BEFORE service and tax. 0 on a bill with none.
+   * subtotal − discount + service + tax = total.
+   */
+  discountBp:    integer('discount_bp').notNull().default(0),
+  discountPaisa: integer('discount_paisa').notNull().default(0),
+  /**
+   * The service charge was waived for this bill. `service_charge_bp` still
+   * holds the rate it WOULD have used and `service_charge_paisa` is 0;
+   * `service_waived_paisa` is what was given up, for the day's figures.
+   */
+  serviceChargeWaived: boolean('service_charge_waived').notNull().default(false),
+  serviceWaivedPaisa:  integer('service_waived_paisa').notNull().default(0),
 
   /**
    * The seat this bill covers, for a per-seat bill (Story 6.4, FR25).
@@ -1182,7 +1215,7 @@ export const printJobs = pgTable('print_jobs', {
 // ── Cash drawer (Story 6.7, FR72) ─────────────────────────────────────────────
 
 export const cashDrawerKindEnum = pgEnum('cash_drawer_kind', ['sale', 'no_sale'])
-export const cashDrawerReasonEnum = pgEnum('cash_drawer_reason', ['change', 'float', 'other'])
+export const cashDrawerReasonEnum = pgEnum('cash_drawer_reason', ['change', 'float', 'other', 'pay_in', 'paid_out', 'cash_drop'])
 
 /**
  * Every time the app asked the printer to open the cash drawer — APPEND-ONLY
@@ -1201,6 +1234,14 @@ export const cashDrawerOpenings = pgTable('cash_drawer_openings', {
   reason:          cashDrawerReasonEnum('reason'),
   note:            text('note'),
   paymentRecordId: uuid('payment_record_id').references(() => paymentRecords.id),
+  /**
+   * Cash put in (+) or taken out (−) of the drawer, integer paisa (Teran,
+   * 2026-11-16). Float and pay-in are positive; paid-out and cash-drop are
+   * negative and need a note. Other may carry either sign (Teran, 2026-11-16:
+   * an expense or cash added, with its note) or none. Change moves no money. A float
+   * opened before this column existed is null too.
+   */
+  amountPaisa:     integer('amount_paisa'),
   printJobId:      uuid('print_job_id').notNull().references(() => printJobs.id),
   staffId:         uuid('staff_id').notNull().references(() => staff.id),
   createdAt:       timestamp('created_at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
@@ -1215,6 +1256,19 @@ export const cashDrawerOpenings = pgTable('cash_drawer_openings', {
     'cash_drawer_openings_note',
     sql`(${t.note} IS NULL OR char_length(${t.note}) <= 120)
      AND (${t.reason} IS DISTINCT FROM 'other' OR char_length(btrim(coalesce(${t.note}, ''))) > 0)`,
+  ),
+  // As text, not the enum: the new values cannot be used in the migration
+  // that adds them.
+  check(
+    'cash_drawer_openings_amount',
+    sql`CASE coalesce(${t.reason}::text, '')
+          WHEN 'float'     THEN ${t.amountPaisa} IS NULL OR ${t.amountPaisa} > 0
+          WHEN 'pay_in'    THEN ${t.amountPaisa} > 0
+          WHEN 'paid_out'  THEN ${t.amountPaisa} < 0 AND char_length(btrim(coalesce(${t.note}, ''))) > 0
+          WHEN 'cash_drop' THEN ${t.amountPaisa} < 0 AND char_length(btrim(coalesce(${t.note}, ''))) > 0
+          WHEN 'other'     THEN ${t.amountPaisa} IS NULL OR ${t.amountPaisa} <> 0
+          ELSE ${t.amountPaisa} IS NULL
+        END`,
   ),
 ])
 
@@ -1301,6 +1355,17 @@ export const tenantConfig = pgTable('tenant_config', {
    * column lives here because a bill cannot be computed without a rate.
    */
   serviceChargeBp: integer('service_charge_bp').notNull().default(0),
+  /**
+   * The discount every order starts with, basis points (Teran, 2026-11-16).
+   * 0 for none. An order can change its own on the bill screen.
+   */
+  defaultDiscountBp: integer('default_discount_bp').notNull().default(0),
+  /**
+   * How many copies of each kitchen (KOT, KOT-P) and bar (BOT) ticket print,
+   * 1 to 3 (Teran, 2026-11-16) — one for the cook, one for the runner.
+   */
+  kitchenTicketCopies: integer('kitchen_ticket_copies').notNull().default(1),
+  barTicketCopies:     integer('bar_ticket_copies').notNull().default(1),
 
   // ── Auth feature flags (prd.md:304-310) ───────────────────────────────────
   // NOTE: NFR-S6 states a 30-minute idle timeout while the PRD's flag table
@@ -1325,4 +1390,6 @@ export const tenantConfig = pgTable('tenant_config', {
   updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('idx_tenant_config_tenant_id').on(t.tenantId),
+  check('tenant_config_default_discount', sql`${t.defaultDiscountBp} >= 0 AND ${t.defaultDiscountBp} <= 10000`),
+  check('tenant_config_ticket_copies', sql`${t.kitchenTicketCopies} BETWEEN 1 AND 3 AND ${t.barTicketCopies} BETWEEN 1 AND 3`),
 ])

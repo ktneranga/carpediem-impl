@@ -76,7 +76,9 @@ function renderReceiptText(receipt: ReceiptPayload): string {
   }
   for (const comp of receipt.comps) row(`Comp: ${comp.reason}`, comp.amountPaisa)
   row('Subtotal', receipt.subtotalPaisa)
-  if (receipt.serviceChargeBp > 0) row(`Service ${percentFromBp(receipt.serviceChargeBp)}%`, receipt.serviceChargePaisa)
+  if ((receipt.discountPaisa ?? 0) > 0) row(`Discount ${percentFromBp(receipt.discountBp ?? 0)}%`, -(receipt.discountPaisa ?? 0))
+  if (receipt.serviceChargeWaived === true) lines.push('Service charge  waived')
+  else if (receipt.serviceChargeBp > 0) row(`Service ${percentFromBp(receipt.serviceChargeBp)}%`, receipt.serviceChargePaisa)
   if (receipt.taxBp > 0) row(`Tax ${percentFromBp(receipt.taxBp)}%`, receipt.taxPaisa)
   row('Total', receipt.totalPaisa)
   for (const tender of receipt.tenders) row(tender.method, tender.amountPaisa)
@@ -97,7 +99,8 @@ export function renderTicketText(payload: PrintPayload): string {
   const ticket: TicketPayload = payload
   const lines: string[] = []
   const number = Number.isInteger(ticket.dailyNumber) ? ` ${dailyOrderLabel(ticket.dailyNumber!)}` : ''
-  lines.push(`${ticketTypeOf(ticket.destination)}${number}  ·  ${ticket.tableLabels.join(' + ')}`)
+  lines.push(`${ticketTypeOf(ticket.destination)}${number}  ·  ${ticket.tableLabels.join(' + ')}${ticket.copy && ticket.copy.n > 1 ? `  (COPY ${ticket.copy.n}/${ticket.copy.of})` : ''}`)
+  if (ticket.serverName) lines.push(`Waiter: ${ticket.serverName}`)
   lines.push(
     `Round ${ticket.roundNumber}  ·  ${calendarDate(ticket.submittedAt, ticket.timeZone)}  ${clockTime(ticket.submittedAt, ticket.timeZone)}`,
   )

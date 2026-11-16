@@ -79,6 +79,8 @@ async function readHeading(tx: Tx, sessionId: string, staffId: string | null) {
       dailyNumber: orderSessions.dailyNumber,
       businessDate: orderSessions.businessDate,
       primaryTableId: orderSessions.tableId,
+      // Who looked after the table: the one picked, else who opened it.
+      serverId: sql<string>`coalesce(${orderSessions.servedByStaffId}, ${orderSessions.openedByStaffId})`,
       timeZone: tenants.timezone,
       configTenantId: tenantConfig.tenantId,
       restaurantName: tenantConfig.restaurantName,
@@ -143,9 +145,12 @@ async function readHeading(tx: Tx, sessionId: string, staffId: string | null) {
         .limit(1)
     : []
 
+  const [server] = await tx.select({ name: staff.name }).from(staff).where(eq(staff.id, session.serverId)).limit(1)
+
   return {
     tenantId: session.tenantId,
     cashierName: cashier?.name ?? null,
+    serverName: server?.name ?? null,
     logo: session.receiptLogo ?? null,
     qr: session.receiptQrUrl
       ? { url: session.receiptQrUrl.trim(), caption: session.receiptQrCaption ?? null }
@@ -277,6 +282,9 @@ export async function printBill(
     ),
     comps: bill.comps.map((comp) => ({ reason: comp.reason, amountPaisa: comp.amountPaisa })),
     subtotalPaisa: bill.subtotalPaisa,
+    discountBp: bill.discountBp,
+    discountPaisa: bill.discountPaisa,
+    serviceChargeWaived: bill.serviceChargeWaived,
     serviceChargePaisa: bill.serviceChargePaisa,
     serviceChargeBp: bill.serviceChargeBp,
     taxPaisa: bill.taxPaisa,
@@ -341,6 +349,9 @@ export async function printDraft(
       amountPaisa: priced.compAmounts[index]!,
     })),
     subtotalPaisa: priced.totals.subtotalPaisa,
+    discountBp: priced.totals.discountBp,
+    discountPaisa: priced.totals.discountPaisa,
+    serviceChargeWaived: priced.totals.serviceChargeWaived,
     serviceChargePaisa: priced.totals.serviceChargePaisa,
     serviceChargeBp: priced.totals.serviceChargeBp,
     taxPaisa: priced.totals.taxPaisa,

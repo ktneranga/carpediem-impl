@@ -35,6 +35,8 @@ export function FloorHeader({
   clock,
   onStaffTap,
   canOpenDrawer = false,
+  isOwner = false,
+  canOpenForChange = false,
   onDrawerOpened,
   onManage,
   onSoldOut,
@@ -50,8 +52,12 @@ export function FloorHeader({
    * is owner + waiter — so they are not offered the button.
    */
   onStaffTap: () => void
-  /** Owner only (`canOpenCashDrawer`): the no-sale drawer icon (Story 6.7). */
+  /** Owner and waiters: the cash drawer icon — float, cash in/out (Teran, 2026-11-16). */
   canOpenDrawer?: boolean
+  /** May take cash out (paid out, cash drop). */
+  isOwner?: boolean
+  /** `open_cash_drawer`: may open for change with no money moving. */
+  canOpenForChange?: boolean
   onDrawerOpened?: () => void
   /**
    * Owner only (Story 10.0): the badge opens a menu — Manage, Switch user.
@@ -96,7 +102,9 @@ export function FloorHeader({
             zone bar, beside Rooftop. */}
 
         <div className="flex items-center gap-sp-2">
-          {canOpenDrawer ? <CashDrawerButton onOpened={() => onDrawerOpened?.()} /> : null}
+          {canOpenDrawer ? (
+            <CashDrawerButton isOwner={isOwner} canOpenForChange={canOpenForChange} onOpened={() => onDrawerOpened?.()} />
+          ) : null}
           <StaffMenu staffName={staffName} clock={clock} onManage={onManage} onSoldOut={onSoldOut} onSwitchUser={onStaffTap} />
         </div>
       </div>
