@@ -80,6 +80,8 @@ export type OrderActionStripProps = {
    */
   onCloseTable?: () => void
   closeLabel?: string
+  /** Cancel the whole order (Teran, 2026-11-16). Absent: not offered. */
+  onCancelOrder?: () => void
 }
 
 export function OrderActionStrip({
@@ -94,6 +96,7 @@ export function OrderActionStrip({
   onGenerateBill,
   onCloseTable,
   closeLabel = 'Close table',
+  onCancelOrder,
 }: OrderActionStripProps) {
   const [moreOpen, setMoreOpen] = useState(false)
 
@@ -109,6 +112,7 @@ export function OrderActionStrip({
   // last, separated by a rule and red.
   const moreItems = [
     ...(onClear ? [{ label: 'Clear unsent items', onClick: onClear }] : []),
+    ...(onCancelOrder ? [{ label: 'Cancel order', onClick: onCancelOrder, danger: true }] : []),
     ...(onCloseTable ? [{ label: closeLabel, onClick: onCloseTable, danger: true }] : []),
   ]
 

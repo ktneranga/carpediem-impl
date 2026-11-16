@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { canCloseOrders, parsePermissionsHeader, type StaffRole } from '@/server/auth/permissions'
 import { and, eq, isNull } from 'drizzle-orm'
 import { dishCount } from '@/server/orders/item-count'
 import { z } from 'zod'
@@ -74,6 +75,18 @@ export async function POST(
     return fail('INVALID_BODY', 'reason must be "abandoned", "walkout" or "settled"', 400)
   }
   const { reason } = parsedBody.data
+
+  // An UNPAID close — nothing ordered, or a walkout — is the owner's, or whoever
+  // the owner allowed (Teran, 2026-11-16). A paid table closes for anyone.
+  if (
+    reason !== 'settled' &&
+    !canCloseOrders(
+      request.headers.get('x-staff-role') as StaffRole | null,
+      parsePermissionsHeader(request.headers.get('x-staff-permissions')),
+    )
+  ) {
+    return fail('FORBIDDEN', 'Only the owner can close an unpaid order', 403)
+  }
 
   try {
     const [session] = await db

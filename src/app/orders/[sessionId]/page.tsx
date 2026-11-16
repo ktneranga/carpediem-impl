@@ -7,6 +7,7 @@ import { z } from 'zod'
 import {
   canAddCustomCharge,
   canApproveVoids,
+  canCloseOrders,
   canGiveDiscount,
   canMarkSoldOut,
   canOpenManage,
@@ -235,6 +236,7 @@ export default async function OrderPage({
       defaultDiscountBp={config?.defaultDiscountBp ?? 0}
       serviceChargeWaived={session.serviceChargeWaived}
       canGiveDiscount={canGiveDiscount(staffRole, staffPermissions)}
+      canCloseOrders={canCloseOrders(staffRole, staffPermissions)}
       servers={servers}
       serverId={session.servedByStaffId ?? session.openedByStaffId}
       initialBillMode={session.billMode}

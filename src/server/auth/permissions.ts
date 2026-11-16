@@ -203,6 +203,7 @@ export const PERMISSIONS = [
   'approve_voids',
   'open_cash_drawer',
   'give_discount',
+  'close_orders',
   'manage_dashboard',
   'manage_menu',
   'manage_floor',
@@ -303,4 +304,14 @@ export function canMarkSoldOut(role: StaffRole | null | undefined): boolean {
  */
 export function canGiveDiscount(role: StaffRole | null | undefined, permissions: readonly string[] | null | undefined = []): boolean {
   return hasPermission(role, permissions, 'give_discount')
+}
+
+/**
+ * Whether this person may close an UNPAID order — "Close table" with nothing
+ * on it, a walkout — or cancel one (Teran, 2026-11-16). Owners, and anyone the
+ * owner grants `close_orders` in Manage → Staff. Closing a fully PAID table is
+ * not this: anyone who took the payment may close it.
+ */
+export function canCloseOrders(role: StaffRole | null | undefined, permissions: readonly string[] | null | undefined = []): boolean {
+  return hasPermission(role, permissions, 'close_orders')
 }

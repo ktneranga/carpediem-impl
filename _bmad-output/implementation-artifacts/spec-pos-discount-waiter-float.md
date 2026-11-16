@@ -55,6 +55,12 @@ Manage → Settings → **Owner password** card (owner only; its own button, not
 
 One card, `cash-drawer-card.tsx`, replaces the Cash gap tile and the no-sale list. A single day reads top to bottom: float (time, who) → cash sales → cash drops (time, who, note) → should be in drawer → counted (time, who) → Balanced / Short / Over, then card & transfer and total revenue apart. Amber "No float recorded" when there is none; Count / Recount on Today. Week and month: a row per day (Float · Cash sales · Cash out · Should be · Counted · Gap). Data: `Insights.cash.byDay` in `insights.service.ts`.
 
+## Close & cancel orders are the owner's (Teran, 2026-11-16)
+
+New permission `close_orders` ("Close & cancel orders" in Manage → Staff); owners hold it implicitly. Without it, the order screen's More menu shows neither Close table nor Cancel order, and both close routes refuse an UNPAID close (`abandoned`, `walkout`) with 403. Closing a fully paid table (`settled`) is unchanged — anyone.
+
+**Cancel order** (More menu, once something was sent): reason (Guest left before the food · Wrong table · Guest changed mind · Other + note). `POST /api/sessions/:id/cancel` → `cancelOrder` in `void.service.ts`, one transaction: refuse if any payment exists; cancel unpaid bills; void every unit left (VOID tickets to the stations); close as `cancelled — <reason>`. The dashboard lists it under Unclosed & corrections as "Order cancelled" with the amount voided. Migration 0048 (permission list).
+
 ## Code map
 
 - Migration `0046_pos_discount_waiter_float.sql`. The new `cash_drawer_reason` values are checked as text, because a migration cannot use enum values it adds itself.

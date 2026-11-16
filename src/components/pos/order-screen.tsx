@@ -10,6 +10,7 @@ import { OrderHeader } from '@/components/pos/order-header'
 import { OrderSummary } from '@/components/pos/order-summary'
 import { WaiterPicker, type ServerOption } from '@/components/pos/waiter-picker'
 import { DiscountDialog } from '@/components/pos/discount-dialog'
+import { CancelOrderDialog } from '@/components/pos/cancel-order-dialog'
 import {
   OrderActionStrip,
   type OrderActionStripState,
@@ -128,6 +129,8 @@ export type OrderScreenProps = {
   serviceChargeWaived?: boolean
   /** May change the discount and the service charge: owners and `give_discount`. */
   canGiveDiscount?: boolean
+  /** May close an unpaid order or cancel one: owners and `close_orders` (Teran, 2026-11-16). */
+  canCloseOrders?: boolean
   /** Who may look after the table, and who does (Teran, 2026-11-16). */
   servers?: ServerOption[]
   serverId?: string | null
@@ -378,6 +381,7 @@ export function OrderScreen({
   defaultDiscountBp = 0,
   serviceChargeWaived: initialWaived = false,
   canGiveDiscount = false,
+  canCloseOrders = false,
   servers = [],
   serverId = null,
   initialBillMode,
@@ -461,6 +465,7 @@ export function OrderScreen({
 
   const [isNavigating, setIsNavigating] = useState(false)
   const [confirmingWalkout, setConfirmingWalkout] = useState(false)
+  const [cancellingOrder, setCancellingOrder] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
   // ── Seats ─────────────────────────────────────────────────────────────────
@@ -2114,11 +2119,31 @@ export function OrderScreen({
             ? `Close ${tableLabel ? 'table' : 'order'} — walkout`
             : `Close ${tableLabel ? 'table' : 'order'}`
         }
-        onCloseTable={() => {
-          if (isWalkout) setConfirmingWalkout(true)
-          else closeMutation.mutate({ sessionId, reason: 'abandoned' })
-        }}
+        // Closing an unpaid order, and cancelling one, are the owner's or
+        // whoever the owner allowed (Teran, 2026-11-16); others see neither.
+        onCloseTable={
+          canCloseOrders
+            ? () => {
+                if (isWalkout) setConfirmingWalkout(true)
+                else closeMutation.mutate({ sessionId, reason: 'abandoned' })
+              }
+            : undefined
+        }
+        onCancelOrder={canCloseOrders && sentItemCount > 0 ? () => setCancellingOrder(true) : undefined}
       />
+      {cancellingOrder ? (
+        <CancelOrderDialog
+          sessionId={sessionId}
+          label={displayLabel}
+          onCancel={() => setCancellingOrder(false)}
+          onDone={() => {
+            clearStagedRound(sessionId)
+            setIsNavigating(true)
+            void queryClient.invalidateQueries({ queryKey: ['tables'] })
+            router.push('/')
+          }}
+        />
+      ) : null}
     </div>
   )
 }

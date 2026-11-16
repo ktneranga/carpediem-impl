@@ -24,7 +24,7 @@ import type { db } from '@/server/db'
  */
 
 /** Every terminal state a seating can reach. */
-export type SessionCloseReason = 'abandoned' | 'walkout' | 'settled'
+export type SessionCloseReason = 'abandoned' | 'walkout' | 'settled' | 'cancelled'
 
 /**
  * Reasons a client may request over HTTP.
@@ -724,7 +724,14 @@ export async function closeSession(
     sessionId,
     staffId,
     reason,
-  }: { sessionId: string; staffId: string; reason: SessionCloseReason },
+    note,
+  }: {
+    sessionId: string
+    staffId: string
+    reason: SessionCloseReason
+    /** Stored in place of the bare reason — a cancel's "cancelled — Wrong table". */
+    note?: string
+  },
 ): Promise<{ closedAt: Date; releasedTableIds: string[] }> {
   const closed = await tx
     .update(orderSessions)
@@ -758,7 +765,7 @@ export async function closeSession(
     sessionId,
     staffId,
     eventType: 'SESSION_CLOSED',
-    notes: reason,
+    notes: note ?? reason,
   })
 
   // The released set is RETURNED, not discarded.
