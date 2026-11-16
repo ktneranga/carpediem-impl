@@ -11,6 +11,7 @@ import { OrderSummary } from '@/components/pos/order-summary'
 import { WaiterPicker, type ServerOption } from '@/components/pos/waiter-picker'
 import { DiscountDialog } from '@/components/pos/discount-dialog'
 import { CancelOrderDialog } from '@/components/pos/cancel-order-dialog'
+import { MoveTableDialog } from '@/components/pos/move-table-dialog'
 import {
   OrderActionStrip,
   type OrderActionStripState,
@@ -466,6 +467,7 @@ export function OrderScreen({
   const [isNavigating, setIsNavigating] = useState(false)
   const [confirmingWalkout, setConfirmingWalkout] = useState(false)
   const [cancellingOrder, setCancellingOrder] = useState(false)
+  const [movingTable, setMovingTable] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
   // ── Seats ─────────────────────────────────────────────────────────────────
@@ -2127,7 +2129,21 @@ export function OrderScreen({
             : undefined
         }
         onCancelOrder={canCloseOrders && sentItemCount > 0 ? () => setCancellingOrder(true) : undefined}
+        onMoveTable={() => setMovingTable(true)}
       />
+      {movingTable ? (
+        <MoveTableDialog
+          sessionId={sessionId}
+          fromLabel={displayLabel}
+          onCancel={() => setMovingTable(false)}
+          onMoved={() => {
+            setMovingTable(false)
+            void queryClient.invalidateQueries({ queryKey: ['tables'] })
+            // Same order, new table: re-read the page for its name and zone.
+            router.refresh()
+          }}
+        />
+      ) : null}
       {cancellingOrder ? (
         <CancelOrderDialog
           sessionId={sessionId}

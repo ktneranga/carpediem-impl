@@ -8,6 +8,7 @@ import {
   staff,
   tables,
   tableStatusEvents,
+  zones,
 } from '@/server/db/schema'
 import type { db } from '@/server/db'
 
@@ -659,6 +660,77 @@ export async function setBillMode(
 ): Promise<void> {
   await lockOpenSession(tx, sessionId)
   await tx.update(orderSessions).set({ billMode: mode }).where(eq(orderSessions.id, sessionId))
+}
+
+/** The table to move to is taken, out of service, removed, or already this order's. */
+export class MoveTargetNotFreeError extends Error {}
+
+/**
+ * Moves a whole order to another table, in ANY zone (Teran, 2026-11-16): the
+ * party walks from Table 3 to Sun bed S1 and the order goes with them. Items,
+ * bills and payments stay on the order; the new table is attached and becomes
+ * the primary, and every table it had is released and freed. A bar tab moved
+ * to a table is simply seated.
+ *
+ * The target must be free (`open`), active and in an active zone. Two moves to
+ * the same table race on `idx_one_open_session_per_table`; the loser gets
+ * `MoveTargetNotFreeError` from the route.
+ */
+export async function moveSessionToTable(
+  tx: Tx,
+  { sessionId, toTableId, staffId }: { sessionId: string; toTableId: string; staffId: string },
+): Promise<{ toLabel: string; releasedTableIds: string[] }> {
+  const [live] = await tx
+    .select({ id: orderSessions.id })
+    .from(orderSessions)
+    .where(and(eq(orderSessions.id, sessionId), isNull(orderSessions.closedAt)))
+    .for('update')
+    .limit(1)
+  if (!live) throw new SessionAlreadyClosedError()
+
+  const [target] = await tx
+    .select({ id: tables.id, label: tables.label, status: tables.status, zoneActive: zones.isActive, isActive: tables.isActive })
+    .from(tables)
+    .innerJoin(zones, eq(zones.id, tables.zoneId))
+    .innerJoin(orderSessions, eq(orderSessions.tenantId, tables.tenantId))
+    .where(and(eq(tables.id, toTableId), eq(orderSessions.id, sessionId)))
+    .for('update', { of: tables })
+    .limit(1)
+  if (!target || target.status !== 'open' || !target.isActive || !target.zoneActive) throw new MoveTargetNotFreeError()
+
+  const fromIds = (await attachedTableIds(tx, sessionId)).filter((id) => id !== toTableId)
+  const fromLabels = fromIds.length
+    ? (await tx.select({ label: tables.label }).from(tables).where(inArray(tables.id, fromIds))).map((row) => row.label)
+    : []
+
+  // Attach the new table (re-opening its row if it was once this order's).
+  await tx
+    .insert(orderSessionTables)
+    .values({ sessionId, tableId: toTableId })
+    .onConflictDoUpdate({
+      target: [orderSessionTables.sessionId, orderSessionTables.tableId],
+      set: { releasedAt: null, attachedAt: sql`now()` },
+    })
+  await occupyTables(tx, [toTableId])
+
+  // Release everything else, and free it.
+  if (fromIds.length > 0) {
+    await tx
+      .update(orderSessionTables)
+      .set({ releasedAt: new Date() })
+      .where(and(eq(orderSessionTables.sessionId, sessionId), inArray(orderSessionTables.tableId, fromIds), isNull(orderSessionTables.releasedAt)))
+    await freeTables(tx, fromIds)
+  }
+
+  // The new table is the order's name from now on — breadcrumbs, tickets, bill.
+  await tx.update(orderSessions).set({ tableId: toTableId }).where(eq(orderSessions.id, sessionId))
+
+  const moved = fromLabels.length ? `Moved from ${fromLabels.join(' + ')} to ${target.label}` : `Seated at ${target.label}`
+  await writeAuditEvent(tx, { sessionId, staffId, eventType: 'TABLE_MERGED', notes: moved })
+  if (fromLabels.length) {
+    await writeAuditEvent(tx, { sessionId, staffId, eventType: 'TABLE_UNMERGED', notes: moved })
+  }
+  return { toLabel: target.label, releasedTableIds: fromIds }
 }
 
 /** The staff member is not active, or belongs to another restaurant. */
