@@ -10,6 +10,7 @@ import {
   Delete,
   GripVertical,
   Landmark,
+  Link2,
   Plus,
   Printer,
   Receipt,
@@ -866,10 +867,38 @@ export function BillScreen({
   const [closing, setClosing] = useState(false)
   /** "All paid. Close Table 5?" — shown once, after the payment that settles everything. */
   const [askClose, setAskClose] = useState(false)
+  /**
+   * The change to hand back after a cash payment (Teran, 2026-11-16). The
+   * payment window closed the moment Record was tapped, so the cashier never
+   * saw it; this stays up until Done. `thenAskClose`: the last bill was paid,
+   * so "Close the table?" comes after it, not over it.
+   */
+  const [changeDue, setChangeDue] = useState<{
+    receivedPaisa: number
+    paidPaisa: number
+    changePaisa: number
+    thenAskClose: boolean
+  } | null>(null)
+  /**
+   * Pay together (Teran, 2026-11-16): the other orders picked to be paid with
+   * this one, once chosen. While set, the payment window takes the combined
+   * total; after it, every one of these orders is offered for closing.
+   */
+  const [pickingTogether, setPickingTogether] = useState(false)
+  const [together, setTogether] = useState<OpenOrderToPay[] | null>(null)
+  /** The combined bill is on screen; this opens its payment window. */
+  const [payingTogether, setPayingTogether] = useState(false)
+  /** Orders paid together and all paid: closing closes them all. */
+  const [closeAlso, setCloseAlso] = useState<OpenOrderToPay[]>([])
+
   /** Close the table once everything is paid (code review D1). */
   async function closeTable() {
     setClosing(true)
     try {
+      // Orders paid together with this one close too (Teran, 2026-11-16).
+      for (const other of closeAlso) {
+        await postJson(`/api/sessions/${other.sessionId}/close`, { reason: 'settled' })
+      }
       await postJson(`/api/sessions/${sessionId}/close`, { reason: 'settled' })
       try {
         window.localStorage.removeItem(storageKey)
@@ -971,6 +1000,21 @@ export function BillScreen({
         </div>
 
         <div className="flex shrink-0 items-center gap-sp-3">
+          {/* Pay together (Teran, 2026-11-16): one guest pays this and another order. */}
+          {!inSplit && !together && outstanding > 0 && !draftError ? (
+            <button
+              type="button"
+              onClick={() => setPickingTogether(true)}
+              className={cn(
+                'flex h-touch-standard items-center gap-sp-2 rounded-control border border-slate-200 bg-white px-sp-4 night:border-night-hairline night:bg-night-card',
+                'text-fs-14 font-bold text-slate-900 active:scale-[0.97] night:text-night-text',
+                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+              )}
+            >
+              <Link2 aria-hidden="true" className="size-4" />
+              Pay with another order
+            </button>
+          ) : null}
           {inSplit ? (
             <button
               type="button"
@@ -1015,7 +1059,42 @@ export function BillScreen({
           </p>
         ) : null}
 
-        {inSplit ? (
+        {together ? (
+          // ── PAY TOGETHER: every order's items on one bill (Teran, 2026-11-16) ──
+          <TogetherBill
+            orders={[
+              {
+                sessionId,
+                label: tableLabel,
+                owedPaisa: outstanding,
+                lines: [...unpaidBills.flatMap((bill) => bill.lines), ...draftLines].map((line) => ({
+                  key: line.orderEventId,
+                  name: line.name,
+                  quantity: line.quantity,
+                  amountPaisa: line.amountPaisa,
+                  optionText: line.optionText,
+                  modifierText: line.modifierText,
+                })),
+              },
+              ...together,
+            ]}
+            onRemove={(removeId) =>
+              setTogether((current) => {
+                const left = (current ?? []).filter((other) => other.sessionId !== removeId)
+                return left.length > 0 ? left : null
+              })
+            }
+            onAdd={() => setPickingTogether(true)}
+            onBack={() => setTogether(null)}
+            onSettle={() => setPayingTogether(true)}
+            onPrint={async () => {
+              await postJson('/api/payments/together/print', {
+                sessionIds: [sessionId, ...together.map((other) => other.sessionId)],
+                expectedTotalPaisa: outstanding + together.reduce((total, other) => total + other.owedPaisa, 0),
+              })
+            }}
+          />
+        ) : inSplit ? (
           // ── SPLIT: a column per person ───────────────────────────────────
           <div className="flex min-h-0 flex-1 gap-sp-4 overflow-x-auto pb-sp-1">
             {unpaidBills.map((bill) => (
@@ -1325,13 +1404,69 @@ export function BillScreen({
 
       {askClose ? (
         <CloseAfterPaymentDialog
-          tableLabel={tableLabel}
+          tableLabel={[tableLabel, ...closeAlso.map((other) => other.label)].join(' + ')}
           closing={closing}
           onClose={() => {
             setAskClose(false)
             void closeTable()
           }}
           onKeepOpen={() => setAskClose(false)}
+        />
+      ) : null}
+
+      {pickingTogether ? (
+        <PayTogetherPicker
+          sessionId={sessionId}
+          thisLabel={tableLabel}
+          thisOwedPaisa={outstanding}
+          onCancel={() => setPickingTogether(false)}
+          exclude={(together ?? []).map((other) => other.sessionId)}
+          onChosen={(others) => {
+            setPickingTogether(false)
+            setTogether((current) => [...(current ?? []), ...others])
+          }}
+        />
+      ) : null}
+
+      {together && payingTogether ? (
+        <PaymentDialog
+          title={[tableLabel, ...together.map((other) => other.label)].join(' + ')}
+          duePaisa={outstanding + together.reduce((total, other) => total + other.owedPaisa, 0)}
+          onCancel={() => setPayingTogether(false)}
+          onPay={async (tenders, cashReceivedPaisa, printReceipt) => {
+            const others = together
+            const due = outstanding + others.reduce((total, other) => total + other.owedPaisa, 0)
+            const paid = await postJson<{ allPaid: boolean; receiptJobId: string | null }>('/api/payments/together', {
+              sessionIds: [sessionId, ...others.map((other) => other.sessionId)],
+              expectedTotalPaisa: due,
+              tenders,
+              cashReceivedPaisa,
+              printReceipt,
+            })
+            setTogether(null)
+            setPayingTogether(false)
+            setCloseAlso(paid.allPaid ? others : [])
+            const cashPaid = tenders.filter((tender) => tender.method === 'cash').reduce((total, tender) => total + tender.amountPaisa, 0)
+            const changePaisa = cashReceivedPaisa !== undefined ? cashReceivedPaisa - cashPaid : 0
+            if (cashReceivedPaisa !== undefined && changePaisa > 0) {
+              setChangeDue({ receivedPaisa: cashReceivedPaisa, paidPaisa: cashPaid, changePaisa, thenAskClose: paid.allPaid })
+            } else if (paid.allPaid) {
+              setAskClose(true)
+            }
+            setNotice(printReceipt && !paid.receiptJobId ? 'Paid, but the receipt was not queued.' : null)
+            router.refresh()
+          }}
+        />
+      ) : null}
+
+      {changeDue ? (
+        <ChangeDueDialog
+          {...changeDue}
+          onDone={() => {
+            const ask = changeDue.thenAskClose
+            setChangeDue(null)
+            if (ask) setAskClose(true)
+          }}
         />
       ) : null}
 
@@ -1374,11 +1509,19 @@ export function BillScreen({
               printReceipt,
             })
             setPaying(null)
-            // The last bill is paid: ask, once, whether the guests have gone
-            // (Teran, 2026-11-10). Asked, never done — a paid table can still
-            // have people at it, which is why closing stopped being automatic
-            // (code review D1).
-            if (paid.allPaid) setAskClose(true)
+            // Cash with a note bigger than the bill: show the change to give
+            // back, and keep it on screen until the cashier taps Done.
+            const cashPaid = tenders.filter((tender) => tender.method === 'cash').reduce((total, tender) => total + tender.amountPaisa, 0)
+            const changePaisa = cashReceivedPaisa !== undefined ? cashReceivedPaisa - cashPaid : 0
+            if (cashReceivedPaisa !== undefined && changePaisa > 0) {
+              setChangeDue({ receivedPaisa: cashReceivedPaisa, paidPaisa: cashPaid, changePaisa, thenAskClose: paid.allPaid })
+            } else if (paid.allPaid) {
+              // The last bill is paid: ask, once, whether the guests have gone
+              // (Teran, 2026-11-10). Asked, never done — a paid table can still
+              // have people at it, which is why closing stopped being automatic
+              // (code review D1).
+              setAskClose(true)
+            }
             // Paying never closes the table (code review D1). When everything
             // is paid the refreshed screen offers Close table in the bar.
             // That person is paid: their column goes, and their items are on a
@@ -1394,6 +1537,353 @@ export function BillScreen({
           }}
         />
       ) : null}
+    </div>
+  )
+}
+
+/** Another open order, what it owes and for what — from `/api/sessions/:id/pay-together`. */
+type TogetherLine = {
+  key: string
+  name: string
+  quantity: number
+  amountPaisa: number
+  optionText: string | null
+  modifierText: string | null
+}
+type OpenOrderToPay = { sessionId: string; label: string; dailyNumber: number; owedPaisa: number; lines: TogetherLine[] }
+
+/**
+ * The combined bill (Teran, 2026-11-16): like a merged table's bill, every
+ * order's items on one screen, grouped under its table, each with its total,
+ * and one Settle for all of it. Each order still keeps its own record.
+ */
+function TogetherBill({
+  orders,
+  onRemove,
+  onAdd,
+  onBack,
+  onSettle,
+  onPrint,
+}: {
+  /** This order first, then the others. */
+  orders: { sessionId: string; label: string; owedPaisa: number; lines: TogetherLine[] }[]
+  onRemove: (sessionId: string) => void
+  onAdd: () => void
+  onBack: () => void
+  onSettle: () => void
+  /** Prints the combined BILL before Settle (Teran, 2026-11-16). */
+  onPrint: () => Promise<void>
+}) {
+  const total = orders.reduce((sum, order) => sum + order.owedPaisa, 0)
+  const [printState, setPrintState] = useState<PrintState>('idle')
+  const [printError, setPrintError] = useState<string | null>(null)
+  async function print() {
+    setPrintState('sending')
+    setPrintError(null)
+    try {
+      await onPrint()
+      setPrintState('sent')
+    } catch (caught) {
+      setPrintError(caught instanceof Error ? caught.message : 'Could not print the bill')
+      setPrintState('idle')
+    }
+  }
+  const itemTotal = orders.reduce((sum, order) => sum + order.lines.reduce((s2, line) => s2 + line.quantity, 0), 0)
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-sp-4 md:flex-row">
+      <section className="flex min-h-0 flex-col rounded-panel bg-white shadow-el-1 md:min-w-0 md:flex-[2_2_0%] night:bg-night-card">
+        <header className="flex shrink-0 items-baseline justify-between gap-sp-3 border-b border-slate-200 px-sp-5 py-sp-4 night:border-night-hairline">
+          <h2 className="text-fs-18 font-extrabold text-slate-900 night:text-night-text">
+            {orders.map((order) => order.label).join(' + ')}
+          </h2>
+          <span className="text-fs-14 font-semibold text-slate-600 night:text-night-second">
+            {itemTotal} item{itemTotal === 1 ? '' : 's'} · paying together
+          </span>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-sp-5">
+          {orders.map((order, index) => {
+            const linesPaisa = order.lines.reduce((sum, line) => sum + line.amountPaisa, 0)
+            const charges = order.owedPaisa - linesPaisa
+            return (
+              <div key={order.sessionId} className="border-b border-slate-200 py-sp-3 last:border-b-0 night:border-night-hairline">
+                <div className="flex items-center justify-between gap-sp-3">
+                  <h3 className="text-fs-14 font-bold tracking-micro text-brand-700 uppercase night:text-brand-300">{order.label}</h3>
+                  {index > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => onRemove(order.sessionId)}
+                      aria-label={`Take ${order.label} off this bill`}
+                      className="flex size-touch-standard items-center justify-center rounded-control text-slate-500 hover:bg-slate-100 night:text-night-muted night:hover:bg-night-raised"
+                    >
+                      <X aria-hidden="true" className="size-4" />
+                    </button>
+                  ) : null}
+                </div>
+                <ul className="divide-y divide-slate-100 night:divide-night-hairline">
+                  {order.lines.map((line) => (
+                    <li key={line.key} className="flex min-h-14 items-center gap-sp-4 py-sp-2">
+                      <span className="w-10 shrink-0 text-fs-16 font-extrabold text-brand-700 tabular-nums night:text-brand-300">{line.quantity}×</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-fs-16 font-bold text-slate-900 night:text-night-text">{line.name}</span>
+                        {[line.optionText, line.modifierText].filter(Boolean).length > 0 ? (
+                          <span className="block truncate text-fs-12 text-slate-600 night:text-night-second">
+                            {[line.optionText, line.modifierText].filter(Boolean).join(' · ')}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="w-28 shrink-0 text-right text-fs-16 font-extrabold tabular-nums text-slate-900 night:text-night-text">
+                        {lkrFromPaisa(line.amountPaisa)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {charges !== 0 ? (
+                  <div className="flex justify-between pt-sp-1 text-fs-14 text-slate-600 night:text-night-second">
+                    <span>Service, tax, discount{charges < 0 ? ', paid' : ''}</span>
+                    <span className="tabular-nums">{charges < 0 ? `− ${lkrFromPaisa(-charges)}` : lkrFromPaisa(charges)}</span>
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      <section className="flex shrink-0 flex-col gap-sp-2 self-start rounded-panel bg-white p-sp-4 shadow-el-1 md:min-w-0 md:flex-[1_1_0%] night:bg-night-card">
+        {orders.map((order) => (
+          <Row key={order.sessionId} label={order.label} value={order.owedPaisa} />
+        ))}
+        <div className="mt-sp-1 flex items-baseline justify-between gap-sp-3 border-t border-slate-200 pt-sp-3 night:border-night-hairline">
+          <span className="text-fs-16 font-bold text-slate-900 night:text-night-text">Total</span>
+          <span className="text-fs-32 font-extrabold tabular-nums text-slate-900 night:text-night-text">{lkrFromPaisa(total)}</span>
+        </div>
+        <div className="mt-sp-2 flex flex-col">
+          <PrintBillButton state={printState} disabled={printState === 'sending'} onPrint={() => void print()} size="waiter" />
+        </div>
+        {printError ? (
+          <p role="alert" className="text-fs-14 font-semibold text-unavailable-band night:text-red-400">
+            {printError}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          onClick={onSettle}
+          className={cn(
+            'mt-sp-2 h-touch-waiter rounded-waiter bg-brand-800 text-fs-18 font-bold text-white shadow-el-2',
+            'active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+          )}
+        >
+          Settle {lkrFromPaisa(total)}
+        </button>
+        <div className="flex gap-sp-2">
+          <button
+            type="button"
+            onClick={onAdd}
+            className="h-touch-standard flex-1 rounded-control border border-slate-200 text-fs-14 font-bold text-slate-900 night:border-night-hairline night:text-night-text"
+          >
+            + Add order
+          </button>
+          <button
+            type="button"
+            onClick={onBack}
+            className="h-touch-standard flex-1 rounded-control border border-slate-200 text-fs-14 font-bold text-slate-600 night:border-night-hairline night:text-night-second"
+          >
+            Pay separately
+          </button>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+/**
+ * Pick the orders to pay with this one (Teran, 2026-11-16): every other open
+ * order that owes something, with its amount, and the combined total.
+ */
+function PayTogetherPicker({
+  sessionId,
+  thisLabel,
+  thisOwedPaisa,
+  exclude = [],
+  onCancel,
+  onChosen,
+}: {
+  sessionId: string
+  thisLabel: string
+  thisOwedPaisa: number
+  /** Orders already on the combined bill. */
+  exclude?: string[]
+  onCancel: () => void
+  onChosen: (others: OpenOrderToPay[]) => void
+}) {
+  const [orders, setOrders] = useState<OpenOrderToPay[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [picked, setPicked] = useState<string[]>([])
+
+  useEffect(() => {
+    let alive = true
+    fetch(`/api/sessions/${sessionId}/pay-together`)
+      .then((response) => response.json())
+      .then((payload: { success?: boolean; data?: OpenOrderToPay[] }) => {
+        if (!alive) return
+        if (!payload.success || !payload.data) throw new Error()
+        setOrders(payload.data.filter((order) => !exclude.includes(order.sessionId)))
+      })
+      .catch(() => alive && setError('Could not load the open orders. Try again.'))
+    return () => {
+      alive = false
+    }
+    // `exclude` is read once, when the picker opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
+
+  const chosen = (orders ?? []).filter((order) => picked.includes(order.sessionId))
+  const total = thisOwedPaisa + chosen.reduce((sum, order) => sum + order.owedPaisa, 0)
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pay-together-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onCancel()
+      }}
+    >
+      <div className="flex max-h-[90%] w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-5 shadow-el-2 night:bg-night-card">
+        <div className="flex flex-col gap-sp-1">
+          <h2 id="pay-together-title" className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">
+            Pay with another order
+          </h2>
+          <p className="text-fs-14 text-slate-600 night:text-night-second">
+            {thisLabel} · {lkrFromPaisa(thisOwedPaisa)}. Pick the orders paid with it.
+          </p>
+        </div>
+
+        <ul className="flex min-h-0 flex-1 flex-col gap-sp-2 overflow-y-auto">
+          {orders === null && !error ? (
+            <li className="text-fs-14 text-slate-600 night:text-night-second">Loading…</li>
+          ) : orders && orders.length === 0 ? (
+            <li className="text-fs-14 text-slate-600 night:text-night-second">No other order is waiting to be paid.</li>
+          ) : (
+            (orders ?? []).map((order) => {
+              const on = picked.includes(order.sessionId)
+              return (
+                <li key={order.sessionId}>
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={on}
+                    onClick={() =>
+                      setPicked((current) => (on ? current.filter((id) => id !== order.sessionId) : [...current, order.sessionId]))
+                    }
+                    className={cn(
+                      'flex min-h-touch-waiter w-full items-center justify-between gap-sp-3 rounded-control border px-sp-4 text-left',
+                      on
+                        ? 'border-brand-800 bg-brand-050 night:bg-night-raised'
+                        : 'border-slate-200 bg-white night:border-night-hairline night:bg-night-card',
+                      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+                    )}
+                  >
+                    <span className="flex flex-col">
+                      <span className="text-fs-16 font-bold text-slate-900 night:text-night-text">{order.label}</span>
+                      <span className="text-fs-12 text-slate-500 night:text-night-muted">#{String(order.dailyNumber).padStart(3, '0')}</span>
+                    </span>
+                    <span className="text-fs-16 font-bold tabular-nums text-slate-900 night:text-night-text">{lkrFromPaisa(order.owedPaisa)}</span>
+                  </button>
+                </li>
+              )
+            })
+          )}
+        </ul>
+
+        {error ? (
+          <p role="alert" className="text-fs-14 font-semibold text-unavailable-band night:text-red-400">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="flex items-baseline justify-between border-t border-slate-200 pt-sp-3 night:border-night-hairline">
+          <span className="text-fs-16 font-bold text-slate-900 night:text-night-text">Total together</span>
+          <span className="text-fs-24 font-extrabold tabular-nums text-slate-900 night:text-night-text">{lkrFromPaisa(total)}</span>
+        </div>
+
+        <div className="flex gap-sp-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className={cn(
+              'h-touch-waiter flex-1 rounded-waiter border border-slate-200 bg-white text-fs-16 font-bold text-slate-900 night:border-night-hairline night:bg-night-card night:text-night-text',
+              'active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+            )}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={chosen.length === 0}
+            onClick={() => onChosen(chosen)}
+            className={cn(
+              'h-touch-waiter flex-1 rounded-waiter bg-brand-800 text-fs-16 font-bold text-white shadow-el-2',
+              'active:scale-[0.98] disabled:opacity-60',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+            )}
+          >
+            Show the bill
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** "Give change: LKR 490", large, until Done (Teran, 2026-11-16). */
+function ChangeDueDialog({
+  receivedPaisa,
+  paidPaisa,
+  changePaisa,
+  onDone,
+}: {
+  receivedPaisa: number
+  paidPaisa: number
+  changePaisa: number
+  onDone: () => void
+}) {
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="change-due-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-sp-4"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' || event.key === 'Enter') onDone()
+      }}
+    >
+      <div className="flex w-full max-w-md flex-col gap-sp-4 rounded-panel bg-white p-sp-6 text-center shadow-el-2 night:bg-night-card">
+        <h2 id="change-due-title" className="text-fs-18 font-bold tracking-micro text-slate-600 uppercase night:text-night-second">
+          Give change
+        </h2>
+        <p className="text-[3.5rem] leading-none font-extrabold tabular-nums text-open-ink night:text-green-400">
+          {lkrFromPaisa(changePaisa)}
+        </p>
+        <dl className="grid grid-cols-2 gap-y-sp-1 text-left text-fs-16">
+          <dt className="text-slate-600 night:text-night-second">Received</dt>
+          <dd className="text-right font-bold tabular-nums text-slate-900 night:text-night-text">{lkrFromPaisa(receivedPaisa)}</dd>
+          <dt className="text-slate-600 night:text-night-second">Paid</dt>
+          <dd className="text-right font-bold tabular-nums text-slate-900 night:text-night-text">{lkrFromPaisa(paidPaisa)}</dd>
+        </dl>
+        <button
+          type="button"
+          autoFocus
+          onClick={onDone}
+          className={cn(
+            'h-touch-waiter rounded-waiter bg-brand-800 text-fs-18 font-bold text-white shadow-el-2',
+            'active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500',
+          )}
+        >
+          Done
+        </button>
+      </div>
     </div>
   )
 }
