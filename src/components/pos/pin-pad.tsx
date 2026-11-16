@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { Delete, Lock } from 'lucide-react'
+import { Delete } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -238,11 +238,6 @@ export function PINPad({ onSubmit, error, disabled = false, label, hint }: PINPa
         The previous version of this file said to remove it the day PIN length
         became fixed. That day is today.
       */}
-
-      <p className="flex items-center gap-sp-1 text-fs-12 font-semibold text-slate-600 night:text-night-second">
-        <Lock aria-hidden="true" className="size-3.5" strokeWidth={2.2} />
-        {PIN_LENGTH} digits · signs in automatically · no keyboard, ever
-      </p>
     </div>
   )
 }

@@ -458,7 +458,7 @@ export function FloorActionStrip({
     // bar (Story 3.9, AC-1 amended): in a table-first system a lone button in
     // the strip's empty state read as a surface bolted on, while the zone bar is
     // already the control for "where am I looking" — and the counter is a place.
-    return <Shell label="No table selected" detail="Tap a table to see what you can do with it." />
+    return <Shell label="No table selected" />
   }
 
   if (table.status === 'unavailable') {

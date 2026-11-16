@@ -1675,11 +1675,8 @@ export function OrderScreen({
                   />
                 </label>
 
-                {/* Said out loud, because the person typing it would otherwise
-                    assume it prints. Epic 6 enforces it where the bill is built. */}
-                <p className="text-fs-12 text-slate-600 night:text-night-second">
-                  Shown to staff and on kitchen tickets. Never printed on a guest&apos;s bill.
-                </p>
+                {/* The "never printed on a guest's bill" line went (Teran,
+                    2026-11-16). The rule itself is enforced where the bill is built. */}
 
                 {/* `seats.length > 1` gates BOTH branches, so a refetch that
                     drops the other seat cannot leave "Yes, remove" on screen. */}
