@@ -51,6 +51,10 @@ Discount and service charge are SEPARATE controls in the order column's totals: 
 
 Manage → Settings → **Owner password** card (owner only; its own button, not the settings Save). `PUT /api/manage/password` `{ current, next }` checks the current password through the unlock lockout (5 wrong → 5 min), stores the new bcrypt hash, and ends every OTHER device's Manage session. A forgotten password is still cleared on the server with `pnpm manage:reset-password`.
 
+## Cash drawer card on the dashboard (Teran, 2026-11-16)
+
+One card, `cash-drawer-card.tsx`, replaces the Cash gap tile and the no-sale list. A single day reads top to bottom: float (time, who) → cash sales → cash drops (time, who, note) → should be in drawer → counted (time, who) → Balanced / Short / Over, then card & transfer and total revenue apart. Amber "No float recorded" when there is none; Count / Recount on Today. Week and month: a row per day (Float · Cash sales · Cash out · Should be · Counted · Gap). Data: `Insights.cash.byDay` in `insights.service.ts`.
+
 ## Code map
 
 - Migration `0046_pos_discount_waiter_float.sql`. The new `cash_drawer_reason` values are checked as text, because a migration cannot use enum values it adds itself.

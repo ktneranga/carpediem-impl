@@ -4,7 +4,8 @@ import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarDays, Printer } from 'lucide-react'
 import { call as callApi, icon } from '@/components/manage/manage-ui'
-import { NoSales, SalesBreakdown } from '@/components/manage/dashboard/day-close'
+import { SalesBreakdown } from '@/components/manage/dashboard/day-close'
+import { CashDrawerCard } from '@/components/manage/dashboard/cash-drawer-card'
 import { AuditList, CompsByReason, PaymentSplit, RevenueChart, StatTiles, TopItems } from '@/components/manage/dashboard/insight-panels'
 import { Panel, PanelSkeleton, tone } from '@/components/manage/dashboard/panel'
 import { CashCountButton, LiveCards, SUMMARY_KEY } from '@/components/manage/dashboard/summary-cards'
@@ -211,10 +212,7 @@ export function Dashboard({ initialDate }: { initialDate: string | null }) {
               <div className="order-1 lg:col-span-2"><RevenueChart data={shown} dark={dark} periodWord={word} /></div>
               <div className="order-3 lg:order-2"><PaymentSplit data={shown} dark={dark} /></div>
               <div className="order-2 lg:order-3 lg:col-span-3">
-                <StatTiles
-                  data={shown}
-                  cashAction={shown.period === 'today' ? <CashCountButton counted={!!shown.cash.count} onSaved={refresh} /> : undefined}
-                />
+                <StatTiles data={shown} />
               </div>
             </div>
 
@@ -222,7 +220,11 @@ export function Dashboard({ initialDate }: { initialDate: string | null }) {
 
             <div className="grid gap-sp-3 lg:grid-cols-2">
               <SalesBreakdown data={shown} />
-              {shown.noSales ? <NoSales openings={shown.noSales} /> : null}
+              {/* The day's cash in one place (Teran, 2026-11-16). */}
+              <CashDrawerCard
+                data={shown}
+                countAction={shown.period === 'today' ? <CashCountButton counted={!!shown.cash.count} onSaved={refresh} /> : undefined}
+              />
             </div>
 
             <div className="grid gap-sp-3 lg:grid-cols-3">

@@ -4,7 +4,6 @@ import type { ReactNode } from 'react'
 import {
   ArrowDownRight,
   ArrowUpRight,
-  Banknote,
   ChartColumn,
   ClipboardList,
   Gift,
@@ -148,13 +147,11 @@ function Tile({ label, icon: Icon, value, children, alert }: { label: string; ic
   )
 }
 
-export function StatTiles({ data, cashAction }: { data: Insights; cashAction?: ReactNode }) {
+// The cash gap moved to the Cash drawer card (Teran, 2026-11-16).
+export function StatTiles({ data }: { data: Insights }) {
   const change = data.recorded.changePercent
-  const cash = data.cash
-  const gap = cash.gapPaisa
-  const singleDay = data.from === data.to
   return (
-    <div className="grid grid-cols-2 gap-sp-3 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-sp-3 xl:grid-cols-3">
       <Tile label="Recorded revenue" icon={TrendingUp} value={money(data.recorded.paisa)}>
         {change === null ? (
           <span>Nothing to compare {data.compareLabel.replace('vs ', 'with ')}</span>
@@ -164,29 +161,6 @@ export function StatTiles({ data, cashAction }: { data: Insights; cashAction?: R
             {change >= 0 ? '+' : ''}{change}% <span className={cn('font-normal', tone.second)}>{data.compareLabel}</span>
           </span>
         )}
-      </Tile>
-
-      <Tile
-        label="Cash gap"
-        icon={Banknote}
-        alert={gap !== null && gap !== 0}
-        value={gap === null ? <span className={tone.muted}>—</span> : gap === 0 ? 'Balanced' : money(Math.abs(gap))}
-      >
-        <span className="flex flex-col gap-sp-1">
-          <span>
-            {gap === null
-              ? singleDay ? 'Not counted yet' : `No counts in this period`
-              : gap === 0
-                ? 'Counted matches what should be there'
-                : <span className={cn('font-semibold', tone.bad)}>Counted {gap < 0 ? 'under' : 'over'} what should be there</span>}
-          </span>
-          <span>
-            Should be {money(cash.expectedPaisa)}: cash taken + float + cash in − cash out
-          </span>
-          {cash.count ? <span>Counted {time(cash.count.countedAt)} by {cash.count.countedBy}</span> : null}
-          {!singleDay && cash.daysCounted > 0 ? <span>{cash.daysCounted} of {cash.days} days counted</span> : null}
-          {cashAction}
-        </span>
       </Tile>
 
       <Tile label="Covers" icon={Users} value={data.covers.count.toLocaleString('en-US')}>

@@ -32,6 +32,19 @@ type Executor = typeof db
 export type Period = 'today' | 'yesterday' | 'week' | 'month' | 'day'
 export const PERIODS: Period[] = ['today', 'yesterday', 'week', 'month', 'day']
 
+export type CashDay = {
+  day: string
+  inPaisa: number
+  cashSalesPaisa: number
+  outPaisa: number
+  otherPaisa: number
+  /** cash sales + in + out + other: what should be in the drawer. */
+  expectedPaisa: number
+  counted: { paisa: number; at: string; by: string } | null
+  /** counted − expected; null when not counted. */
+  gapPaisa: number | null
+}
+
 export type Insights = {
   period: Period
   from: string
@@ -52,6 +65,13 @@ export type Insights = {
     gapPaisa: number | null
     /** For a single day: the latest count. */
     count: { countedPaisa: number; countedAt: string; countedBy: string } | null
+    /**
+     * The drawer, day by day (Teran, 2026-11-16) — the Cash drawer card.
+     * Every day of the period up to today, oldest first. `inPaisa` is the
+     * float and any cash put in; `outPaisa` (≤ 0) cash drops and paid-outs;
+     * `otherPaisa` an Other with an amount, either sign.
+     */
+    byDay: CashDay[]
   }
   covers: { count: number; averagePaisa: number | null }
   comps: {
@@ -164,20 +184,24 @@ export async function loadInsights(executor: Executor, tenantId: string, asked: 
               from bills b join order_sessions s on s.id = b.session_id
              where b.session_id in ${sessions} and b.cancelled_at is null
              group by 1`),
-      // Expected in the drawer: cash payments, plus the float and cash in, less
-      // cash out (Teran, 2026-11-16) — each on its business day.
-      rows<{ day: string; n: number }>(executor, sql`
-        select day, coalesce(sum(n), 0)::bigint as n from (
-          select s.business_date::text as day, p.amount_paisa as n
+      // The drawer by day (Teran, 2026-11-16): cash payments, and every amount
+      // put in or taken out, by kind — each on its business day.
+      rows<{ day: string; kind: string; n: number }>(executor, sql`
+        select day, kind, coalesce(sum(n), 0)::bigint as n from (
+          select s.business_date::text as day, 'sales' as kind, p.amount_paisa as n
             from payment_records p join order_sessions s on s.id = p.session_id
            where p.session_id in ${sessions} and p.method = 'cash'
           union all
-          select business_date_at(o.tenant_id, o.created_at)::text as day, o.amount_paisa as n
+          select business_date_at(o.tenant_id, o.created_at)::text as day,
+                 case when o.reason::text in ('float', 'pay_in') then 'in'
+                      when o.reason::text in ('cash_drop', 'paid_out') then 'out'
+                      else 'other' end as kind,
+                 o.amount_paisa as n
             from cash_drawer_openings o
            where o.tenant_id = ${tenantId} and o.amount_paisa is not null
              and business_date_at(o.tenant_id, o.created_at) between ${from}::date and ${to}::date
         ) moved
-         group by 1`),
+         group by 1, 2`),
       rows<{ day: string; counted: number; at: Date; by: string }>(executor, sql`
         select distinct on (c.business_date) c.business_date::text as day, c.counted_paisa as counted,
                c.created_at as at, s.name as by
@@ -282,13 +306,35 @@ export async function loadInsights(executor: Executor, tenantId: string, asked: 
   const peak = items.reduce<{ key: string; paisa: number } | null>((best, item) => (item.paisa > (best?.paisa ?? 0) ? item : best), null)
 
   // ── Cash ───────────────────────────────────────────────────────────────────
-  const expectedByDay = new Map(expected.map((row) => [row.day, n(row.n)]))
-  const expectedPaisa = [...expectedByDay.values()].reduce((a, b) => a + b, 0)
+  const moved = (day: string, kind: string) =>
+    expected.filter((row) => row.day === day && row.kind === kind).reduce((total, row) => total + n(row.n), 0)
+  const countByDay = new Map(counts.map((c) => [c.day, c]))
+  const cashDays: CashDay[] = []
+  let days = 0
+  for (let day = from; day <= to; day = shiftDate(day, 1)) {
+    days += 1
+    const inPaisa = moved(day, 'in')
+    const cashSalesPaisa = moved(day, 'sales')
+    const outPaisa = moved(day, 'out')
+    const otherPaisa = moved(day, 'other')
+    const expectedDay = cashSalesPaisa + inPaisa + outPaisa + otherPaisa
+    const count = countByDay.get(day)
+    cashDays.push({
+      day,
+      inPaisa,
+      cashSalesPaisa,
+      outPaisa,
+      otherPaisa,
+      expectedPaisa: expectedDay,
+      counted: count ? { paisa: n(count.counted), at: new Date(count.at).toISOString(), by: count.by } : null,
+      gapPaisa: count ? n(count.counted) - expectedDay : null,
+    })
+  }
+  const expectedByDay = new Map(cashDays.map((entry) => [entry.day, entry.expectedPaisa]))
+  const expectedPaisa = cashDays.reduce((total, entry) => total + entry.expectedPaisa, 0)
   const gap = counts.length
     ? counts.reduce((total, c) => total + n(c.counted) - (expectedByDay.get(c.day) ?? 0), 0)
     : null
-  let days = 0
-  for (let day = from; day <= to; day = shiftDate(day, 1)) days += 1
   const single = dayPeriod && counts[0]
     ? { countedPaisa: n(counts[0].counted), countedAt: new Date(counts[0].at).toISOString(), countedBy: counts[0].by }
     : null
@@ -344,7 +390,7 @@ export async function loadInsights(executor: Executor, tenantId: string, asked: 
       changePercent: comparePaisa > 0 ? Math.round(((recordedPaisa - comparePaisa) / comparePaisa) * 100) : null,
     },
     buckets: { kind: dayPeriod ? 'hour' : 'day', items, peakKey: peak?.key ?? null },
-    cash: { expectedPaisa, daysCounted: counts.length, days, gapPaisa: gap, count: single },
+    cash: { expectedPaisa, daysCounted: counts.length, days, gapPaisa: gap, count: single, byDay: cashDays },
     // Whole rupees: an average to the cent is false precision.
     covers: { count: coverCount, averagePaisa: coverCount > 0 ? Math.round(recordedPaisa / coverCount / 100) * 100 : null },
     comps: {
