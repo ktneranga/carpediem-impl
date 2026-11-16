@@ -115,7 +115,6 @@ export function FloorEditor() {
     <div className="flex flex-col gap-sp-4">
       <header className="flex flex-wrap items-center justify-between gap-sp-3">
         <h1 className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">Floor</h1>
-        <p className="text-fs-14 text-slate-600 night:text-night-second">Switched off: hidden from the POS, kept here.</p>
       </header>
 
       {message ? (

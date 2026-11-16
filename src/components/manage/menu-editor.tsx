@@ -135,7 +135,6 @@ export function MenuEditor() {
       <header className="flex flex-wrap items-center justify-between gap-sp-3">
         <h1 className="text-fs-24 font-extrabold text-slate-900 night:text-night-text">Menu</h1>
         <div className="flex flex-wrap items-center gap-sp-3">
-          <p className="text-fs-14 text-slate-600 night:text-night-second">Switched off: hidden from the POS, kept here.</p>
           <button type="button" className={secondary} onClick={() => setImporting(true)}>
             <FileSpreadsheet className="size-4" aria-hidden="true" /> Bulk upload
           </button>
