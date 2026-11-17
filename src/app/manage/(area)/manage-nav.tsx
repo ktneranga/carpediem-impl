@@ -11,6 +11,8 @@ import {
   LayoutGrid,
   Lock,
   LockKeyhole,
+  ReceiptText,
+  ScrollText,
   Settings,
   Users,
   type LucideIcon,
@@ -27,6 +29,8 @@ const SECTION_ICONS: Record<string, LucideIcon> = {
   '/manage/sold-out': Ban,
   '/manage/staff': Users,
   '/manage/settings': Settings,
+  '/manage/audit': ScrollText,
+  '/manage/orders': ReceiptText,
 }
 
 const itemClass = cn(

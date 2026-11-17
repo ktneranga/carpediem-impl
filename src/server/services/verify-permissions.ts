@@ -65,6 +65,8 @@ function expectedArea(path: string): string | null {
   if (path.startsWith('/api/manage/menu')) return 'manage_menu'
   if (path.startsWith('/api/manage/floor')) return 'manage_floor'
   if (path.startsWith('/api/manage/settings')) return 'manage_settings'
+  if (path.startsWith('/api/manage/audit')) return 'manage_audit'
+  if (path.startsWith('/api/manage/orders')) return 'manage_orders'
   return null // staff, password, lock, unlock
 }
 

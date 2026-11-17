@@ -2011,6 +2011,18 @@ So that every opening of the drawer can be accounted for.
 
 ## Epic 7: Audit Trail & Dispute Resolution
 
+> **Amended 2026-11-17 (Teran): one Audit screen in Manage replaces 7.1, 7.2 and 7.4 — see Story 7.6 —
+> and Manage → Orders (Story 7.7) lists every order, one row each, beside it.** Orders answers "what was
+> sold, order by order"; Audit answers "who did what". Both open the same order story.
+> The dispute timeline stays OFF the order screen: waiters already see each round and its time there, the
+> owner settles real disputes (often after the guest has left, when no order screen exists), and every
+> extra control weighs on the screen used hundreds of times a night. 7.3 (comps) and 7.5 (voids) are
+> unchanged.
+>
+> **Superseded 2026-11-16 (Teran):** the service-charge note below. A per-order "service charge" switch
+> now exists on the order screen (owner or `give_discount`), recorded with who set it
+> (`order_sessions.pricing_changed_by_staff_id`) — see `spec-pos-discount-waiter-float.md`.
+
 > **Waiving a service charge is a discount, not a configuration change (decided 2026-10-02, Teran).**
 > It was considered as a nullable per-session rate override during Epic 6 planning and rejected: that is
 > a silent `UPDATE` with no who, no why, no authoriser and no audit row — for the one category of change
@@ -2029,7 +2041,9 @@ So that every opening of the drawer can be accounted for.
 
 **Goal:** Implement the complete audit trail surface — per-order item history with dispute timeline, manager/owner comp recording with reason codes, item reassignment correction, and the full cross-staff audit trail view. This is CDRMS's core accountability differentiator.
 
-### Story 7.1: Build DisputeTimeline Component
+### Story 7.1: Build DisputeTimeline Component — SUPERSEDED by Story 7.6 (2026-11-17)
+
+> Kept for its acceptance criteria: the timeline described here is 7.6's **order story panel**.
 
 As a developer,
 I want the DisputeTimeline component built with a clear per-item chronological audit display,
@@ -2063,7 +2077,10 @@ So that staff can present a transparent, readable order history to a customer du
 
 ---
 
-### Story 7.2: Implement Per-Order Item History View
+### Story 7.2: Implement Per-Order Item History View — SUPERSEDED by Story 7.6 (2026-11-17)
+
+> Not built. There is no "View Order History" on the order screen; an order's history opens from
+> Manage → Audit (tap its order number).
 
 As a waiter,
 I want to view the complete item-level audit history for any active or past order,
@@ -2167,7 +2184,10 @@ So that losses are recorded transparently in the audit trail without altering th
 
 ---
 
-### Story 7.4: Implement Full Audit Trail View
+### Story 7.4: Implement Full Audit Trail View — SUPERSEDED by Story 7.6 (2026-11-17)
+
+> Its log, filters and read-only rule carry into 7.6. "Manager" there means the owner, or a person the
+> owner grants the Audit area (no manager role exists — see `permissions.ts`).
 
 As a manager or owner,
 I want to view a filterable audit trail of all staff activity across any time period,
@@ -2202,6 +2222,122 @@ So that I can investigate discrepancies, verify staff actions, and produce accou
 **Given** the audit trail displayed in the view
 **When** any record is inspected at any role level
 **Then** no update or delete action is available in the UI; the view is strictly read-only; underlying records remain protected by the PostgreSQL RULE from Story 1.3
+
+---
+
+### Story 7.6: Manage → Audit — log, order story and watch-outs (built 2026-11-17)
+
+*Replaces 7.1, 7.2 and 7.4 (Teran, 2026-11-17). Reads only what is already recorded; no new data.*
+
+As the owner,
+I want one screen where I can see everything that happened, who did it and when, and open any order's whole story,
+So that I can settle a dispute or check on staff without paper, even for an order closed yesterday.
+
+**Where:** Manage → **Audit**, in the left menu beside Dashboard, Menu, Floor, Staff and Settings. Owner
+only by default; the owner can grant it per person like the other Manage areas (new permission
+`manage_audit` in `MANAGE_AREAS`).
+
+**Layout (agreed sketch, 2026-11-17):**
+
+```
+ Audit                                                   [ ⬇ Export to Excel ]
+ [ 3 voids ] [ 1 cancel ] [ 2 drawer no-sale ] [ LKR 4,200 discounts ]   ← watch-outs
+ [ Today ▾ ] [ All staff ▾ ] [ All types ▾ ] [ 🔍 Order # or table ]
+ 21:50  Nimal   Settled #042 S1 · cash 4,850 (got 5,000)            #042 ›
+ 21:05  Teran   Cancelled order "Wrong table" · 2,300 voided        #045 ›
+ 20:40  Kasun   Moved Table 3 → S1                                  #042 ›
+ 20:31  Nimal   Voided 1× Mojito "Guest changed mind" · ok'd Teran  #042 ›
+ 16:30  Teran   Cash drop − 20,000 "to safe"
+ 11:10  Teran   Menu: Devilled Cashew 1,200 → 1,350
+```
+
+Tapping **#042 ›** opens the **order story** panel: opened → every round (items, seat) → voids and comps
+(the original line never hidden) → moves and merges → discount / service waiver → bill printed → payments
+(cash received and change) → closed. Each line: staff name and exact time (e.g. "20:31:07").
+
+**Acceptance Criteria:**
+
+**Given** the owner opens Manage → Audit
+**When** the screen loads
+**Then** today's entries show newest first, each as one line: time, staff name, what happened in plain words, and the order number and table where there is one; it loads in under 1 second
+
+**Given** the log is shown
+**When** the owner picks a date range, a staff member, one or more types (Orders · Corrections · Cancels & walkouts · Tables · Money · Discounts · Cash drawer · Menu & settings · Staff), or types an order number or table
+**Then** only matching entries show; the filters combine; they are applied on the server; 30 days return in under 1 second
+
+**Given** the four watch-out counts at the top (voids, cancels, drawer opened with no sale, discounts given in LKR) for the chosen dates
+**When** the owner taps one
+**Then** the log is filtered to exactly those entries
+
+**Given** an entry belongs to an order
+**When** the owner taps its order number
+**Then** the order story panel opens with that order's whole history in time order, for an open or a closed order alike, and closes back to the log
+
+**Given** the filtered log
+**When** the owner taps Export to Excel
+**Then** an .xlsx downloads with the same rows and columns (date, time, staff, type, description, order, table, amount)
+
+**Given** any entry, at any role
+**When** it is viewed
+**Then** nothing can be edited or deleted from this screen; the records stay append-only as they are today
+
+**Given** a staff member without the Audit area
+**When** they open `/manage/audit` or its API
+**Then** they are refused (403 / redirect), like every other Manage area
+
+**Sources already recorded:** `order_events` (opens, rounds, voids, moves, merges, closes, cancels), `bills` (including cancelled), `payment_records`, `cash_drawer_openings`, `order_sessions` pricing fields, `config_changes` (menu, floor, settings, staff), `print_jobs` (bill printed).
+
+---
+
+### Story 7.7: Manage → Orders — every order, one row each (built 2026-11-17)
+
+*Added 2026-11-17 (Teran). Fulfils FR68's "the key staff and the dashboard use to find a past order".
+Reads only what is already recorded.*
+
+As the owner,
+I want a list of every order of a day — or any span — with its table, waiter, total and how it ended,
+So that I can find any order (open or closed) in a tap and see its whole story, without knowing who did what.
+
+**Where:** Manage → **Orders**, next to Audit. Owner only by default; the owner can grant it per person
+(permission `manage_orders`, migration 0051). Separate from Audit so a cashier can see orders without
+seeing staff activity.
+
+**Layout (agreed sketch, 2026-11-17):**
+
+```
+ Orders              [ Today ▾ ]  [ All ▾ open/paid/cancelled/walkout ]  [ 🔍 #, table, waiter ]
+ #     Table     Waiter   Opened  Closed  Items  Total       Status
+ #072  S3        Aruna    11:13   —        1     LKR 880     ● Open
+ #046  B1        Kasun    10:05   11:12    3     LKR 4,200   ✓ Paid · cash
+ #045  Table 4   Nimal    09:40   10:02    2     LKR 2,300   ✕ Cancelled "Wrong table"
+                                             3 orders · Still open LKR 880 · Paid LKR 4,200
+```
+
+**Acceptance Criteria:**
+
+**Given** the owner opens Manage → Orders
+**When** the screen loads
+**Then** every order of today's business day shows, newest first, one row each: order number, table(s) or "Bar tab", waiter (the one picked on the order, else who opened it), opened and closed times, items (voided ones not counted), total, and status — Open, Paid (with how: cash, card, cash + card), Cancelled (with its reason), Walkout, or Nothing ordered
+
+**Given** an order is open, or closed as a walkout before its bill
+**When** its total shows
+**Then** it is what its bills came to plus the dishes no bill covers, at their quoted price — never LKR 0 for food that went out
+
+**Given** the filters — Today / Yesterday / This week / This month / chosen dates, a status, and a search by order number, table or waiter
+**When** the owner uses them
+**Then** only matching orders show; over several days they are grouped by day; a Clear filters button undoes the status and search
+
+**Given** the list is shown
+**When** it has orders
+**Then** a footer shows how many, what is still open (unpaid), and what was paid
+
+**Given** any row
+**When** the owner taps it
+**Then** the order story (Story 7.6) opens: opened, every round and its dishes, voids, moves, discount and service changes, bill printed, payments and change, closed
+
+**Given** a person without the Orders area
+**When** they open `/manage/orders` or `/api/manage/orders`
+**Then** they are refused, like every other Manage area; nothing on the screen can change an order
 
 ---
 

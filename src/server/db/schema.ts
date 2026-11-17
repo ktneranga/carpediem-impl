@@ -42,6 +42,9 @@ export const orderEventTypeEnum = pgEnum('order_event_type', [
   // table_status_events, which records availability and has no session.
   'TABLE_MERGED',
   'TABLE_UNMERGED',
+  // Story 7.6 (Teran, 2026-11-17): the discount or the service charge changed
+  // on this order — who, when, and to what, in `notes`.
+  'PRICING_CHANGED',
 ])
 
 export const ticketOutputModeEnum = pgEnum('ticket_output_mode', ['print', 'kds', 'both'])
@@ -196,7 +199,7 @@ export const staff = pgTable('staff', {
   index('idx_staff_tenant_id').on(t.tenantId),
   check(
     'staff_permissions_known',
-    sql`${t.permissions} <@ ARRAY['custom_charge','approve_voids','open_cash_drawer','give_discount','close_orders','manage_dashboard','manage_menu','manage_floor','manage_settings']::text[]`,
+    sql`${t.permissions} <@ ARRAY['custom_charge','approve_voids','open_cash_drawer','give_discount','close_orders','manage_dashboard','manage_menu','manage_floor','manage_settings','manage_audit','manage_orders']::text[]`,
   ),
 ])
 

@@ -414,6 +414,8 @@ const PERMISSION_GROUPS: { title: string; items: { permission: Permission; label
       { permission: 'manage_menu', label: 'Menu', hint: 'Dishes, prices, options' },
       { permission: 'manage_floor', label: 'Floor', hint: 'Zones and tables' },
       { permission: 'manage_settings', label: 'Settings', hint: 'Bill, logo, QR, service charge, tax' },
+      { permission: 'manage_orders', label: 'Orders', hint: 'Every order of a day, and each one’s full story' },
+      { permission: 'manage_audit', label: 'Audit', hint: 'Who did what and when; any order’s full story' },
     ],
   },
 ]

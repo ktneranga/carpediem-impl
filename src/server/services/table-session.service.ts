@@ -8,6 +8,7 @@ import {
   staff,
   tables,
   tableStatusEvents,
+  tenantConfig,
   zones,
 } from '@/server/db/schema'
 import type { db } from '@/server/db'
@@ -779,6 +780,17 @@ export async function setOrderPricing(
   }: { sessionId: string; staffId: string; discountBp?: number | null; serviceChargeWaived?: boolean },
 ): Promise<void> {
   await lockOpenSession(tx, sessionId)
+  const [before] = await tx
+    .select({
+      discountBp: orderSessions.discountBp,
+      serviceChargeWaived: orderSessions.serviceChargeWaived,
+      defaultDiscountBp: tenantConfig.defaultDiscountBp,
+    })
+    .from(orderSessions)
+    .leftJoin(tenantConfig, eq(tenantConfig.tenantId, orderSessions.tenantId))
+    .where(eq(orderSessions.id, sessionId))
+    .limit(1)
+
   // Only what was sent: the discount and the waiver are changed separately.
   await tx
     .update(orderSessions)
@@ -788,6 +800,27 @@ export async function setOrderPricing(
       pricingChangedByStaffId: staffId,
     })
     .where(eq(orderSessions.id, sessionId))
+
+  // Every change on the record, as it happens (Story 7.6): the audit log and
+  // the order's story show who changed it, when, and from what to what.
+  const fallback = before?.defaultDiscountBp ?? 0
+  const percent = (bp: number | null) => `${(bp ?? fallback) / 100}%${bp === null ? ' (default)' : ''}`
+  if (discountBp !== undefined && (before?.discountBp ?? null) !== discountBp) {
+    await writeAuditEvent(tx, {
+      sessionId,
+      staffId,
+      eventType: 'PRICING_CHANGED',
+      notes: `Discount ${percent(before?.discountBp ?? null)} → ${percent(discountBp)}`,
+    })
+  }
+  if (serviceChargeWaived !== undefined && (before?.serviceChargeWaived ?? false) !== serviceChargeWaived) {
+    await writeAuditEvent(tx, {
+      sessionId,
+      staffId,
+      eventType: 'PRICING_CHANGED',
+      notes: serviceChargeWaived ? 'Service charge waived' : 'Service charge back on',
+    })
+  }
 }
 
 export async function closeSession(
@@ -941,7 +974,7 @@ async function writeAuditEvent(
   }: {
     sessionId: string
     staffId: string
-    eventType: 'SESSION_OPENED' | 'SESSION_CLOSED' | 'TABLE_MERGED' | 'TABLE_UNMERGED'
+    eventType: 'SESSION_OPENED' | 'SESSION_CLOSED' | 'TABLE_MERGED' | 'TABLE_UNMERGED' | 'PRICING_CHANGED'
     notes?: string
   },
 ): Promise<void> {

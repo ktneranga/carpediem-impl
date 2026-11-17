@@ -581,10 +581,10 @@ export function buildReceipt(receipt: ReceiptPayload): Buffer {
   if (typeof receipt.billLabel === 'string') centred(receipt.billLabel)
   command(ALIGN_LEFT)
   emit(`${calendarDate(receipt.printedAt, receipt.timeZone)}  ${clockTime(receipt.printedAt, receipt.timeZone)}`)
-  const cashier = typeof receipt.cashierName === 'string' ? foldToAscii(receipt.cashierName).trim() : ''
-  if (cashier !== '') emit(`Cashier: ${cashier}`)
+  // The guest's paper names their waiter, not the cashier (Teran, 2026-11-17).
+  // `cashierName` stays in the payload for the audit trail.
   const server = typeof receipt.serverName === 'string' ? foldToAscii(receipt.serverName).trim() : ''
-  if (server !== '' && server !== cashier) emit(`Served by: ${server}`)
+  if (server !== '') emit(`Waiter: ${server}`)
   divider()
 
   // ── What was had ──────────────────────────────────────────────────────────

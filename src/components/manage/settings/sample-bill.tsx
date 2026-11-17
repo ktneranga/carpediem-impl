@@ -96,7 +96,7 @@ export function SampleBill({
     ...textLines(header).flatMap((line) => centred(line)),
     ...centred('Table 5', { bold: true }),
     { text: stamp },
-    { text: 'Cashier: Staff' },
+    { text: 'Waiter: Staff' },
     divider,
     ...SAMPLE_DISHES.flatMap((dish) => row(`${dish.quantity} x ${dish.name}`, dish.amountPaisa)),
     divider,
