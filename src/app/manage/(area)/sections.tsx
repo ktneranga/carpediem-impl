@@ -36,6 +36,18 @@ export const MANAGE_SECTIONS = [
     what: 'Add staff, set their jobs and PINs, and deactivate someone who has left.',
   },
   {
+    href: '/manage/orders',
+    title: 'Orders',
+    story: '7.7',
+    what: 'Every order of a day — table, waiter, total, how it ended — and the whole story of each.',
+  },
+  {
+    href: '/manage/audit',
+    title: 'Audit',
+    story: '7.6',
+    what: 'Who did what and when, and the whole story of any order.',
+  },
+  {
     href: '/manage/settings',
     title: 'Settings',
     story: 'settings',

@@ -208,6 +208,8 @@ export const PERMISSIONS = [
   'manage_menu',
   'manage_floor',
   'manage_settings',
+  'manage_audit',
+  'manage_orders',
 ] as const
 export type Permission = (typeof PERMISSIONS)[number]
 
@@ -226,6 +228,10 @@ export const MANAGE_AREAS = [
   { permission: 'manage_menu', href: '/manage/menu', pages: ['/manage/menu'], apis: ['/api/manage/menu'] },
   { permission: 'manage_floor', href: '/manage/floor', pages: ['/manage/floor'], apis: ['/api/manage/floor'] },
   { permission: 'manage_settings', href: '/manage/settings', pages: ['/manage/settings'], apis: ['/api/manage/settings'] },
+  // Story 7.6 (Teran, 2026-11-17): the audit log and order stories.
+  { permission: 'manage_audit', href: '/manage/audit', pages: ['/manage/audit'], apis: ['/api/manage/audit'] },
+  // Story 7.7 (Teran, 2026-11-17): every order, one row each, and its story.
+  { permission: 'manage_orders', href: '/manage/orders', pages: ['/manage/orders'], apis: ['/api/manage/orders'] },
 ] as const satisfies readonly { permission: Permission; href: string; pages: readonly string[]; apis: readonly string[] }[]
 
 const under = (pathname: string, prefix: string) => pathname === prefix || pathname.startsWith(`${prefix}/`)

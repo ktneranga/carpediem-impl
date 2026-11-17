@@ -134,9 +134,9 @@ export type ReceiptPayload = {
   qr?: { url: string; caption: string | null } | null
   /** `tenant_config.receipt_logo`: a 1-bit raster printed above the name. */
   logo?: { widthDots: number; heightDots: number; data: string } | null
-  /** Who printed it, or who took the payment it follows ("Cashier: Nina"). */
+  /** Who printed it, or who took the payment it follows — kept for the audit trail; not printed since 2026-11-17. */
   cashierName?: string | null
-  /** Who looked after the table ("Served by: Kasun"), Teran 2026-11-16. Optional: old jobs have none. */
+  /** Who looked after the table — printed as "Waiter: Kasun" (Teran 2026-11-17). Optional: old jobs have none. */
   serverName?: string | null
   /** Every table on the order, or `['Bar tab']` / `['COUNTER']`. */
   tableLabels: string[]

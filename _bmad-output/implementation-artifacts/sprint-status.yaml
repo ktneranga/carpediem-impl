@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-03
-last_updated: 2026-11-14
+last_updated: 2026-11-17
 project: carpe-diem-restaurant
 project_key: NOKEY
 tracking_system: file-system
@@ -121,10 +121,13 @@ development_status:
 
   # ── Epic 7: Audit Trail & Dispute Resolution ──────────────────────────────
   epic-7: in-progress  # 7-5 only for go-live
-  7-1-build-disputetimeline-component: backlog
-  7-2-implement-per-order-item-history-view: backlog
+  # 7-1, 7-2 and 7-4 superseded 2026-11-17 by 7-6 (Manage → Audit); kept as backlog lines only for history.
+  7-1-build-disputetimeline-component: backlog  # SUPERSEDED by 7-6 — do not build
+  7-2-implement-per-order-item-history-view: backlog  # SUPERSEDED by 7-6 — do not build
   7-3-implement-comp-recording-and-item-reassignment: backlog
-  7-4-implement-full-audit-trail-view: backlog
+  7-4-implement-full-audit-trail-view: backlog  # SUPERSEDED by 7-6 — do not build
+  7-6-manage-audit-log-order-story-and-watch-outs: review  # added 2026-11-17; built 2026-11-17 (migrations 0049-0050, permission manage_audit, PRICING_CHANGED events)
+  7-7-manage-orders-every-order-one-row-each: review  # added and built 2026-11-17 (migration 0051, permission manage_orders)
   7-5-void-a-sent-item: review  # added 2026-11-14 — go-live (void + cancel unpaid bill, owner-PIN approval)
   epic-7-retrospective: optional
 

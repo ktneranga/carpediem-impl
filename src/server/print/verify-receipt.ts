@@ -148,15 +148,15 @@ function part1() {
   // Cashier and the review QR (Teran, 2026-11-12).
   const url = 'https://www.google.com/search?q=carpe+diem+hikkaduwa'
   const extras = buildReceipt(
-    receipt({ cashierName: 'Nina', qr: { url, caption: 'Scan to review us on Google' }, footerLines: ['Thank you! Come again'] }),
+    receipt({ cashierName: 'Nina', serverName: 'Aruna', qr: { url, caption: 'Scan to review us on Google' }, footerLines: ['Thank you! Come again'] }),
   ).toString('latin1')
-  check('the cashier is named', /^Cashier: Nina$/m.test(extras))
+  check('the waiter is named, not the cashier', /^Waiter: Aruna$/m.test(extras) && !extras.includes('Nina'))
   const store = Buffer.from([0x1d, 0x28, 0x6b, (url.length + 3) & 0xff, (url.length + 3) >> 8, 0x31, 0x50, 0x30]).toString('latin1') + url
   check('the QR stores the link and prints it', extras.includes(store) && extras.includes('\x1d(k\x03\x001Q0'))
   check('the QR caption is under the code, after the thank-you line',
     extras.indexOf('Thank you!') < extras.indexOf(store) && extras.indexOf(store) < extras.indexOf('Scan to review us on Google'))
   const noExtras = buildReceipt(receipt()).toString('latin1')
-  check('no cashier and no QR when not set', !noExtras.includes('Cashier') && !noExtras.includes('\x1d(k'))
+  check('no waiter and no QR when not set', !noExtras.includes('Waiter') && !noExtras.includes('\x1d(k'))
   // The logo (Teran, 2026-11-12): a 16x2 raster, then the name under it.
   const logo = { widthDots: 16, heightDots: 2, data: Buffer.from([0xff, 0x00, 0x0f, 0xf0]).toString('base64') }
   const withLogo = buildReceipt(receipt({ logo })).toString('latin1')
