@@ -193,7 +193,15 @@ export function OrdersView() {
                   <td className={cn('px-sp-3 py-sp-3 text-fs-14 tabular-nums', second)}>{time(order.openedAt)}</td>
                   <td className={cn('px-sp-3 py-sp-3 text-fs-14 tabular-nums', second)}>{order.closedAt ? time(order.closedAt) : '—'}</td>
                   <td className={cn('px-sp-3 py-sp-3 text-right text-fs-14 tabular-nums', second)}>{order.items}</td>
-                  <td className={cn('px-sp-3 py-sp-3 text-right text-fs-14 font-bold tabular-nums', ink)}>{lkrFromPaisa(order.totalPaisa)}</td>
+                  <td className={cn('px-sp-3 py-sp-3 text-right text-fs-14 font-bold tabular-nums', ink)}>
+                    {lkrFromPaisa(order.totalPaisa)}
+                    {/* A short payment (Teran, 2026-11-21): the amount only, in red. */}
+                    {order.shortPaisa > 0 ? (
+                      <span className="block text-fs-12 font-bold text-red-700 night:text-red-400">
+                        Short {lkrFromPaisa(order.shortPaisa)}
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-sp-3 py-sp-3">
                     <span className={cn('inline-flex rounded-pill px-sp-2 py-0.5 text-fs-12 font-bold', s.tone)}>{s.label}</span>
                     <span className={cn('ml-sp-2 text-fs-12', muted)}>

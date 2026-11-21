@@ -83,9 +83,10 @@ export const ROUTE_ROLES: RoutePolicy[] = [
   // Opening the cash drawer with no sale (Story 6.7, FR72). Owner only — there
   // is no manager role. Added BEFORE the route, because an unmatched prefix is
   // default-allow. `canOpenCashDrawer` below must say the same thing.
-  // Story 10.6 widened this to waiters: the route itself asks
-  // `canOpenCashDrawer`, which holds the `open_cash_drawer` permission.
-  { prefix: '/api/cash-drawer', roles: ['owner', 'waiter'] },
+  // Story 10.6 widened this to waiters; Teran (2026-11-21) narrowed it back:
+  // only the owner opens the drawer by hand. A cash payment still kicks it,
+  // from the payment routes, not this one.
+  { prefix: '/api/cash-drawer', roles: ['owner'] },
 
   // Opening and closing table sessions is order entry, so it follows the same
   // rule. Reads are exempt because every role's landing screen calls

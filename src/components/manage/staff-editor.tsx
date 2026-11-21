@@ -402,7 +402,8 @@ const PERMISSION_GROUPS: { title: string; items: { permission: Permission; label
     items: [
       { permission: 'custom_charge', label: 'Custom charge', hint: 'Add a typed charge, e.g. corkage' },
       { permission: 'approve_voids', label: 'Approve voids', hint: 'Void and cancel bills without the owner, and approve others’ voids' },
-      { permission: 'open_cash_drawer', label: 'Open cash drawer', hint: 'Open the drawer for change, with no sale' },
+      // No 'open_cash_drawer' switch: only the owner opens the drawer by hand
+      // (Teran, 2026-11-21). The value stays known so old rows still load.
       { permission: 'give_discount', label: 'Discount & service', hint: 'Change an order’s discount or waive its service charge' },
       { permission: 'close_orders', label: 'Close & cancel orders', hint: 'Close an unpaid table (walkout) or cancel an order' },
     ],

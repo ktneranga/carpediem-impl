@@ -88,6 +88,9 @@ export type BillDetail = BillTotals & {
   createdAt: string
   /** ISO when the bill was cancelled (Story 7.5); null on a live bill. A cancelled bill counts nowhere. */
   cancelledAt: string | null
+  /** Written off when the guest paid less (Teran, 2026-11-21); 0 when not. Not revenue. */
+  shortPaisa: number
+  shortNote: string | null
   lines: BillLineDetail[]
   comps: BillCompDetail[]
 }

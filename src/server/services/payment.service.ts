@@ -107,10 +107,18 @@ export async function recordPayments(
     staffId,
     tenders,
     cashReceivedPaisa = null,
+    shortNote = null,
   }: {
     billId: string
     staffId: string
     tenders: Tender[]
+    /**
+     * A SHORT payment (Teran, 2026-11-21): the guest pays less than is owed and
+     * the bill closes anyway. With a note, tenders below what is outstanding
+     * write the rest off on the bill (`short_paisa`, not revenue) and settle
+     * it. Without one, they are a part payment, as before.
+     */
+    shortNote?: string | null
     /**
      * The cash the guest handed over (Story 6.6), kept beside the CASH tender
      * so the receipt can print the change. A note, not revenue: the tender's
@@ -131,7 +139,7 @@ export async function recordPayments(
   cashRecordId: string | null
 }> {
   const [bill] = await tx
-    .select({ sessionId: bills.sessionId, totalPaisa: bills.totalPaisa, cancelledAt: bills.cancelledAt })
+    .select({ sessionId: bills.sessionId, totalPaisa: bills.totalPaisa, cancelledAt: bills.cancelledAt, shortPaisa: bills.shortPaisa })
     .from(bills)
     .where(eq(bills.id, billId))
     .limit(1)
@@ -147,7 +155,7 @@ export async function recordPayments(
     .from(paymentRecords)
     .where(eq(paymentRecords.billId, billId))
 
-  const outstanding = bill.totalPaisa - paid
+  const outstanding = bill.totalPaisa - paid - bill.shortPaisa
   if (outstanding <= 0) throw new BillAlreadySettledError()
 
   const tendered = tenders.reduce((total, tender) => total + tender.amountPaisa, 0)
@@ -166,7 +174,17 @@ export async function recordPayments(
   // The cash tender, if there was one — it opens the drawer (Story 6.7).
   const cashRecordId = inserted.find((row) => row.method === 'cash')?.id ?? null
 
-  const settled = tendered === outstanding
+  // A short payment: the rest is written off on the bill, with who and why.
+  // Under the session lock, so the outstanding read above is still true.
+  const shortPaisa = shortNote && tendered < outstanding ? outstanding - tendered : 0
+  if (shortPaisa > 0) {
+    await tx
+      .update(bills)
+      .set({ shortPaisa, shortNote, shortByStaffId: staffId, shortAt: new Date() })
+      .where(eq(bills.id, billId))
+  }
+
+  const settled = tendered + shortPaisa === outstanding
 
   // ── It does NOT close the table (code review D1, Teran, 2026-10-31) ──────
   // It used to, the moment every bill was settled and nothing was unbilled.
@@ -181,7 +199,7 @@ export async function recordPayments(
     billId,
     sessionId: bill.sessionId,
     paidPaisa: paid + tendered,
-    outstandingPaisa: outstanding - tendered,
+    outstandingPaisa: outstanding - tendered - shortPaisa,
     settled,
     allPaid,
     cashRecordId,
@@ -199,7 +217,7 @@ export async function isFullyPaid(tx: Tx | typeof db, sessionId: string): Promis
   if (await hasUnbilledItems(tx, sessionId)) return false
 
   const sessionBills = await tx
-    .select({ id: bills.id, totalPaisa: bills.totalPaisa })
+    .select({ id: bills.id, totalPaisa: bills.totalPaisa, shortPaisa: bills.shortPaisa })
     .from(bills)
     .where(and(eq(bills.sessionId, sessionId), liveBill))
   if (sessionBills.length === 0) return false
@@ -216,7 +234,8 @@ export async function isFullyPaid(tx: Tx | typeof db, sessionId: string): Promis
         .groupBy(paymentRecords.billId)
     ).map((row) => [row.billId, row.paid]),
   )
-  return sessionBills.every((row) => (paidByBill.get(row.id) ?? 0) >= row.totalPaisa)
+  // A short (Teran, 2026-11-21) covers what the guest did not pay.
+  return sessionBills.every((row) => (paidByBill.get(row.id) ?? 0) + row.shortPaisa >= row.totalPaisa)
 }
 
 /** A `settled` close on an order that is not fully paid. */

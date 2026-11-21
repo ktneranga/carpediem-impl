@@ -32,6 +32,8 @@ export type OrderRow = {
   items: number
   totalPaisa: number
   paidPaisa: number
+  /** Written off by short payments (Teran, 2026-11-21); 0 when none. Shown red. */
+  shortPaisa: number
   /** "cash", "card", "cash + card". Null when nothing was paid. */
   paidBy: string | null
   status: OrderStatus
@@ -83,6 +85,7 @@ export async function listOrders({
            coalesce(live.unbilled_paisa, 0)::bigint as unbilled_paisa,
            (select coalesce(sum(b.total_paisa), 0) from bills b where b.session_id = s.id and b.cancelled_at is null)::bigint as billed_paisa,
            (select coalesce(sum(p.amount_paisa), 0) from payment_records p where p.session_id = s.id)::bigint as paid_paisa,
+           (select coalesce(sum(b.short_paisa), 0) from bills b where b.session_id = s.id and b.cancelled_at is null)::bigint as short_paisa,
            (select string_agg(distinct p.method::text, ' + ') from payment_records p where p.session_id = s.id) as paid_by,
            (select e.notes from order_events e where e.session_id = s.id and e.event_type = 'SESSION_CLOSED'
              order by e.created_at desc limit 1) as close_notes
@@ -125,6 +128,7 @@ export async function listOrders({
       // before its bill): never 0 for food that went out.
       totalPaisa: billed + unbilled,
       paidPaisa: Number(row.paid_paisa),
+      shortPaisa: Number(row.short_paisa),
       paidBy: row.paid_by === null ? null : String(row.paid_by),
       status,
       note: status === 'cancelled' && notes ? notes.replace(/^cancelled — /, '') : null,
@@ -146,7 +150,7 @@ export async function listOrders({
     totals: {
       orders: orders.length,
       paidPaisa: orders.reduce((sum, order) => sum + order.paidPaisa, 0),
-      openPaisa: orders.filter((order) => order.status === 'open').reduce((sum, order) => sum + Math.max(order.totalPaisa - order.paidPaisa, 0), 0),
+      openPaisa: orders.filter((order) => order.status === 'open').reduce((sum, order) => sum + Math.max(order.totalPaisa - order.paidPaisa - order.shortPaisa, 0), 0),
     },
   }
 }

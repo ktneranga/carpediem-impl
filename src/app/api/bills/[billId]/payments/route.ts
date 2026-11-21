@@ -52,6 +52,12 @@ const bodySchema = z.object({
    * drawer still opens for cash; Print receipt on the paid bill still works.
    */
   printReceipt: z.boolean().optional(),
+  /**
+   * A SHORT payment (Teran, 2026-11-21): the guest paid less and the bill
+   * closes anyway. Present means "write the rest off"; it must say why.
+   * Trimmed here; an empty one is refused below, by name.
+   */
+  shortNote: z.string().max(500).transform((note) => note.trim()).optional(),
 }).refine(
   (body) => {
     if (body.cashReceivedPaisa === undefined) return true
@@ -98,6 +104,10 @@ export async function POST(
   if (!parsedBody.success) {
     return fail('INVALID_BODY', 'Payment must be cash, card or bank transfer amounts, in paisa', 400)
   }
+  const shortNote = parsedBody.data.shortNote
+  if (shortNote !== undefined && (shortNote.length === 0 || shortNote.length > 120)) {
+    return fail('SHORT_NOTE_REQUIRED', 'Say why the payment is short (up to 120 characters)', 400)
+  }
 
   try {
     const result = await db.transaction(async (tx) => {
@@ -106,6 +116,7 @@ export async function POST(
         staffId,
         tenders: parsedBody.data.tenders,
         cashReceivedPaisa: parsedBody.data.cashReceivedPaisa ?? null,
+        shortNote: shortNote ?? null,
       })
 
       // ── Cash opens the drawer (Story 6.7) ──────────────────────────────────

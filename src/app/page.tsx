@@ -42,9 +42,10 @@ export default async function Home() {
       staffName={staffRow?.name ?? 'Unknown'}
       role={staffRow?.role ?? null}
       permissions={staffRow?.permissions ?? []}
-      // Owner and waiters are asked for the opening float until it is recorded.
+      // The owner is asked for the opening float until it is recorded. Only the
+      // owner opens the drawer by hand (Teran, 2026-11-21).
       needsFloat={
-        staffRow && (staffRow.role === 'owner' || staffRow.role === 'waiter')
+        staffRow && staffRow.role === 'owner'
           ? !(await floatRecordedToday(db, staffRow.tenantId))
           : false
       }

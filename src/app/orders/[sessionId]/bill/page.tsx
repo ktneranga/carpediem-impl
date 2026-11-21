@@ -141,6 +141,7 @@ export default async function BillPage({
     serviceChargeWaived: bill.serviceChargeWaived,
     serviceWaivedPaisa: bill.serviceWaivedPaisa,
     paidPaisa: payments.get(bill.billId)?.paidPaisa ?? 0,
+    shortPaisa: bill.shortPaisa,
     lines: bill.lines.map((line) => ({
       orderEventId: line.orderEventId,
       name: line.name,

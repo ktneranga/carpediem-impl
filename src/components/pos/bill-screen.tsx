@@ -73,7 +73,14 @@ export type BillScreenBill = Totals & {
   /** Who it is for: the person, the seat, or "Whole table". */
   label: string
   paidPaisa: number
+  /** Written off by a short payment (Teran, 2026-11-21): covered, not paid. */
+  shortPaisa: number
   lines: BillScreenLine[]
+}
+
+/** What is owed on a recorded bill: total less payments and any short. */
+function dueOf(bill: BillScreenBill): number {
+  return Math.max(bill.totalPaisa - bill.paidPaisa - bill.shortPaisa, 0)
 }
 
 /** What no bill covers yet, priced exactly as a bill would be. Nothing stored. */
@@ -99,7 +106,7 @@ type Payable =
     }
 
 function outstandingOf(payable: Payable): number {
-  if (payable.kind === 'bill') return payable.bill.totalPaisa - payable.bill.paidPaisa
+  if (payable.kind === 'bill') return dueOf(payable.bill)
   if (payable.kind === 'draft') return payable.draft.totalPaisa
   return payable.totals.totalPaisa
 }
@@ -912,8 +919,8 @@ export function BillScreen({
     }
   }
 
-  const unpaidBills = bills.filter((bill) => bill.paidPaisa < bill.totalPaisa)
-  const paidBills = bills.filter((bill) => bill.paidPaisa >= bill.totalPaisa)
+  const unpaidBills = bills.filter((bill) => dueOf(bill) > 0)
+  const paidBills = bills.filter((bill) => dueOf(bill) === 0)
 
   const wholePayables: Payable[] = [
     ...unpaidBills.map((bill) => ({
@@ -936,7 +943,7 @@ export function BillScreen({
 
   const billTotal =
     bills.reduce((total, bill) => total + bill.totalPaisa, 0) + (draft?.totalPaisa ?? 0)
-  const settled = bills.reduce((total, bill) => total + Math.min(bill.paidPaisa, bill.totalPaisa), 0)
+  const settled = bills.reduce((total, bill) => total + (bill.totalPaisa - dueOf(bill)), 0)
   const outstanding = billTotal - settled
   // Every bill paid and nothing unbilled. A draft that could not be priced
   // counts as not paid — something is still owed that the screen cannot show.
@@ -1098,12 +1105,12 @@ export function BillScreen({
           // ── SPLIT: a column per person ───────────────────────────────────
           <div className="flex min-h-0 flex-1 gap-sp-4 overflow-x-auto pb-sp-1">
             {unpaidBills.map((bill) => (
-              <Column key={bill.billId} title={bill.label} total={bill.totalPaisa - bill.paidPaisa} badge="Billed">
+              <Column key={bill.billId} title={bill.label} total={dueOf(bill)} badge="Billed">
                 <ItemList lines={bill.lines} />
                 <ColumnFooter
                   totals={bill}
                   onSettle={() => settle({ kind: 'bill', key: bill.billId, title: bill.label, bill })}
-                  due={bill.totalPaisa - bill.paidPaisa}
+                  due={dueOf(bill)}
                   {...printProps(bill.billId, { kind: 'bill', key: bill.billId, title: bill.label, bill })}
                 />
                 {cancelControl(bill)}
@@ -1432,6 +1439,7 @@ export function BillScreen({
         <PaymentDialog
           title={[tableLabel, ...together.map((other) => other.label)].join(' + ')}
           duePaisa={outstanding + together.reduce((total, other) => total + other.owedPaisa, 0)}
+          allowShort={false}
           onCancel={() => setPayingTogether(false)}
           onPay={async (tenders, cashReceivedPaisa, printReceipt) => {
             const others = together
@@ -1481,7 +1489,7 @@ export function BillScreen({
             setPaying(null)
             if (wrote) router.refresh()
           }}
-          onPay={async (tenders, cashReceivedPaisa, printReceipt) => {
+          onPay={async (tenders, cashReceivedPaisa, printReceipt, shortNote) => {
             // A bill this dialog already wrote, on a retry after a failed
             // payment (code review UI-P1), is paid — never written again.
             let billId = paying.kind === 'bill' ? paying.bill.billId : (paying.billId ?? null)
@@ -1507,6 +1515,7 @@ export function BillScreen({
               tenders,
               cashReceivedPaisa,
               printReceipt,
+              shortNote,
             })
             setPaying(null)
             // Cash with a note bigger than the bill: show the change to give
@@ -2457,11 +2466,18 @@ function Row({ label, value }: { label: string; value: number }) {
 function PaymentDialog({
   title,
   duePaisa,
+  allowShort = true,
   onCancel,
   onPay,
 }: {
   title: string
   duePaisa: number
+  /**
+   * A short payment (Teran, 2026-11-21): the guest pays less, the method stays
+   * what was chosen, and the rest is written off with a note. Off for Pay
+   * together, which still takes the full amount.
+   */
+  allowShort?: boolean
   onCancel: () => void
   /**
    * `cashReceivedPaisa` is what the pad holds in Cash mode — the note the guest
@@ -2473,9 +2489,14 @@ function PaymentDialog({
     cashReceivedPaisa: number | undefined,
     /** False when "No receipt" is ticked (Teran, 2026-11-13). */
     printReceipt: boolean,
+    /** Present on a short payment: why the guest paid less. */
+    shortNote: string | undefined,
   ) => Promise<void>
 }) {
   const [method, setMethod] = useState<'cash' | 'card' | 'transfer' | 'split'>('cash')
+  // Card or transfer for less than the bill: the pad types what was charged.
+  const [lessMode, setLessMode] = useState(false)
+  const [shortNote, setShortNote] = useState('')
   // What the pad has typed, in WHOLE RUPEES as a digit string. "Exact" may set
   // a paisa amount that is not whole rupees, so it is held separately.
   const [digits, setDigits] = useState('')
@@ -2507,16 +2528,31 @@ function PaymentDialog({
 
   const cash = received ?? 0
   const hasCash = cash > 0
-  // Cash in Cash mode that does not cover the bill: the action offers a split.
+  const cardLike = method === 'card' || method === 'transfer'
+  // Card or transfer typed on the pad (less than the bill).
+  const typedCard = cardLike && allowShort && lessMode
+  // Cash in Cash mode that does not cover the bill. With short payments on it
+  // stays Cash (Teran, 2026-11-21); on Pay together it still offers a split.
   const cashShort = method === 'cash' && hasCash && cash < duePaisa
+  // What the guest does not pay, written off with a note.
+  const shortPaisa =
+    allowShort && hasCash && cash < duePaisa && (method === 'cash' || typedCard) ? duePaisa - cash : 0
+  const isShort = shortPaisa > 0
+  const noteReady = shortNote.trim().length > 0
 
   const tenders: { method: 'cash' | 'card' | 'transfer'; amountPaisa: number }[] | null =
     method === 'card' || method === 'transfer'
-      ? [{ method, amountPaisa: duePaisa }]
+      ? typedCard
+        ? hasCash && cash <= duePaisa
+          ? [{ method, amountPaisa: cash }]
+          : null
+        : [{ method, amountPaisa: duePaisa }]
       : method === 'cash'
         ? hasCash && cash >= duePaisa
           ? [{ method: 'cash', amountPaisa: duePaisa }]
-          : null
+          : isShort
+            ? [{ method: 'cash', amountPaisa: cash }]
+            : null
         : hasCash && cash < duePaisa
           ? [
               { method: 'cash', amountPaisa: cash },
@@ -2524,25 +2560,42 @@ function PaymentDialog({
             ]
           : null
 
+  // Short cash on Pay together: the action switches to Cash + card, as before.
+  const offerSplit = cashShort && !allowShort
+  const canPay = !busy && tenders !== null && (!isShort || noteReady)
+  const methodName = method === 'card' ? 'Card' : method === 'transfer' ? 'Transfer' : 'Cash'
+
   const actionLabel = busy
     ? 'Recording…'
-    : method === 'card'
-      ? `Card payment taken · ${lkrFromPaisa(duePaisa)}`
-      : method === 'transfer'
-        ? `Bank transfer received · ${lkrFromPaisa(duePaisa)}`
-      : method === 'cash'
+    : isShort
+      ? noteReady
+        ? `Record ${methodName.toLowerCase()} ${lkrFromPaisa(cash)} · ${lkrFromPaisa(shortPaisa)} short`
+        : `Add a note for the ${lkrFromPaisa(shortPaisa)} short`
+      : typedCard
         ? !hasCash
-          ? 'Enter amount received'
-          : cashShort
-            ? `${lkrFromPaisa(stillNeeded)} short · pay the rest by card`
-            : change > 0
-              ? `Record cash · change ${lkrFromPaisa(change)}`
-              : 'Record cash'
-        : !hasCash
-          ? 'Enter the cash part'
-          : cash >= duePaisa
-            ? 'Cash covers it all · use Cash'
-            : `Record ${lkrFromPaisa(cash)} cash + ${lkrFromPaisa(stillNeeded)} card`
+          ? 'Enter the amount'
+          : cash > duePaisa
+            ? 'More than the bill'
+            : method === 'card'
+              ? `Card payment taken · ${lkrFromPaisa(cash)}`
+              : `Bank transfer received · ${lkrFromPaisa(cash)}`
+        : method === 'card'
+          ? `Card payment taken · ${lkrFromPaisa(duePaisa)}`
+          : method === 'transfer'
+            ? `Bank transfer received · ${lkrFromPaisa(duePaisa)}`
+            : method === 'cash'
+              ? !hasCash
+                ? 'Enter amount received'
+                : offerSplit
+                  ? `${lkrFromPaisa(stillNeeded)} short · pay the rest by card`
+                  : change > 0
+                    ? `Record cash · change ${lkrFromPaisa(change)}`
+                    : 'Record cash'
+              : !hasCash
+                ? 'Enter the cash part'
+                : cash >= duePaisa
+                  ? 'Cash covers it all · use Cash'
+                  : `Record ${lkrFromPaisa(cash)} cash + ${lkrFromPaisa(stillNeeded)} card`
 
   const focusRing =
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500'
@@ -2610,6 +2663,7 @@ function PaymentDialog({
                     aria-pressed={method === key}
                     onClick={() => {
                       setMethod(key)
+                      setLessMode(false)
                       setError(null)
                     }}
                     className={cn(
@@ -2647,6 +2701,18 @@ function PaymentDialog({
                   </div>
                 </>
               ) : null}
+              {isShort ? (
+                <>
+                  <div className="flex justify-between">
+                    <dt className="text-slate-600 night:text-night-second">{methodName}</dt>
+                    <dd className="font-semibold tabular-nums text-slate-900 night:text-night-text">{lkrFromPaisa(cash)}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-red-700 night:text-red-400">Short</dt>
+                    <dd className="font-semibold tabular-nums text-red-700 night:text-red-400">{lkrFromPaisa(shortPaisa)}</dd>
+                  </div>
+                </>
+              ) : null}
               <div className="flex justify-between pt-sp-1">
                 <dt className="font-bold text-slate-900 night:text-night-text">Total</dt>
                 <dd className="font-extrabold tabular-nums text-slate-900 night:text-night-text">{lkrFromPaisa(duePaisa)}</dd>
@@ -2675,7 +2741,7 @@ function PaymentDialog({
 
           {/* ── Right: the pad ────────────────────────────────────────────── */}
           <section className="flex min-w-0 flex-1 flex-col gap-sp-3 p-sp-5">
-            {method === 'cash' || method === 'split' ? (
+            {method === 'cash' || method === 'split' || typedCard ? (
               <>
                 <div className="grid grid-cols-2 gap-sp-3">
                   <div
@@ -2684,7 +2750,7 @@ function PaymentDialog({
                   >
                     <span className="flex items-center justify-between gap-sp-2">
                       <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase night:text-night-second">
-                        {method === 'split' ? 'Cash part' : 'Received'}
+                        {method === 'split' ? 'Cash part' : method === 'card' ? 'Charged' : 'Received'}
                       </span>
                       {/* Clear (Teran, 2026-10-25): back to empty in one tap,
                           rather than a delete per digit. Only while there is
@@ -2715,12 +2781,16 @@ function PaymentDialog({
                   </div>
                   <div className="flex flex-col rounded-waiter bg-slate-100 px-sp-4 py-sp-3 night:bg-night-raised">
                     <span className="text-fs-12 font-bold tracking-micro text-slate-600 uppercase night:text-night-second">
-                      {method === 'split' ? 'Card part' : change > 0 ? 'Change' : 'Still needed'}
+                      {method === 'split' ? 'Card part' : isShort ? 'Short' : change > 0 ? 'Change' : 'Still needed'}
                     </span>
                     <span
                       className={cn(
                         'text-fs-32 font-extrabold tabular-nums',
-                        method === 'cash' && change > 0 ? 'text-open-ink night:text-green-400' : 'text-slate-600 night:text-night-second',
+                        isShort
+                          ? 'text-red-700 night:text-red-400'
+                          : method === 'cash' && change > 0
+                            ? 'text-open-ink night:text-green-400'
+                            : 'text-slate-600 night:text-night-second',
                       )}
                     >
                       {lkrFromPaisa(method === 'cash' && change > 0 ? change : stillNeeded)}
@@ -2728,7 +2798,7 @@ function PaymentDialog({
                   </div>
                 </div>
 
-                <div className={cn('flex flex-wrap gap-sp-2', method === 'split' && 'hidden')}>
+                <div className={cn('flex flex-wrap gap-sp-2', (method === 'split' || typedCard) && 'hidden')}>
                   {[
                     { label: 'Exact', set: () => (setDigits(''), setExact(duePaisa)) },
                     ...quick.map((amount) => ({
@@ -2771,6 +2841,23 @@ function PaymentDialog({
                     </button>
                   ))}
                 </div>
+                {typedCard ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLessMode(false)
+                      setDigits('')
+                      setExact(null)
+                      setError(null)
+                    }}
+                    className={cn(
+                      'h-touch-standard self-start rounded-control px-sp-2 text-fs-14 font-semibold text-brand-700 underline night:text-brand-300',
+                      focusRing,
+                    )}
+                  >
+                    Charge the full bill
+                  </button>
+                ) : null}
               </>
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center gap-sp-3 rounded-waiter bg-slate-100 p-sp-5 text-center night:bg-night-raised">
@@ -2793,8 +2880,51 @@ function PaymentDialog({
                     <p className="text-fs-14 text-slate-600 night:text-night-second">Confirm here once it is approved.</p>
                   </>
                 )}
+                {/* Rare, so a small link (Teran, 2026-11-21): the guest pays
+                    less by card or transfer, recorded as a short. */}
+                {allowShort ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLessMode(true)
+                      setDigits('')
+                      setExact(null)
+                      setError(null)
+                    }}
+                    className={cn(
+                      'h-touch-standard rounded-control px-sp-2 text-fs-14 font-semibold text-brand-700 underline night:text-brand-300',
+                      focusRing,
+                    )}
+                  >
+                    Less than the bill?
+                  </button>
+                ) : null}
               </div>
             )}
+
+            {/* Why the guest paid less (Teran, 2026-11-21). Required. */}
+            {isShort ? (
+              <label className="flex flex-col gap-sp-1">
+                <span className="text-fs-12 font-bold tracking-micro text-red-700 uppercase night:text-red-400">
+                  Why is it {lkrFromPaisa(shortPaisa)} short? (required)
+                </span>
+                <input
+                  type="text"
+                  value={shortNote}
+                  maxLength={120}
+                  onChange={(event) => {
+                    setShortNote(event.target.value)
+                    setError(null)
+                  }}
+                  placeholder="e.g. guest had no more cash"
+                  className={cn(
+                    'h-touch-standard rounded-control border-2 border-slate-200 bg-white px-sp-3 text-fs-16 text-slate-900',
+                    'night:border-night-hairline night:bg-night-card night:text-night-text',
+                    focusRing,
+                  )}
+                />
+              </label>
+            ) : null}
 
             {error ? (
               <p role="alert" className="text-fs-14 font-semibold text-unavailable-ink night:text-red-300">
@@ -2804,19 +2934,19 @@ function PaymentDialog({
 
             <button
               type="button"
-              disabled={busy || (tenders === null && !cashShort)}
+              disabled={!canPay && !offerSplit}
               onClick={async () => {
-                // Short cash in Cash mode: switch to Cash + card with the
+                // Short cash on Pay together: switch to Cash + card with the
                 // amount kept, so the split is confirmed there on purpose.
-                if (cashShort) {
+                if (offerSplit) {
                   setMethod('split')
                   return
                 }
-                if (!tenders) return
+                if (!tenders || !canPay) return
                 setBusy(true)
                 setError(null)
                 try {
-                  await onPay(tenders, method === 'cash' ? cash : undefined, !noReceipt)
+                  await onPay(tenders, method === 'cash' ? cash : undefined, !noReceipt, isShort ? shortNote.trim() : undefined)
                 } catch (caught) {
                   setError(caught instanceof Error ? caught.message : 'Could not record the payment.')
                   setBusy(false)
@@ -2826,9 +2956,9 @@ function PaymentDialog({
                 'h-touch-waiter shrink-0 rounded-waiter text-fs-18 font-bold',
                 'active:scale-[0.98] disabled:active:scale-100',
                 focusRing,
-                busy || (tenders === null && !cashShort)
+                !canPay && !offerSplit
                   ? 'bg-slate-100 text-slate-400 night:bg-night-raised night:text-night-muted'
-                  : cashShort
+                  : offerSplit
                     ? 'border-2 border-brand-500 bg-brand-050 text-brand-700 night:bg-night-raised night:text-brand-300'
                     : 'bg-brand-800 text-white shadow-el-2',
               )}

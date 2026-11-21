@@ -86,7 +86,7 @@ async function owedOn(sessionId: string): Promise<{ owedPaisa: number; lines: Ow
   const recorded = await loadSessionBills(db, sessionId)
   const payments = await loadSessionPayments(db, sessionId)
   for (const bill of recorded) {
-    const outstanding = bill.totalPaisa - (payments.get(bill.billId)?.paidPaisa ?? 0)
+    const outstanding = bill.totalPaisa - bill.shortPaisa - (payments.get(bill.billId)?.paidPaisa ?? 0)
     if (outstanding <= 0) continue
     owedPaisa += outstanding
     for (const line of bill.lines) {
@@ -169,7 +169,7 @@ export async function payTogether(
       await generateConsolidatedBill(tx, { sessionId, staffId })
     }
     const unpaid = await tx.execute(sql`
-      select b.id, (b.total_paisa - coalesce((select sum(p.amount_paisa) from payment_records p where p.bill_id = b.id), 0))::int as outstanding
+      select b.id, (b.total_paisa - b.short_paisa - coalesce((select sum(p.amount_paisa) from payment_records p where p.bill_id = b.id), 0))::int as outstanding
         from bills b where b.session_id = ${sessionId} and b.cancelled_at is null
        order by b.created_at`)
     for (const row of unpaid.rows as { id: string; outstanding: number }[]) {

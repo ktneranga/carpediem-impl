@@ -814,6 +814,9 @@ async function buildBill(
     type,
     seatSlotId: seatId,
     personLabel,
+    // A new bill has no short: only a payment can write one off.
+    shortPaisa: 0,
+    shortNote: null,
     // Gated on `seatId`. Unconditional, this returned the first collected
     // event's seat on a CONSOLIDATED bill, so POST said `seatLabel: 'S1'` while
     // a GET of the same bill said null — and the POST value came from the live
@@ -872,6 +875,8 @@ export async function getBill(
       personLabel: bills.personLabel,
       createdAt: bills.createdAt,
       cancelledAt: bills.cancelledAt,
+      shortPaisa: bills.shortPaisa,
+      shortNote: bills.shortNote,
     })
     .from(bills)
     .where(eq(bills.id, billId))
@@ -953,6 +958,8 @@ export async function getBill(
     discountPaisa: bill.discountPaisa,
     serviceChargeWaived: bill.serviceChargeWaived,
     serviceWaivedPaisa: bill.serviceWaivedPaisa,
+    shortPaisa: bill.shortPaisa,
+    shortNote: bill.shortNote,
     lines,
     comps,
   }

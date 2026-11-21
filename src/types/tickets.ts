@@ -164,6 +164,8 @@ export type ReceiptPayload = {
   totalPaisa: number
   /** What has been paid, oldest first. Empty on an unpaid bill. */
   tenders: { method: 'cash' | 'card' | 'transfer'; amountPaisa: number; cashReceivedPaisa: number | null }[]
+  /** What the guest did not pay on a short payment (Teran, 2026-11-21). */
+  shortPaisa?: number
 }
 
 /**

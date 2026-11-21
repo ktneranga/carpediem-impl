@@ -631,6 +631,8 @@ export function buildReceipt(receipt: ReceiptPayload): Buffer {
         row('Change', received - tender.amountPaisa)
       }
     }
+    // A short payment (Teran, 2026-11-21): what the guest did not pay.
+    if (typeof receipt.shortPaisa === 'number' && receipt.shortPaisa > 0) row('Short', receipt.shortPaisa)
     if (title === 'BILL') {
       const paid = tenders.reduce((total, tender) => total + (tender.amountPaisa || 0), 0)
       row('Paid', paid)

@@ -192,7 +192,9 @@ async function enqueue(
  */
 export async function billAlreadyHandedOver(tx: Tx, billId: string): Promise<boolean> {
   const bill = await getBill(tx, billId)
-  if (!bill) return false
+  // A short payment (Teran, 2026-11-21): the printed bill showed the full
+  // total, so the guest gets a receipt that says what they actually paid.
+  if (!bill || bill.shortPaisa > 0) return false
   const billLabel =
     bill.type === 'seat' ? bill.seatLabel : bill.type === 'split' ? guestBillLabel(bill.personLabel) : null
 
@@ -246,7 +248,8 @@ export async function printBill(
     .where(eq(paymentRecords.billId, billId))
     .orderBy(asc(paymentRecords.createdAt), asc(paymentRecords.id))
   const paid = tenderRows.reduce((total, row) => total + row.amountPaisa, 0)
-  const title = paid >= bill.totalPaisa ? 'RECEIPT' : 'BILL'
+  // A short payment (Teran, 2026-11-21) closed the bill: a receipt, not a bill.
+  const title = paid + bill.shortPaisa >= bill.totalPaisa ? 'RECEIPT' : 'BILL'
 
   // A COPY is the SAME document printed again. The bill the guest checked
   // before paying is not a copy of the receipt that prints after it (Teran,
@@ -293,6 +296,7 @@ export async function printBill(
     taxBp: bill.taxBp,
     totalPaisa: bill.totalPaisa,
     tenders: tenderRows,
+    shortPaisa: bill.shortPaisa > 0 ? bill.shortPaisa : undefined,
   })
 
   return enqueue(tx, { tenantId: heading.tenantId, sessionId: bill.sessionId, billId, payload })
@@ -462,7 +466,7 @@ export async function printTogetherBill(
     const payments = await loadSessionPayments(tx, sessionId)
     for (const bill of await loadSessionBills(tx, sessionId)) {
       const paid = payments.get(bill.billId)?.paidPaisa ?? 0
-      if (bill.totalPaisa - paid <= 0) continue
+      if (bill.totalPaisa - bill.shortPaisa - paid <= 0) continue
       if (paid > 0) paidBillIds.push(bill.billId)
       for (const line of bill.lines) {
         lines.push({ quantity: line.quantity, name: line.name, amountPaisa: line.amountPaisa, optionText: line.optionText, modifierText: line.modifierText })

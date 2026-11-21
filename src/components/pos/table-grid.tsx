@@ -1258,7 +1258,8 @@ export function TableGrid({
         onManage={canOpenManage(role, permissions) ? () => window.location.assign('/manage') : undefined}
         // Owner and waiters (Story 8.3). A client navigation: no password.
         onSoldOut={canMarkSoldOut(role) ? () => router.push('/manage/sold-out') : undefined}
-        canOpenDrawer={role === 'owner' || role === 'waiter'}
+        // Owner only (Teran, 2026-11-21). Cash payments still open it by themselves.
+        canOpenDrawer={role === 'owner'}
         isOwner={role === 'owner'}
         canOpenForChange={canOpenCashDrawer(role, permissions)}
         onDrawerOpened={() => {

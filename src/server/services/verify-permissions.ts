@@ -175,7 +175,8 @@ async function run() {
   const plainMenu = await visit(plainSession.cookieValue, '/api/manage/menu')
   check('a waiter with no areas: /api/manage/menu is 403', plainMenu.status === 403, JSON.stringify(plainMenu))
   const drawer = await visit(plainSession.cookieValue, '/api/cash-drawer/open', 'POST')
-  check('/api/cash-drawer now admits waiters to the route (it checks the permission itself)', drawer.through, JSON.stringify(drawer))
+  // Owner only again (Teran, 2026-11-21): the proxy refuses waiters outright.
+  check('/api/cash-drawer refuses waiters (owner only)', !drawer.through && drawer.status === 403, JSON.stringify(drawer))
 
   const ownerSession = await createSession({ tenantId, staffId: owner.id, role: 'owner' })
   const ownerMenu = await visit(ownerSession.cookieValue, '/api/manage/menu')

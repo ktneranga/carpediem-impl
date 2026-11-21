@@ -100,7 +100,7 @@ function within(column: SQL, scope: Scope, sessionColumn: SQL) {
 
 async function loadEntries(scope: Scope): Promise<AuditEntry[]> {
   const t = scope.tenantId
-  const [rounds, roundItems, events, cancelledBills, discounted, payments, drawer, configs, printed] = await Promise.all([
+  const [rounds, roundItems, events, cancelledBills, discounted, payments, drawer, configs, printed, shorted] = await Promise.all([
     rows(sql`
       select r.id, r.submitted_at as at, st.name as staff, r.session_id, r.round_number, r.item_count, ${ORDER_COLUMNS}
         from order_rounds r join order_sessions s on s.id = r.session_id join staff st on st.id = r.staff_id
@@ -158,6 +158,12 @@ async function loadEntries(scope: Scope): Promise<AuditEntry[]> {
             from print_jobs j
            where j.session_id = ${scope.sessionId} and j.ticket->>'kind' = 'receipt' and j.ticket->>'title' = 'BILL'`)
       : Promise.resolve([] as Row[]),
+    // Short payments (Teran, 2026-11-21): what a guest did not pay, and why.
+    rows(sql`
+      select b.id, b.short_at as at, b.short_paisa, b.short_note, b.session_id, st.name as staff, ${ORDER_COLUMNS}
+        from bills b join order_sessions s on s.id = b.session_id join staff st on st.id = b.short_by_staff_id
+       where b.tenant_id = ${t} and b.short_at is not null and b.cancelled_at is null
+         and ${within(sql`b.short_at`, scope, sql`b.session_id`)}`),
   ])
 
   const order = (row: Row) => ({
@@ -261,6 +267,21 @@ async function loadEntries(scope: Scope): Promise<AuditEntry[]> {
       text: `Paid ${method === 'transfer' ? 'by bank transfer' : method === 'card' ? 'by card' : 'cash'} ${lkrFromPaisa(amount)}`,
       detail: received !== null && received > amount ? `got ${lkrFromPaisa(received)}, change ${lkrFromPaisa(received - amount)}` : null,
       amountPaisa: amount,
+      ...order(row),
+    })
+  }
+
+  // Negative, so the log shows it in red like a void.
+  for (const row of shorted) {
+    const short = Number(row.short_paisa)
+    out.push({
+      id: `bs:${row.id}`,
+      at: iso(row.at),
+      staffName: String(row.staff),
+      kind: 'money',
+      text: `Short payment ${lkrFromPaisa(short)}`,
+      detail: str(row.short_note),
+      amountPaisa: -short,
       ...order(row),
     })
   }

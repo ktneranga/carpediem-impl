@@ -930,8 +930,27 @@ export const bills = pgTable('bills', {
   cancelledByStaffId:       uuid('cancelled_by_staff_id').references(() => staff.id),
   cancelApprovedByStaffId:  uuid('cancel_approved_by_staff_id').references(() => staff.id),
   cancelReason:             text('cancel_reason'),
+
+  /**
+   * A SHORT payment (Teran, 2026-11-21): the guest paid less than the bill and
+   * the cashier closed it anyway, saying why. `short_paisa` is what was written
+   * off — NOT revenue (takings read `payment_records` only); "is it paid?" is
+   * payments + short ≥ total. Set once, all four together, by the payment
+   * that closed the bill — `bills_allow_cancel_once` (migration 0052) allows
+   * exactly that one update besides a cancel.
+   */
+  shortPaisa:       integer('short_paisa').notNull().default(0),
+  shortNote:        text('short_note'),
+  shortByStaffId:   uuid('short_by_staff_id').references(() => staff.id),
+  shortAt:          timestamp('short_at', { withTimezone: true }),
 }, (t) => [
   index('idx_bills_session_id').on(t.sessionId),
+  check(
+    'bills_short_all_or_none',
+    sql`(${t.shortPaisa} = 0 AND ${t.shortNote} IS NULL AND ${t.shortByStaffId} IS NULL AND ${t.shortAt} IS NULL)
+     OR (${t.shortPaisa} > 0 AND ${t.shortByStaffId} IS NOT NULL AND ${t.shortAt} IS NOT NULL
+         AND length(trim(${t.shortNote})) BETWEEN 1 AND 120)`,
+  ),
   check(
     'bills_cancel_all_or_none',
     sql`(${t.cancelledAt} IS NULL AND ${t.cancelledByStaffId} IS NULL AND ${t.cancelApprovedByStaffId} IS NULL AND ${t.cancelReason} IS NULL)

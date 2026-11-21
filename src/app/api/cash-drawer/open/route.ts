@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/server/db'
 import { staff } from '@/server/db/schema'
-import { canOpenCashDrawer, parsePermissionsHeader, type StaffRole } from '@/server/auth/permissions'
+import { type StaffRole } from '@/server/auth/permissions'
 import { CASH_IN_REASONS, CASH_OUT_REASONS, openWithoutSale } from '@/server/services/cash-drawer.service'
 import { wakePrintQueue } from '@/server/print/wake'
 
@@ -50,7 +50,7 @@ function fail(code: string, message: string, status: number) {
  * Opens the cash drawer with no sale (Story 6.7, FR72).
  *
  * Owner only: the `/api/cash-drawer` entry in `ROUTE_ROLES` refuses everyone
- * else before this runs, and `canOpenCashDrawer` is asked again here so the two
+ * else before this runs, and the role is checked again here so the two
  * cannot drift. Queues the kick and records who and why in one transaction;
  * 202 because what was created is a request to the printer.
  */
@@ -58,7 +58,6 @@ export async function POST(request: Request) {
   const staffId = request.headers.get('x-staff-id')
   if (!staffId) return fail('UNAUTHENTICATED', 'Sign in required', 401)
   const role = request.headers.get('x-staff-role') as StaffRole | null
-  const permissions = parsePermissionsHeader(request.headers.get('x-staff-permissions'))
 
   let body: unknown
   try {
@@ -80,16 +79,11 @@ export async function POST(request: Request) {
     )
   }
 
-  // Who may do what (Teran, 2026-11-16): anyone on the floor may ADD cash —
-  // the morning float, more change. Opening for change with no money moving
-  // needs `open_cash_drawer`. Taking cash OUT is the owner's.
+  // Only the owner opens the drawer by hand, for any reason (Teran,
+  // 2026-11-21). `ROUTE_ROLES` refuses everyone else first; this says it again
+  // so the two cannot drift. A cash payment still kicks the drawer itself.
+  if (role !== 'owner') return fail('FORBIDDEN', 'Only the owner can open the cash drawer', 403)
   const reason = parsed.data.reason
-  const takesCashOut = CASH_OUT_REASONS.includes(reason) || (reason === 'other' && parsed.data.direction === 'out')
-  if (takesCashOut) {
-    if (role !== 'owner') return fail('FORBIDDEN', 'Only the owner can take cash out of the drawer', 403)
-  } else if (!CASH_IN_REASONS.includes(reason) && !canOpenCashDrawer(role, permissions)) {
-    return fail('FORBIDDEN', 'You are not allowed to open the drawer without a sale', 403)
-  }
 
   try {
     const [member] = await db.select({ tenantId: staff.tenantId }).from(staff).where(eq(staff.id, staffId)).limit(1)
