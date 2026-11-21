@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Receipt, Users } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -1399,6 +1399,18 @@ export function OrderScreen({
   const stagedItemCount = lines.reduce((total, line) => total + line.quantity, 0)
   const subtotalPaisa = lines.reduce((total, line) => total + line.pricePaisa * line.quantity, 0)
 
+  // The order column shows its LAST item (Teran, 2026-11-21): on opening, and
+  // whenever a line or a round is added, so the waiter never scrolls down to
+  // see what they just tapped. Keyed on counts, not on the arrays: changing
+  // the quantity of an older line must not yank the list away from it.
+  const roundListRef = useRef<HTMLDivElement>(null)
+  const roundCount = submittedRounds.length
+  const lineCount = lines.length
+  useEffect(() => {
+    const list = roundListRef.current
+    if (list) list.scrollTop = list.scrollHeight
+  }, [roundCount, lineCount, notice])
+
   /**
    * What the kitchen already has, priced as it was quoted.
    *
@@ -1798,7 +1810,7 @@ export function OrderScreen({
 
           {/* The round. Scrolls on its own; the seats above and the total below
               stay put. History sits ABOVE the unsent lines (AC-6). */}
-          <div className="flex min-h-0 flex-1 flex-col gap-sp-3 overflow-y-auto p-sp-4">
+          <div ref={roundListRef} className="flex min-h-0 flex-1 flex-col gap-sp-3 overflow-y-auto p-sp-4">
             <RoundHistory
               rounds={submittedRounds}
               showSeats={usesSeats}

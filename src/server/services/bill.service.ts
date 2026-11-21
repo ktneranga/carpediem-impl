@@ -1,5 +1,5 @@
 import 'server-only'
-import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { db } from '@/server/db'
 import { isCheckViolation, isUniqueViolation } from '@/server/db/errors'
 import {
@@ -9,7 +9,6 @@ import {
   compRecords,
   menuItems,
   orderEvents,
-  orderSessionTables,
   orderSessions,
   seatSlots,
   tenantConfig,
@@ -331,14 +330,6 @@ async function collectBillable(
   // "Extra shot ×2, No ice" — the form a bill line stores and shows.
   const events = rows.map(({ options, ...row }) => ({ ...row, optionText: optionText(options) }))
 
-  const [attachedTable] = await tx
-    .select({ tableId: orderSessionTables.tableId })
-    .from(orderSessionTables)
-    .where(
-      and(eq(orderSessionTables.sessionId, sessionId), isNull(orderSessionTables.releasedAt)),
-    )
-    .limit(1)
-
   // Comps are keyed off the EVENTS being billed, not off the session, so 6.4's
   // per-seat bill gets the same query unchanged: a comp follows the item it
   // reduced. Nothing writes `comp_records` until Epic 7, so this is empty in
@@ -357,7 +348,11 @@ async function collectBillable(
           .from(compRecords)
           .where(inArray(compRecords.orderEventId, collectedIds))
 
-  return { events, comps, hasTableService: attachedTable !== undefined }
+  // Every order pays service, bar tabs included (Teran, 2026-11-21). It used to
+  // be tables only, which the order screen never followed: a bar tab showed a
+  // service line there that its bill then left off. The order's own waiver
+  // (`service_charge_waived`) is how a single order goes without.
+  return { events, comps, hasTableService: true }
 }
 
 /**

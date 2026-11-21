@@ -371,16 +371,16 @@ async function run() {
       JSON.stringify(detail?.lines?.[0]))
   }
 
-  // ── 3. Counter sale, no table ─────────────────────────────────────────────
+  // ── 3. Counter sale, no table: service applies too (Teran, 2026-11-21) ───
   {
     const { sessionId, seatId } = await makeSession('counter', { withTable: false })
     await addItem(sessionId, seatId, 1, 100_000)
     const response = track(await api(waiterCookie, `/api/sessions/${sessionId}/bills`, {
       method: 'POST', body: JSON.stringify({ type: 'consolidated' }),
     }))
-    check('3 counter sale, no table: NO service charge',
-      response.body?.data?.serviceChargePaisa === 0 &&
-        response.body?.data?.serviceChargeBp === 0,
+    check('3 counter sale, no table: service charge APPLIED',
+      response.body?.data?.serviceChargePaisa === Math.round((100_000 * rateBp) / 10_000) &&
+        response.body?.data?.serviceChargeBp === rateBp,
       JSON.stringify(response.body?.data?.serviceChargePaisa))
   }
 
@@ -1092,15 +1092,15 @@ async function run() {
     check('S12 but the seat LABEL does', response.body?.data?.seatLabel === 'S1')
   }
 
-  // ── S13. A counter sale with no table: no service charge ─────────────────
+  // ── S13. A counter sale with no table: service applies (Teran, 2026-11-21) ─
   {
     const { sessionId, seatIds } = await makeSession('counter', { withTable: false, seats: 1 })
     await addItem(sessionId, seatIds[0]!, 1, 100_000)
     const response = track(await api(waiterCookie,
       `/api/sessions/${sessionId}/seats/${seatIds[0]}/bill`, { method: 'POST', body: '{}' }))
-    check('S13 seat bill on a table-less counter sale: NO service charge',
-      response.body?.data?.serviceChargePaisa === 0 &&
-        response.body?.data?.serviceChargeBp === 0,
+    check('S13 seat bill on a table-less counter sale: service charge APPLIED',
+      response.body?.data?.serviceChargePaisa === Math.round((100_000 * rateBp) / 10_000) &&
+        response.body?.data?.serviceChargeBp === rateBp,
       String(response.body?.data?.serviceChargePaisa))
   }
 
